@@ -3,12 +3,16 @@ package com.phtontools.phtonview.ui.settings
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -21,6 +25,7 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -33,14 +38,18 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.phtontools.phtonview.BuildConfig
 import com.phtontools.phtonview.R
@@ -49,6 +58,8 @@ import com.phtontools.phtonview.data.local.SettingsManager
 import com.phtontools.phtonview.data.local.ThemeMode
 import com.phtontools.phtonview.data.local.UiMode
 import com.phtontools.phtonview.util.AppLogger
+import com.phtontools.phtonview.util.UpdateChecker
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,14 +69,41 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
+    val scope = rememberCoroutineScope()
     var showThemeDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showUiModeDialog by remember { mutableStateOf(false) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
+    var showEasterEgg by remember { mutableStateOf(false) }
     var currentTheme by remember { mutableStateOf(settingsManager.themeMode) }
     var currentLanguage by remember { mutableStateOf(settingsManager.language) }
     var currentUiMode by remember { mutableStateOf(settingsManager.uiMode) }
     var debugMode by remember { mutableStateOf(settingsManager.debugMode) }
     var wifiExperimental by remember { mutableStateOf(settingsManager.wifiExperimental) }
+    var pendingRelease by remember { mutableStateOf<UpdateChecker.ReleaseInfo?>(null) }
+    var easterEggClicks by remember { mutableStateOf(0) }
+
+    val checkUpdate: () -> Unit = {
+        scope.launch {
+            val release = UpdateChecker.fetchLatestRelease()
+            if (release == null) {
+                android.widget.Toast.makeText(context, "检查更新失败", android.widget.Toast.LENGTH_SHORT).show()
+            } else if (!UpdateChecker.isNewer(UpdateChecker.getCurrentVersion(), release.version)) {
+                android.widget.Toast.makeText(context, "当前已是最新版本", android.widget.Toast.LENGTH_SHORT).show()
+            } else {
+                pendingRelease = release
+                showUpdateDialog = true
+            }
+        }
+    }
+
+    val onVersionClick: () -> Unit = {
+        easterEggClicks += 1
+        if (easterEggClicks >= 5) {
+            easterEggClicks = 0
+            showEasterEgg = true
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -136,11 +174,7 @@ fun SettingsScreen(
                 icon = Icons.Default.Update,
                 title = stringResource(id = R.string.check_update),
                 summary = stringResource(id = R.string.latest_version),
-                onClick = {
-                    context.startActivity(
-                        Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com"))
-                    )
-                }
+                onClick = checkUpdate
             )
 
             SettingsHeader(title = stringResource(id = R.string.about))
@@ -149,7 +183,7 @@ fun SettingsScreen(
                 title = stringResource(id = R.string.app_name),
                 summary = String.format(stringResource(id = R.string.version_format), BuildConfig.VERSION_NAME) +
                         " · LCStudio",
-                onClick = { }
+                onClick = onVersionClick
             )
         }
     }
@@ -187,6 +221,27 @@ fun SettingsScreen(
             },
             onDismiss = { showUiModeDialog = false }
         )
+    }
+
+    if (showUpdateDialog) {
+        UpdateDialog(
+            release = pendingRelease,
+            onConfirm = {
+                showUpdateDialog = false
+                pendingRelease?.let { release ->
+                    if (UpdateChecker.canInstallUpdate(context)) {
+                        UpdateChecker.downloadAndInstall(context, release)
+                    } else {
+                        UpdateChecker.requestInstallPermission(context)
+                    }
+                }
+            },
+            onDismiss = { showUpdateDialog = false }
+        )
+    }
+
+    if (showEasterEgg) {
+        EasterEggDialog(onDismiss = { showEasterEgg = false })
     }
 }
 
@@ -456,6 +511,89 @@ private fun languageLabel(language: AppLanguage): String {
             AppLanguage.GERMAN -> R.string.language_german
             AppLanguage.SPANISH -> R.string.language_spanish
             AppLanguage.RUSSIAN -> R.string.language_russian
+        }
+    )
+}
+
+@Composable
+private fun UpdateDialog(
+    release: UpdateChecker.ReleaseInfo?,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    if (release == null) return
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("发现新版本") },
+        text = {
+            Column {
+                Text(
+                    text = "最新版本：${release.version}",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                if (release.body.isNotBlank()) {
+                    Text(
+                        text = release.body,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onConfirm) {
+                Text("下载并安装")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
+}
+
+@Composable
+private fun EasterEggDialog(
+    onDismiss: () -> Unit
+) {
+    val rotation = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            rotation.animateTo(
+                targetValue = rotation.value + 360f,
+                animationSpec = tween(2000, easing = LinearEasing)
+            )
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("🎉 彩蛋") },
+        text = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CameraAlt,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(96.dp)
+                        .graphicsLayer { rotationZ = rotation.value },
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "PhtonView 由 LCStudio 出品\\n感谢使用！",
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 16.dp)
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(id = android.R.string.ok))
+            }
         }
     )
 }

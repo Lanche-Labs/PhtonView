@@ -18,9 +18,8 @@ app/.cxx/
 app/build/
 *.apk
 *.aab
-!releases/*.apk
 
-# Native build intermediates (prebuilt runtime drivers in assets are kept)
+# Native build intermediates (runtime driver assets are kept)
 .gphoto2-build/
 app/gphoto2/prebuilt/
 tmp_apk/

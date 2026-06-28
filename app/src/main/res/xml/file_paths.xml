@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <external-path
+        name="updates"
+        path="Android/data/com.phtontools.phtonview/files/updates" />
+    <cache-path
+        name="cache_updates"
+        path="updates" />
+</paths>
