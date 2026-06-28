@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PhtonView</string>
+    <string name="developer_team">LCStudio</string>
+
+    <!-- 接続状態 -->
+    <string name="status_connected">接続済み：%1$s</string>
+    <string name="status_connecting">接続中…</string>
+    <string name="status_error">エラー：%1$s</string>
+    <string name="status_disconnected">未接続</string>
+
+    <!-- カメラ情報 -->
+    <string name="camera_info_format">露出 %1$+.1f  絞り %2$s  シャッター %3$s  ISO %4$d</string>
+    <string name="waiting_for_camera">カメラを待っています…</string>
+    <string name="preparing_main">カメラインターフェースを準備中…</string>
+    <string name="live_view">ライブビュー</string>
+
+    <!-- フォーカス -->
+    <string name="focus_mode_af">AF</string>
+    <string name="focus_mode_mf">MF</string>
+    <string name="af_single">AF-S</string>
+    <string name="af_continuous">AF-C</string>
+    <string name="magnification_format">拡大 %1$.0fx</string>
+    <string name="focus_peaking">ピーキング</string>
+
+    <!-- 露出 -->
+    <string name="metering_mode">測光モード</string>
+    <string name="ev_comp_format">露出補正：%1$+.1f EV</string>
+    <string name="metering_matrix">マルチパターン測光</string>
+    <string name="metering_center">中央重点</string>
+    <string name="metering_spot">スポット測光</string>
+
+    <!-- 撮影設定 -->
+    <string name="iso">ISO</string>
+    <string name="aperture">絞り</string>
+    <string name="shutter">シャッター</string>
+    <string name="image_format">画像フォーマット</string>
+    <string name="image_size">画像サイズ</string>
+    <string name="burst_speed">連写速度</string>
+    <string name="capture_settings">撮影設定</string>
+
+    <!-- 撮影 -->
+    <string name="burst">連写</string>
+    <string name="capture">撮影</string>
+    <string name="shooting_mode">撮影モード</string>
+    <string name="ev_comp">露出補正</string>
+    <string name="white_balance">ホワイトバランス</string>
+    <string name="flash_mode">フラッシュモード</string>
+    <string name="flash_compensation">フラッシュ補正</string>
+    <string name="storage_target">保存先</string>
+    <string name="live_view_assist">ライブビュー補助</string>
+    <string name="advanced_capture">高度な撮影</string>
+    <string name="bulb_duration">Bルブ：%d 秒</string>
+    <string name="timer_delay">セルフタイマー：%d 秒</string>
+    <string name="intervalometer_info">間隔：%1$d 秒、枚数：%2$d</string>
+    <string name="aeb_info">ブラケット：%1$d 枚、ステップ：%2$.1f EV</string>
+    <string name="presets">撮影プリセット</string>
+    <string name="camera_maintenance">カメラメンテナンス</string>
+    <string name="fetch_status">状態を取得</string>
+    <string name="sync_datetime">日時を同期</string>
+    <string name="timer_2s">タイマー</string>
+    <string name="bulb">Bルブ</string>
+    <string name="interval">インターバル</string>
+    <string name="aeb">ブラケット</string>
+
+    <!-- スプラッシュ -->
+    <string name="splash_subtitle">プロフェッショナルカメラリモート</string>
+
+    <!-- オンボーディング -->
+    <string name="onboarding_welcome">PhtonView へようこそ</string>
+    <string name="onboarding_desc">USB または WiFi でカメラをプロフェッショナルにリモート制御します。</string>
+    <string name="onboarding_permission_title">USB 権限</string>
+    <string name="onboarding_permission_desc">PhtonView は USB OTG でカメラと通信します。プロンプトが表示されたら USB アクセスを許可してください。</string>
+    <string name="onboarding_theme_title">テーマを選択</string>
+    <string name="onboarding_theme_desc">作業環境に合った外観を選択してください。</string>
+    <string name="theme_system">システム設定に従う</string>
+    <string name="theme_light">ライト</string>
+    <string name="theme_dark">ダーク</string>
+    <string name="onboarding_connection_title">カメラ設定</string>
+    <string name="onboarding_connection_desc">接続方法とインターフェースモードを設定します。</string>
+    <string name="onboarding_skip">スキップ</string>
+    <string name="multi_brand">マルチブランド</string>
+    <string name="select_connection_type">接続方式</string>
+    <string name="select_ui_mode">インターフェースモード</string>
+    <string name="ui_mode_simple">シンプル</string>
+    <string name="ui_mode_simple_desc">よく使う項目のみ表示</string>
+    <string name="ui_mode_pro">プロフェッショナル</string>
+    <string name="ui_mode_pro_desc">フルコントロールパネル</string>
+
+    <string name="onboarding_get_started">始める</string>
+    <string name="onboarding_next">次へ</string>
+
+    <!-- 設定 -->
+    <string name="settings">設定</string>
+    <string name="theme">テーマ</string>
+    <string name="language">言語</string>
+    <string name="about">アプリについて</string>
+    <string name="appearance">外観</string>
+    <string name="camera">カメラ</string>
+    <string name="general">一般</string>
+    <string name="check_update">更新を確認</string>
+    <string name="latest_version">最新版です</string>
+    <string name="system_default">システム設定に従う</string>
+    <string name="language_english">English</string>
+    <string name="language_chinese">简体中文</string>
+    <string name="language_japanese">日本語</string>
+    <string name="language_korean">한국어</string>
+    <string name="language_french">Français</string>
+    <string name="language_german">Deutsch</string>
+    <string name="language_spanish">Español</string>
+    <string name="language_russian">Русский</string>
+    <string name="debug_mode">デバッグモード</string>
+    <string name="debug_mode_summary">詳細な USB/PTP ログを logcat に出力</string>
+    <string name="wifi_experimental">WiFi 接続（実験的）</string>
+    <string name="wifi_experimental_summary">実験的な WiFi カメラ接続を有効化</string>
+    <string name="connection_hint_title">接続</string>
+    <string name="usb_device_detected">USB カメラを検出：%1$s</string>
+    <string name="tap_to_connect_usb">タップして USB で接続</string>
+    <string name="wifi_pair">WiFi ペアリング</string>
+    <string name="use_usb">USB を使用</string>
+    <string name="use_wifi">WiFi を使用</string>
+    <string name="wifi_pair_title">WiFi カメラ ペアリング</string>
+    <string name="wifi_pair_desc">カメラの IP アドレスとポートを入力してください。例：192.168.1.1:15740</string>
+    <string name="wifi_address_label">カメラ IP:ポート</string>
+    <string name="version_format">バージョン %1$s</string>
+</resources>

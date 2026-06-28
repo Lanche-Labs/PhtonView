@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PhtonView</string>
+    <string name="developer_team">LCStudio</string>
+
+    <!-- Состояния подключения -->
+    <string name="status_connected">Подключено：%1$s</string>
+    <string name="status_connecting">Подключение…</string>
+    <string name="status_error">Ошибка：%1$s</string>
+    <string name="status_disconnected">Отключено</string>
+
+    <!-- Информация о камере -->
+    <string name="camera_info_format">Эксп %1$+.1f  Диафрагма %2$s  Выдержка %3$s  ISO %4$d</string>
+    <string name="waiting_for_camera">Ожидание камеры…</string>
+    <string name="preparing_main">Подготовка интерфейса…</string>
+    <string name="live_view">Live View</string>
+
+    <!-- Фокус -->
+    <string name="focus_mode_af">AF</string>
+    <string name="focus_mode_mf">MF</string>
+    <string name="af_single">AF-S</string>
+    <string name="af_continuous">AF-C</string>
+    <string name="magnification_format">Увеличение %1$.0fx</string>
+    <string name="focus_peaking">Пикинг</string>
+
+    <!-- Экспозиция -->
+    <string name="metering_mode">Режим замера</string>
+    <string name="ev_comp_format">Компенсация эксп.：%1$+.1f EV</string>
+    <string name="metering_matrix">Матричный</string>
+    <string name="metering_center">Центровзвешенный</string>
+    <string name="metering_spot">Точечный</string>
+
+    <!-- Настройки съемки -->
+    <string name="iso">ISO</string>
+    <string name="aperture">Диафрагма</string>
+    <string name="shutter">Выдержка</string>
+    <string name="image_format">Формат изображения</string>
+    <string name="image_size">Размер изображения</string>
+    <string name="burst_speed">Скорость серии</string>
+    <string name="capture_settings">Настройки съемки</string>
+
+    <!-- Съемка -->
+    <string name="burst">Серия</string>
+    <string name="capture">Съемка</string>
+    <string name="shooting_mode">Режим съемки</string>
+    <string name="ev_comp">Компенсация экспозиции</string>
+    <string name="white_balance">Баланс белого</string>
+    <string name="flash_mode">Режим вспышки</string>
+    <string name="flash_compensation">Компенсация вспышки</string>
+    <string name="storage_target">Место хранения</string>
+    <string name="live_view_assist">Вспомогательные инструменты</string>
+    <string name="advanced_capture">Расширенная съемка</string>
+    <string name="bulb_duration">Bulb：%d с</string>
+    <string name="timer_delay">Самоспуск：%d с</string>
+    <string name="intervalometer_info">Интервал：%1$d с, Кадров：%2$d</string>
+    <string name="aeb_info">Брекетинг：%1$d кадров, Шаг：%2$.1f EV</string>
+    <string name="presets">Пресеты съемки</string>
+    <string name="camera_maintenance">Обслуживание камеры</string>
+    <string name="fetch_status">Получить статус</string>
+    <string name="sync_datetime">Синхронизировать дату/время</string>
+    <string name="timer_2s">Таймер</string>
+    <string name="bulb">Bulb</string>
+    <string name="interval">Интервал</string>
+    <string name="aeb">Брекетинг</string>
+
+    <!-- Заставка -->
+    <string name="splash_subtitle">Профессиональный пульт камеры</string>
+
+    <!-- Онбординг -->
+    <string name="onboarding_welcome">Добро пожаловать в PhtonView</string>
+    <string name="onboarding_desc">Профессиональное управление камерой через USB или WiFi.</string>
+    <string name="onboarding_permission_title">Разрешение USB</string>
+    <string name="onboarding_permission_desc">PhtonView использует USB OTG для связи с камерой. Разрешите доступ к USB при запросе.</string>
+    <string name="onboarding_theme_title">Выбор темы</string>
+    <string name="onboarding_theme_desc">Выберите комфортное оформление.</string>
+    <string name="theme_system">Как в системе</string>
+    <string name="theme_light">Светлая</string>
+    <string name="theme_dark">Темная</string>
+    <string name="onboarding_connection_title">Настройка камеры</string>
+    <string name="onboarding_connection_desc">Настройте предпочтительный способ подключения и режим интерфейса.</string>
+    <string name="onboarding_skip">Пропустить</string>
+    <string name="multi_brand">Универсальная</string>
+    <string name="select_connection_type">Способ подключения</string>
+    <string name="select_ui_mode">Режим интерфейса</string>
+    <string name="ui_mode_simple">Простой</string>
+    <string name="ui_mode_simple_desc">Только основные элементы управления</string>
+    <string name="ui_mode_pro">Профессиональный</string>
+    <string name="ui_mode_pro_desc">Полная панель управления</string>
+
+    <string name="onboarding_get_started">Начать</string>
+    <string name="onboarding_next">Далее</string>
+
+    <!-- Настройки -->
+    <string name="settings">Настройки</string>
+    <string name="theme">Тема</string>
+    <string name="language">Язык</string>
+    <string name="about">О приложении</string>
+    <string name="appearance">Внешний вид</string>
+    <string name="camera">Камера</string>
+    <string name="general">Общие</string>
+    <string name="check_update">Проверить обновления</string>
+    <string name="latest_version">Актуальная версия</string>
+    <string name="system_default">Как в системе</string>
+    <string name="language_english">English</string>
+    <string name="language_chinese">简体中文</string>
+    <string name="language_japanese">日本語</string>
+    <string name="language_korean">한국어</string>
+    <string name="language_french">Français</string>
+    <string name="language_german">Deutsch</string>
+    <string name="language_spanish">Español</string>
+    <string name="language_russian">Русский</string>
+    <string name="debug_mode">Режим отладки</string>
+    <string name="debug_mode_summary">Выводить подробные USB/PTP логи в logcat</string>
+    <string name="wifi_experimental">WiFi подключение (экспериментально)</string>
+    <string name="wifi_experimental_summary">Включить экспериментальное WiFi подключение камеры</string>
+    <string name="connection_hint_title">Подключение</string>
+    <string name="usb_device_detected">Обнаружена USB камера：%1$s</string>
+    <string name="tap_to_connect_usb">Нажмите для подключения по USB</string>
+    <string name="wifi_pair">Сопряжение WiFi</string>
+    <string name="use_usb">Использовать USB</string>
+    <string name="use_wifi">Использовать WiFi</string>
+    <string name="wifi_pair_title">Сопряжение WiFi камеры</string>
+    <string name="wifi_pair_desc">Введите IP-адрес и порт камеры. Например：192.168.1.1:15740</string>
+    <string name="wifi_address_label">IP:Порт камеры</string>
+    <string name="version_format">Версия %1$s</string>
+</resources>

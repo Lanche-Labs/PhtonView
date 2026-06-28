@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- USB 设备过滤器：尼康相机（VID: 0x04B0），包含 D5200（PID: 0x2111） -->
+<resources>
+    <usb-device vendor-id="1200" product-id="8465" />
+    <usb-device vendor-id="1200" />
+</resources>

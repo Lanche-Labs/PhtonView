@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PhtonView</string>
+    <string name="developer_team">LCStudio</string>
+
+    <!-- 连接状态 -->
+    <string name="status_connected">已连接：%1$s</string>
+    <string name="status_connecting">连接中…</string>
+    <string name="status_error">错误：%1$s</string>
+    <string name="error_title">错误</string>
+    <string name="status_disconnected">未连接</string>
+
+    <!-- 相机信息 -->
+    <string name="camera_info_format">曝光 %1$+.1f  光圈 %2$s  快门 %3$s  ISO %4$d</string>
+    <string name="waiting_for_camera">等待相机…</string>
+    <string name="preparing_main">正在准备相机界面…</string>
+    <string name="live_view">实时取景</string>
+
+    <!-- 对焦 -->
+    <string name="focus_mode_af">AF</string>
+    <string name="focus_mode_mf">MF</string>
+    <string name="af_single">单次对焦</string>
+    <string name="af_continuous">连续对焦</string>
+    <string name="magnification_format">放大 %1$.0fx</string>
+    <string name="focus_peaking">峰值对焦</string>
+
+    <!-- 曝光 -->
+    <string name="metering_mode">测光模式</string>
+    <string name="ev_comp_format">曝光补偿：%1$+.1f EV</string>
+    <string name="metering_matrix">矩阵测光</string>
+    <string name="metering_center">中央重点</string>
+    <string name="metering_spot">点测光</string>
+
+    <!-- 拍摄设置 -->
+    <string name="iso">ISO</string>
+    <string name="aperture">光圈</string>
+    <string name="shutter">快门</string>
+    <string name="image_format">图像格式</string>
+    <string name="image_size">图像尺寸</string>
+    <string name="burst_speed">连拍速度</string>
+    <string name="capture_settings">拍摄设置</string>
+
+    <!-- 拍摄 -->
+    <string name="burst">连拍</string>
+    <string name="capture">拍摄</string>
+    <string name="shooting_mode">拍摄模式</string>
+    <string name="ev_comp">曝光补偿</string>
+    <string name="white_balance">白平衡</string>
+    <string name="flash_mode">闪光灯模式</string>
+    <string name="flash_compensation">闪光灯补偿</string>
+    <string name="storage_target">存储目标</string>
+    <string name="live_view_assist">实时取景辅助</string>
+    <string name="advanced_capture">高级拍摄</string>
+    <string name="bulb_duration">B门时长：%d 秒</string>
+    <string name="timer_delay">自拍延时：%d 秒</string>
+    <string name="intervalometer_info">间隔：%1$d 秒，张数：%2$d</string>
+    <string name="aeb_info">包围曝光：%1$d 张，步长：%2$.1f EV</string>
+    <string name="presets">拍摄预设</string>
+    <string name="camera_maintenance">相机维护</string>
+    <string name="fetch_status">获取状态</string>
+    <string name="sync_datetime">同步日期时间</string>
+    <string name="timer_2s">定时</string>
+    <string name="bulb">B门</string>
+    <string name="interval">间隔</string>
+    <string name="aeb">包围曝光</string>
+
+    <!-- 启动页 -->
+    <string name="splash_subtitle">专业相机遥控</string>
+
+    <!-- 新手引导 -->
+    <string name="onboarding_welcome">欢迎使用 PhtonView</string>
+    <string name="onboarding_desc">通过 USB 或 WiFi 专业遥控你的相机。</string>
+    <string name="onboarding_permission_title">USB 权限</string>
+    <string name="onboarding_permission_desc">PhtonView 通过 USB OTG 与相机通信，请在提示时允许 USB 访问。</string>
+    <string name="onboarding_theme_title">选择主题</string>
+    <string name="onboarding_theme_desc">选择适合你工作环境的界面外观。</string>
+    <string name="theme_system">跟随系统</string>
+    <string name="theme_light">浅色</string>
+    <string name="theme_dark">深色</string>
+    <string name="onboarding_connection_title">相机设置</string>
+    <string name="onboarding_connection_desc">设置你偏好的界面模式。</string>
+    <string name="onboarding_skip">跳过</string>
+    <string name="multi_brand">通用兼容</string>
+    <string name="select_connection_type">连接方式</string>
+    <string name="select_ui_mode">界面模式</string>
+    <string name="ui_mode_simple">简洁模式</string>
+    <string name="ui_mode_simple_desc">仅显示常用控制项</string>
+    <string name="ui_mode_pro">专业模式</string>
+    <string name="ui_mode_pro_desc">显示完整控制面板</string>
+
+    <string name="onboarding_get_started">开始使用</string>
+    <string name="onboarding_next">下一步</string>
+
+    <!-- 设置 -->
+    <string name="settings">设置</string>
+    <string name="theme">主题</string>
+    <string name="language">语言</string>
+    <string name="about">关于</string>
+    <string name="appearance">外观</string>
+    <string name="camera">相机</string>
+    <string name="general">通用</string>
+    <string name="check_update">检查更新</string>
+    <string name="latest_version">已是最新</string>
+    <string name="system_default">跟随系统</string>
+    <string name="language_english">English</string>
+    <string name="language_chinese">简体中文</string>
+    <string name="language_japanese">日本語</string>
+    <string name="language_korean">한국어</string>
+    <string name="language_french">Français</string>
+    <string name="language_german">Deutsch</string>
+    <string name="language_spanish">Español</string>
+    <string name="language_russian">Русский</string>
+    <string name="debug_mode">调试模式</string>
+    <string name="debug_mode_summary">向 logcat 输出详细 USB/PTP 日志</string>
+    <string name="wifi_experimental">WiFi 连接（实验性）</string>
+    <string name="wifi_experimental_summary">启用实验性 WiFi 相机连接</string>
+    <string name="connection_hint_title">连接</string>
+    <string name="usb_device_detected">检测到 USB 相机：%1$s</string>
+    <string name="tap_to_connect_usb">点击使用 USB 连接</string>
+    <string name="wifi_pair">WiFi 配对</string>
+    <string name="use_usb">使用 USB</string>
+    <string name="use_wifi">使用 WiFi</string>
+    <string name="wifi_pair_title">WiFi 相机配对</string>
+    <string name="wifi_pair_desc">输入相机 IP 地址和端口。例如：192.168.1.1:15740</string>
+    <string name="wifi_address_label">相机 IP:端口</string>
+    <string name="usb_connection_guide">USB 连接教程</string>
+    <string name="usb_guide_title">如何通过 USB 连接</string>
+    <string name="usb_guide_step_1">1. 使用 USB OTG 转接头/线缆将相机连接到手机。</string>
+    <string name="usb_guide_step_2">2. 打开相机并将其设置为 PC / 遥控 / MTP 模式。</string>
+    <string name="usb_guide_step_3">3. 当系统弹出 USB 权限对话框时点击允许。</string>
+    <string name="usb_guide_step_4">4. 应用检测到相机后点击“连接 USB”即可。</string>
+    <string name="usb_guide_note">提示：部分手机需要在系统设置中开启 OTG 功能。</string>
+    <string name="version_format">版本 %1$s</string>
+</resources>

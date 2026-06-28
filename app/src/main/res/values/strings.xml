@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PhtonView</string>
+    <string name="developer_team">LCStudio</string>
+
+    <!-- Connection states -->
+    <string name="status_connected">Connected: %1$s</string>
+    <string name="status_connecting">Connecting…</string>
+    <string name="status_error">Error: %1$s</string>
+    <string name="error_title">Error</string>
+    <string name="status_disconnected">Disconnected</string>
+
+    <!-- Camera info -->
+    <string name="camera_info_format">EV %1$+.1f  %2$s  %3$s  ISO %4$d</string>
+    <string name="waiting_for_camera">Waiting for camera…</string>
+    <string name="preparing_main">Preparing camera interface…</string>
+    <string name="live_view">Live View</string>
+
+    <!-- Focus -->
+    <string name="focus_mode_af">AF</string>
+    <string name="focus_mode_mf">MF</string>
+    <string name="af_single">AF-S</string>
+    <string name="af_continuous">AF-F</string>
+    <string name="magnification_format">Mag %1$.0fx</string>
+    <string name="focus_peaking">Peaking</string>
+
+    <!-- Exposure -->
+    <string name="metering_mode">Metering</string>
+    <string name="ev_comp_format">EV %+,.1f</string>
+    <string name="metering_matrix">Matrix</string>
+    <string name="metering_center">Center</string>
+    <string name="metering_spot">Spot</string>
+
+    <!-- Capture Settings -->
+    <string name="iso">ISO</string>
+    <string name="aperture">Aperture</string>
+    <string name="shutter">Shutter</string>
+    <string name="image_format">Image Format</string>
+    <string name="image_size">Image Size</string>
+    <string name="burst_speed">Burst Speed</string>
+    <string name="capture_settings">Capture Settings</string>
+
+    <!-- Capture -->
+    <string name="burst">Burst</string>
+    <string name="capture">Capture</string>
+    <string name="shooting_mode">Shooting Mode</string>
+    <string name="ev_comp">EV Compensation</string>
+    <string name="white_balance">White Balance</string>
+    <string name="flash_mode">Flash Mode</string>
+    <string name="flash_compensation">Flash Compensation</string>
+    <string name="storage_target">Storage Target</string>
+    <string name="live_view_assist">Live View Assist</string>
+    <string name="advanced_capture">Advanced Capture</string>
+    <string name="bulb_duration">Bulb Duration: %d s</string>
+    <string name="timer_delay">Self-Timer: %d s</string>
+    <string name="intervalometer_info">Interval: %1$d s, Shots: %2$d</string>
+    <string name="aeb_info">AEB: %1$d shots, Step: %2$.1f EV</string>
+    <string name="presets">Shooting Presets</string>
+    <string name="camera_maintenance">Camera Maintenance</string>
+    <string name="fetch_status">Fetch Status</string>
+    <string name="sync_datetime">Sync Date/Time</string>
+    <string name="timer_2s">Timer</string>
+    <string name="bulb">Bulb</string>
+    <string name="interval">Interval</string>
+    <string name="aeb">AEB</string>
+
+    <!-- Splash -->
+    <string name="splash_subtitle">Professional Camera Remote</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_welcome">Welcome to PhtonView</string>
+    <string name="onboarding_desc">Professional remote control for your camera via USB or WiFi.</string>
+    <string name="onboarding_permission_title">USB Permission</string>
+    <string name="onboarding_permission_desc">PhtonView uses USB OTG to communicate with your camera. Please allow USB access when prompted.</string>
+    <string name="onboarding_theme_title">Choose Theme</string>
+    <string name="onboarding_theme_desc">Select a comfortable appearance for your workspace.</string>
+    <string name="onboarding_connection_title">Camera Setup</string>
+    <string name="onboarding_connection_desc">Set your preferred interface mode.</string>
+    <string name="onboarding_skip">Skip</string>
+    <string name="theme_system">System default</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="onboarding_get_started">Get Started</string>
+    <string name="onboarding_next">Next</string>
+    <string name="multi_brand">Multi-Brand</string>
+    <string name="select_connection_type">Connection Type</string>
+    <string name="select_ui_mode">Interface Mode</string>
+    <string name="ui_mode_simple">Simple</string>
+    <string name="ui_mode_simple_desc">Essential controls only</string>
+    <string name="ui_mode_pro">Professional</string>
+    <string name="ui_mode_pro_desc">Full control panel</string>
+
+    <!-- Settings -->
+    <string name="settings">Settings</string>
+    <string name="theme">Theme</string>
+    <string name="language">Language</string>
+    <string name="about">About</string>
+    <string name="appearance">Appearance</string>
+    <string name="camera">Camera</string>
+    <string name="general">General</string>
+    <string name="check_update">Check for Updates</string>
+    <string name="latest_version">Up to date</string>
+    <string name="system_default">System default</string>
+    <string name="language_english">English</string>
+    <string name="language_chinese">简体中文</string>
+    <string name="language_japanese">日本語</string>
+    <string name="language_korean">한국어</string>
+    <string name="language_french">Français</string>
+    <string name="language_german">Deutsch</string>
+    <string name="language_spanish">Español</string>
+    <string name="language_russian">Русский</string>
+    <string name="debug_mode">Debug Mode</string>
+    <string name="debug_mode_summary">Output detailed USB/PTP logs to logcat</string>
+    <string name="wifi_experimental">WiFi Connection (Experimental)</string>
+    <string name="wifi_experimental_summary">Enable experimental WiFi camera connection</string>
+    <string name="connection_hint_title">Connection</string>
+    <string name="usb_device_detected">USB camera detected: %1$s</string>
+    <string name="tap_to_connect_usb">Tap to connect via USB</string>
+    <string name="wifi_pair">WiFi Pair</string>
+    <string name="use_usb">Use USB</string>
+    <string name="use_wifi">Use WiFi</string>
+    <string name="wifi_pair_title">WiFi Camera Pairing</string>
+    <string name="wifi_pair_desc">Enter camera IP address and port. Example: 192.168.1.1:15740</string>
+    <string name="wifi_address_label">Camera IP:Port</string>
+    <string name="usb_connection_guide">USB Connection Guide</string>
+    <string name="usb_guide_title">How to connect via USB</string>
+    <string name="usb_guide_step_1">1. Use a USB OTG adapter/cable to connect the camera to your phone.</string>
+    <string name="usb_guide_step_2">2. Turn the camera on and set it to PC / Remote / MTP mode.</string>
+    <string name="usb_guide_step_3">3. Allow USB permission when the system dialog pops up.</string>
+    <string name="usb_guide_step_4">4. The app will detect the camera and you can tap "Connect USB".</string>
+    <string name="usb_guide_note">Note: Some phones require enabling OTG in system settings.</string>
+    <string name="version_format">Version %1$s</string>
+</resources>

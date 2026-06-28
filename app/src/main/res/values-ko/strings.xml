@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PhtonView</string>
+    <string name="developer_team">LCStudio</string>
+
+    <!-- 연결 상태 -->
+    <string name="status_connected">연결됨：%1$s</string>
+    <string name="status_connecting">연결 중…</string>
+    <string name="status_error">오류：%1$s</string>
+    <string name="status_disconnected">연결 해제됨</string>
+
+    <!-- 칩 정보 -->
+    <string name="camera_info_format">노출 %1$+.1f  조리개 %2$s  셔터 %3$s  ISO %4$d</string>
+    <string name="waiting_for_camera">칩 대기 중…</string>
+    <string name="preparing_main">칩 인터페이스 준비 중…</string>
+    <string name="live_view">라이브 뷰</string>
+
+    <!-- 초점 -->
+    <string name="focus_mode_af">AF</string>
+    <string name="focus_mode_mf">MF</string>
+    <string name="af_single">AF-S</string>
+    <string name="af_continuous">AF-C</string>
+    <string name="magnification_format">확대 %1$.0fx</string>
+    <string name="focus_peaking">피킹</string>
+
+    <!-- 노출 -->
+    <string name="metering_mode">측광 모드</string>
+    <string name="ev_comp_format">노출 보정：%1$+.1f EV</string>
+    <string name="metering_matrix">평균 측광</string>
+    <string name="metering_center">중심 중점</string>
+    <string name="metering_spot">스팟 측광</string>
+
+    <!-- 촬영 설정 -->
+    <string name="iso">ISO</string>
+    <string name="aperture">조리개</string>
+    <string name="shutter">셔터</string>
+    <string name="image_format">이미지 포맷</string>
+    <string name="image_size">이미지 크기</string>
+    <string name="burst_speed">연속 촬영 속도</string>
+    <string name="capture_settings">촬영 설정</string>
+
+    <!-- 촬영 -->
+    <string name="burst">연속 촬영</string>
+    <string name="capture">촬영</string>
+    <string name="shooting_mode">촬영 모드</string>
+    <string name="ev_comp">노출 보정</string>
+    <string name="white_balance">화이트밸런스</string>
+    <string name="flash_mode">플래시 모드</string>
+    <string name="flash_compensation">플래시 보정</string>
+    <string name="storage_target">저장 위치</string>
+    <string name="live_view_assist">라이브 뷰 보조</string>
+    <string name="advanced_capture">고급 촬영</string>
+    <string name="bulb_duration">B(벌브)：%d 초</string>
+    <string name="timer_delay">셀프 타이머：%d 초</string>
+    <string name="intervalometer_info">간격：%1$d 초, 장수：%2$d</string>
+    <string name="aeb_info">브래킷：%1$d 장, 단계：%2$.1f EV</string>
+    <string name="presets">촬영 프리셋</string>
+    <string name="camera_maintenance">칩 유지보수</string>
+    <string name="fetch_status">상태 가져오기</string>
+    <string name="sync_datetime">날짜/시간 동기화</string>
+    <string name="timer_2s">타이머</string>
+    <string name="bulb">B(벌브)</string>
+    <string name="interval">인터벌</string>
+    <string name="aeb">브래킷</string>
+
+    <!-- 스플래시 -->
+    <string name="splash_subtitle">전문 칩 리모컨</string>
+
+    <!-- 온볼딩 -->
+    <string name="onboarding_welcome">PhtonView에 오신 것을 환영합니다</string>
+    <string name="onboarding_desc">USB 또는 WiFi로 칩을 전문적으로 원격 제어하세요.</string>
+    <string name="onboarding_permission_title">USB 권한</string>
+    <string name="onboarding_permission_desc">PhtonView는 USB OTG로 칩과 통신합니다. 메시지가 표시되면 USB 액세스를 허용하세요.</string>
+    <string name="onboarding_theme_title">테마 선택</string>
+    <string name="onboarding_theme_desc">작업 환경에 맞는 외관을 선택하세요.</string>
+    <string name="theme_system">시스템 기본값</string>
+    <string name="theme_light">라이트</string>
+    <string name="theme_dark">다크</string>
+    <string name="onboarding_connection_title">칩 설정</string>
+    <string name="onboarding_connection_desc">선호하는 연결 방식과 인터페이스 모드를 설정하세요.</string>
+    <string name="onboarding_skip">걸러뛰기</string>
+    <string name="multi_brand">멀티 브랜드</string>
+    <string name="select_connection_type">연결 방식</string>
+    <string name="select_ui_mode">인터페이스 모드</string>
+    <string name="ui_mode_simple">간단</string>
+    <string name="ui_mode_simple_desc">자주 사용하는 항목만 표시</string>
+    <string name="ui_mode_pro">전문가</string>
+    <string name="ui_mode_pro_desc">전체 제어 패널</string>
+
+    <string name="onboarding_get_started">시작하기</string>
+    <string name="onboarding_next">다음</string>
+
+    <!-- 설정 -->
+    <string name="settings">설정</string>
+    <string name="theme">테마</string>
+    <string name="language">언어</string>
+    <string name="about">정보</string>
+    <string name="appearance">외관</string>
+    <string name="camera">칩</string>
+    <string name="general">일반</string>
+    <string name="check_update">업데이트 확인</string>
+    <string name="latest_version">최신 버전입니다</string>
+    <string name="system_default">시스템 기본값</string>
+    <string name="language_english">English</string>
+    <string name="language_chinese">简体中文</string>
+    <string name="language_japanese">日本語</string>
+    <string name="language_korean">한국어</string>
+    <string name="language_french">Français</string>
+    <string name="language_german">Deutsch</string>
+    <string name="language_spanish">Español</string>
+    <string name="language_russian">Русский</string>
+    <string name="debug_mode">디버그 모드</string>
+    <string name="debug_mode_summary">자세한 USB/PTP 로그를 logcat에 출력</string>
+    <string name="wifi_experimental">WiFi 연결(실험적)</string>
+    <string name="wifi_experimental_summary">실험적 WiFi 칩 연결 활성화</string>
+    <string name="connection_hint_title">연결</string>
+    <string name="usb_device_detected">USB 칩 감지：%1$s</string>
+    <string name="tap_to_connect_usb">탭하여 USB로 연결</string>
+    <string name="wifi_pair">WiFi 페어링</string>
+    <string name="use_usb">USB 사용</string>
+    <string name="use_wifi">WiFi 사용</string>
+    <string name="wifi_pair_title">WiFi 칩 페어링</string>
+    <string name="wifi_pair_desc">칩의 IP 주소와 포트를 입력하세요. 예：192.168.1.1:15740</string>
+    <string name="wifi_address_label">칩 IP:포트</string>
+    <string name="version_format">버전 %1$s</string>
+</resources>

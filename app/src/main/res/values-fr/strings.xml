@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PhtonView</string>
+    <string name="splash_subtitle">Telecommande professionnelle</string>
+    <string name="onboarding_welcome">Bienvenue dans PhtonView</string>
+    <string name="onboarding_desc">Controle professionnel de votre appareil photo via USB ou WiFi.</string>
+    <string name="onboarding_get_started">Commencer</string>
+    <string name="onboarding_next">Suivant</string>
+    <string name="settings">Parametres</string>
+    <string name="theme">Theme</string>
+    <string name="language">Langue</string>
+    <string name="about">A propos</string>
+    <string name="check_update">Verifier les mises a jour</string>
+    <string name="latest_version">A jour</string>
+    <string name="system_default">Par defaut du systeme</string>
+    <string name="language_english">English</string>
+    <string name="language_chinese">简体中文</string>
+    <string name="language_japanese">日本語</string>
+    <string name="language_korean">한국어</string>
+    <string name="language_french">Francais</string>
+    <string name="language_german">Deutsch</string>
+    <string name="language_spanish">Espanol</string>
+    <string name="language_russian">Русский</string>
+    <string name="debug_mode">Mode debogage</string>
+    <string name="wifi_experimental">Connexion WiFi (experimental)</string>
+    <string name="version_format">Version %1$s</string>
+</resources>

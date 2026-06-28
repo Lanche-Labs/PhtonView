@@ -1,0 +1,43 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Local configuration
+local.properties
+gradle.properties
+
+# Android Studio / IDE
+.idea/
+.vscode/
+*.iml
+.clangd
+
+# Android build artifacts
+app/.cxx/
+app/build/
+*.apk
+*.aab
+
+# Native build intermediates and prebuilt libraries
+.gphoto2-build/
+app/gphoto2/prebuilt/
+app/src/main/assets/gphoto2/
+tmp_apk/
+*.so
+
+# Signing keystore (NEVER commit)
+keystore/
+*.jks
+*.keystore
+
+# Screenshots and logs generated during debugging
+screen*.png
+*.log
+app-debug-logcat*.txt
+app.png
+ui.xml
+
+# OS files
+.DS_Store
+Thumbs.db
