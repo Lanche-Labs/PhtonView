@@ -182,7 +182,7 @@ fun SettingsScreen(
                 icon = Icons.Default.Info,
                 title = stringResource(id = R.string.app_name),
                 summary = String.format(stringResource(id = R.string.version_format), BuildConfig.VERSION_NAME) +
-                        " · LCStudio",
+                        " · lanche-furry",
                 onClick = onVersionClick
             )
         }
@@ -569,7 +569,7 @@ private fun EasterEggDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("🎉 彩蛋") },
+        title = { Text("彩蛋") },
         text = {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -584,7 +584,7 @@ private fun EasterEggDialog(
                     tint = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = "PhtonView 由 LCStudio 出品\\n感谢使用！",
+                    text = "PhtonView 由 lanche-furry 出品\n感谢使用！",
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(top = 16.dp)
                 )

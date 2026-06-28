@@ -33,7 +33,7 @@
 
         <meta-data
             android:name="developer_team"
-            android:value="LCStudio" />
+            android:value="lanche-furry" />
 
         <activity
             android:name=".MainActivity"
