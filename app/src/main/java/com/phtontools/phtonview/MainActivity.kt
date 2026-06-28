@@ -161,8 +161,10 @@ private fun PhtonViewApp(
                 }
             }
             Screen.Camera -> {
+                val uiMode by settingsManager.uiModeFlow.collectAsStateWithLifecycle()
                 CameraScreen(
                     viewModel = hiltViewModel(),
+                    uiMode = uiMode,
                     onOpenSettings = { showSettings = true }
                 )
             }

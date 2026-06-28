@@ -1,6 +1,9 @@
 package com.phtontools.phtonview.ui
 
 import android.graphics.Bitmap
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -10,24 +13,23 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
-import com.phtontools.phtonview.ui.components.ErrorBanner
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -43,17 +45,20 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phtontools.phtonview.R
+import com.phtontools.phtonview.data.local.UiMode
 import com.phtontools.phtonview.data.model.AebSettings
 import com.phtontools.phtonview.data.model.AfMode
 import com.phtontools.phtonview.data.model.BulbSettings
@@ -68,22 +73,27 @@ import com.phtontools.phtonview.data.model.IntervalometerSettings
 import com.phtontools.phtonview.data.model.MeteringMode
 import com.phtontools.phtonview.data.model.MeteringResult
 import com.phtontools.phtonview.data.model.TimerSettings
+import com.phtontools.phtonview.data.model.WhiteBalance
 import com.phtontools.phtonview.data.model.ZebraPattern
-import com.phtontools.phtonview.data.local.UiMode
-import com.phtontools.phtonview.ui.components.BottomControlPanel
 import com.phtontools.phtonview.ui.components.CameraSettingsPanel
-import com.phtontools.phtonview.ui.components.ConnectionHintBanner
+import com.phtontools.phtonview.ui.components.ErrorBanner
 import com.phtontools.phtonview.ui.components.FocusPeakingProcessor
+import com.phtontools.phtonview.ui.components.HistogramView
 import com.phtontools.phtonview.ui.components.MeteringOverlay
-import com.phtontools.phtonview.ui.components.SimpleControlPanel
+import com.phtontools.phtonview.ui.components.ParamKind
+import com.phtontools.phtonview.ui.components.ParamSelectorSheet
+import com.phtontools.phtonview.ui.components.CleanBottomControlPanel
+import com.phtontools.phtonview.ui.components.ProBottomControlPanel
 import com.phtontools.phtonview.ui.components.TopStatusBar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CameraScreen(
     viewModel: CameraViewModel,
+    uiMode: UiMode,
     onOpenSettings: () -> Unit
 ) {
     val connectionState by viewModel.connectionState.collectAsStateWithLifecycle()
@@ -102,14 +112,16 @@ fun CameraScreen(
     val bulbSettings by viewModel.bulbSettings.collectAsStateWithLifecycle()
     val timerSettings by viewModel.timerSettings.collectAsStateWithLifecycle()
     val aebSettings by viewModel.aebSettings.collectAsStateWithLifecycle()
+    val detectedUsb by viewModel.detectedUsbDevice.collectAsStateWithLifecycle()
+    val wifiEnabled by viewModel.wifiExperimental.collectAsStateWithLifecycle()
+    val liveViewEnabled by viewModel.liveViewEnabled.collectAsStateWithLifecycle()
 
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
+    var selectedParam by remember { mutableStateOf<ParamKind?>(null) }
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-
-    val bgColor = MaterialTheme.colorScheme.background
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -122,6 +134,11 @@ fun CameraScreen(
                 CameraSettingsPanel(
                     exposure = exposure,
                     settings = cameraSettings,
+                    metering = metering,
+                    focusMode = focusMode,
+                    afMode = afMode,
+                    magnification = magnification,
+                    peakingEnabled = peakingEnabled,
                     intervalometer = intervalometer,
                     bulbSettings = bulbSettings,
                     timerSettings = timerSettings,
@@ -129,14 +146,16 @@ fun CameraScreen(
                     histogramType = histogramType,
                     gridType = gridType,
                     zebraPattern = zebraPattern,
+                    liveViewEnabled = liveViewEnabled,
+                    onFocusModeChange = viewModel::setFocusMode,
+                    onAfModeChange = viewModel::setAfMode,
+                    onMagnificationChange = viewModel::setFocusMagnification,
+                    onPeakingChange = viewModel::setFocusPeakingEnabled,
+                    onMeteringModeChange = viewModel::setMeteringMode,
                     onIsoChange = viewModel::setIso,
                     onApertureChange = viewModel::setAperture,
                     onShutterChange = viewModel::setShutter,
                     onEvChange = viewModel::setEv,
-                    onImageFormatChange = viewModel::setImageFormat,
-                    onImageSizeChange = viewModel::setImageSize,
-                    onBurstSpeedChange = viewModel::setBurstSpeed,
-                    onShootingModeChange = viewModel::setShootingMode,
                     onWhiteBalanceChange = viewModel::setWhiteBalance,
                     onFlashModeChange = viewModel::setFlashMode,
                     onFlashCompensationChange = viewModel::setFlashCompensation,
@@ -144,13 +163,20 @@ fun CameraScreen(
                     onHistogramTypeChange = viewModel::setHistogramType,
                     onGridTypeChange = viewModel::setGridType,
                     onZebraPatternChange = viewModel::setZebraPattern,
-                    onIntervalometerChange = { viewModel.setIntervalometer(it) },
-                    onBulbChange = { viewModel.setBulbDuration(it.durationSeconds) },
-                    onTimerChange = { viewModel.setTimerDelay(it.delaySeconds) },
-                    onAebChange = { viewModel.setAeb(it) },
+                    onLiveViewEnabledChange = viewModel::setLiveViewEnabled,
+                    onBurst = { viewModel.startBurstCapture(cameraSettings.burstCount) },
+                    onBulb = { viewModel.startBulb(bulbSettings.durationSeconds) },
+                    onTimer = { viewModel.captureWithTimer(timerSettings.delaySeconds) },
+                    onIntervalometer = { viewModel.startIntervalometer(intervalometer) },
+                    onAeb = { viewModel.captureAeb(aebSettings) },
                     onApplyPreset = viewModel::applyPreset,
                     onSyncDateTime = viewModel::syncDateTime,
-                    onFetchStatus = viewModel::fetchCameraStatus
+                    onFetchStatus = viewModel::fetchCameraStatus,
+                    onBulbChange = { viewModel.setBulbDuration(it.durationSeconds) },
+                    onTimerChange = { viewModel.setTimerDelay(it.delaySeconds) },
+                    onIntervalometerChange = viewModel::setIntervalometer,
+                    onAebChange = viewModel::setAeb,
+                    onResetToDefaults = viewModel::resetToDefaults
                 )
             }
         }
@@ -158,7 +184,7 @@ fun CameraScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(bgColor)
+                .background(MaterialTheme.colorScheme.background)
                 .safeDrawingPadding()
         ) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -166,6 +192,7 @@ fun CameraScreen(
                 if (isLandscape) {
                     LandscapeLayout(
                         viewModel = viewModel,
+                        uiMode = uiMode,
                         liveViewFrame = liveViewFrame,
                         metering = metering,
                         focusMode = focusMode,
@@ -182,16 +209,21 @@ fun CameraScreen(
                         bulbSettings = bulbSettings,
                         timerSettings = timerSettings,
                         aebSettings = aebSettings,
+                        liveViewEnabled = liveViewEnabled,
+                        detectedUsb = detectedUsb,
+                        wifiEnabled = wifiEnabled,
                         scale = scale,
                         offset = offset,
                         onScaleChange = { scale = it },
                         onOffsetChange = { offset = it },
                         onOpenSettings = onOpenSettings,
-                        onOpenDrawer = { scope.launch { drawerState.open() } }
+                        onOpenDrawer = { scope.launch { drawerState.open() } },
+                        onSelectParam = { selectedParam = it }
                     )
                 } else {
                     PortraitLayout(
                         viewModel = viewModel,
+                        uiMode = uiMode,
                         liveViewFrame = liveViewFrame,
                         metering = metering,
                         focusMode = focusMode,
@@ -208,14 +240,30 @@ fun CameraScreen(
                         bulbSettings = bulbSettings,
                         timerSettings = timerSettings,
                         aebSettings = aebSettings,
+                        liveViewEnabled = liveViewEnabled,
+                        detectedUsb = detectedUsb,
+                        wifiEnabled = wifiEnabled,
                         scale = scale,
                         offset = offset,
                         onScaleChange = { scale = it },
                         onOffsetChange = { offset = it },
                         onOpenSettings = onOpenSettings,
-                        onOpenDrawer = { scope.launch { drawerState.open() } }
+                        onOpenDrawer = { scope.launch { drawerState.open() } },
+                        onSelectParam = { selectedParam = it }
                     )
                 }
+            }
+
+            selectedParam?.let { kind ->
+                ParamSelectorSheet(
+                    kind = kind,
+                    exposure = exposure,
+                    onDismiss = { selectedParam = null },
+                    onIsoChange = viewModel::setIso,
+                    onShutterChange = viewModel::setShutter,
+                    onEvChange = viewModel::setEv,
+                    onApertureChange = viewModel::setAperture
+                )
             }
         }
     }
@@ -224,6 +272,7 @@ fun CameraScreen(
 @Composable
 private fun PortraitLayout(
     viewModel: CameraViewModel,
+    uiMode: UiMode,
     liveViewFrame: Bitmap?,
     metering: MeteringResult,
     focusMode: FocusMode,
@@ -240,44 +289,27 @@ private fun PortraitLayout(
     bulbSettings: BulbSettings,
     timerSettings: TimerSettings,
     aebSettings: AebSettings,
+    liveViewEnabled: Boolean,
+    detectedUsb: String?,
+    wifiEnabled: Boolean,
     scale: Float,
     offset: Offset,
     onScaleChange: (Float) -> Unit,
     onOffsetChange: (Offset) -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenDrawer: () -> Unit
+    onOpenDrawer: () -> Unit,
+    onSelectParam: (ParamKind) -> Unit
 ) {
-    val wifiEnabled by viewModel.wifiExperimental.collectAsStateWithLifecycle()
-    val detectedUsb by viewModel.detectedUsbDevice.collectAsStateWithLifecycle()
-
     Column(modifier = Modifier.fillMaxSize()) {
         TopStatusBar(
-            brand = cameraSettings.brand,
-            connectionType = cameraSettings.connectionType,
-            connectionState = connectionState,
-            metering = metering,
-            exposure = exposure,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+            onOpenSettings = onOpenSettings,
+            onOpenMenu = onOpenDrawer,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
         )
 
         ErrorBanner(
             connectionState = connectionState,
             onDismiss = viewModel::clearError
-        )
-
-        ConnectionHintBanner(
-            connectionState = connectionState,
-            detectedUsbDevice = detectedUsb,
-            wifiExperimental = wifiEnabled,
-            onPairWifi = { address ->
-                viewModel.setConnectionType(ConnectionType.WiFi)
-                viewModel.pairWifi(address)
-                viewModel.connect()
-            },
-            onSwitchToUsb = {
-                viewModel.setConnectionType(ConnectionType.USB)
-                viewModel.connect()
-            }
         )
 
         Box(
@@ -290,6 +322,7 @@ private fun PortraitLayout(
                 frame = liveViewFrame,
                 peakingEnabled = peakingEnabled,
                 metering = metering,
+                histogramType = histogramType,
                 scale = scale,
                 offset = offset,
                 magnification = magnification,
@@ -304,47 +337,39 @@ private fun PortraitLayout(
                 }
             )
 
-            FloatingMenu(
-                onOpenSettings = onOpenSettings,
-                onOpenDrawer = onOpenDrawer,
-                modifier = Modifier.align(Alignment.BottomEnd)
-            )
         }
 
-        val uiMode by viewModel.uiMode.collectAsStateWithLifecycle()
         if (uiMode == UiMode.PRO) {
-            BottomControlPanel(
-                focusMode = focusMode,
-                afMode = afMode,
-                magnification = magnification,
-                peakingEnabled = peakingEnabled,
+            ProBottomControlPanel(
                 exposure = exposure,
                 metering = metering,
                 isLandscape = false,
-                onFocusModeChange = viewModel::setFocusMode,
-                onAfModeChange = viewModel::setAfMode,
-                onMagnificationChange = viewModel::setFocusMagnification,
-                onPeakingChange = viewModel::setFocusPeakingEnabled,
-                onMeteringModeChange = viewModel::setMeteringMode,
-                onExposureChange = { a, s, i, e -> viewModel.setExposure(a, s, i, e) },
+                peakingEnabled = peakingEnabled,
+                gridType = gridType,
+                histogramType = histogramType,
+                zebraPattern = zebraPattern,
+                liveViewEnabled = liveViewEnabled,
+                onSelectParam = onSelectParam,
                 onCapture = { viewModel.captureImage() },
+                onOpenGallery = { /* TODO: 打开相册/已下载照片 */ },
+                onMeteringModeChange = viewModel::setMeteringMode,
+                onTogglePeaking = { viewModel.setFocusPeakingEnabled(!peakingEnabled) },
+                onToggleGrid = { viewModel.setGridType(if (gridType == GridType.None) GridType.RuleOfThirds else GridType.None) },
+                onToggleHistogram = { viewModel.setHistogramType(if (histogramType == HistogramType.None) HistogramType.Luminance else HistogramType.None) },
+                onToggleZebra = { viewModel.setZebraPattern(if (zebraPattern == ZebraPattern.None) ZebraPattern.Over else ZebraPattern.None) },
+                onToggleLiveView = { viewModel.setLiveViewEnabled(!liveViewEnabled) },
                 onBurst = { viewModel.startBurstCapture(cameraSettings.burstCount) },
-                onBulb = { viewModel.startBulb(bulbSettings.durationSeconds) },
-                onTimer = { viewModel.captureWithTimer(timerSettings.delaySeconds) },
-                onIntervalometer = { viewModel.startIntervalometer(intervalometer) },
-                onAeb = { viewModel.captureAeb(aebSettings) }
+                onBulb = { viewModel.startBulb(bulbSettings.durationSeconds) }
             )
         } else {
-            SimpleControlPanel(
-                focusMode = focusMode,
+            CleanBottomControlPanel(
                 exposure = exposure,
+                metering = metering,
                 isLandscape = false,
-                onFocusModeChange = viewModel::setFocusMode,
-                onIsoChange = { viewModel.setIso(it) },
-                onApertureChange = { viewModel.setAperture(it) },
-                onShutterChange = { viewModel.setShutter(it) },
-                onEvChange = { viewModel.setExposure(null, null, null, it) },
-                onCapture = { viewModel.captureImage() }
+                onSelectParam = onSelectParam,
+                onCapture = { viewModel.captureImage() },
+                onOpenGallery = { /* TODO: 打开相册/已下载照片 */ },
+                onMeteringModeChange = viewModel::setMeteringMode
             )
         }
     }
@@ -353,6 +378,7 @@ private fun PortraitLayout(
 @Composable
 private fun LandscapeLayout(
     viewModel: CameraViewModel,
+    uiMode: UiMode,
     liveViewFrame: Bitmap?,
     metering: MeteringResult,
     focusMode: FocusMode,
@@ -369,46 +395,28 @@ private fun LandscapeLayout(
     bulbSettings: BulbSettings,
     timerSettings: TimerSettings,
     aebSettings: AebSettings,
+    liveViewEnabled: Boolean,
+    detectedUsb: String?,
+    wifiEnabled: Boolean,
     scale: Float,
     offset: Offset,
     onScaleChange: (Float) -> Unit,
     onOffsetChange: (Offset) -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenDrawer: () -> Unit
+    onOpenDrawer: () -> Unit,
+    onSelectParam: (ParamKind) -> Unit
 ) {
-    val wifiEnabled by viewModel.wifiExperimental.collectAsStateWithLifecycle()
-    val detectedUsb by viewModel.detectedUsbDevice.collectAsStateWithLifecycle()
-    val uiMode by viewModel.uiMode.collectAsStateWithLifecycle()
-
     Row(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.weight(1f)) {
             TopStatusBar(
-                brand = cameraSettings.brand,
-                connectionType = cameraSettings.connectionType,
-                connectionState = connectionState,
-                metering = metering,
-                exposure = exposure,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                onOpenSettings = onOpenSettings,
+                onOpenMenu = onOpenDrawer,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
             )
 
             ErrorBanner(
                 connectionState = connectionState,
                 onDismiss = viewModel::clearError
-            )
-
-            ConnectionHintBanner(
-                connectionState = connectionState,
-                detectedUsbDevice = detectedUsb,
-                wifiExperimental = wifiEnabled,
-                onPairWifi = { address ->
-                    viewModel.setConnectionType(ConnectionType.WiFi)
-                    viewModel.pairWifi(address)
-                    viewModel.connect()
-                },
-                onSwitchToUsb = {
-                    viewModel.setConnectionType(ConnectionType.USB)
-                    viewModel.connect()
-                }
             )
 
             Box(
@@ -421,6 +429,7 @@ private fun LandscapeLayout(
                     frame = liveViewFrame,
                     peakingEnabled = peakingEnabled,
                     metering = metering,
+                    histogramType = histogramType,
                     scale = scale,
                     offset = offset,
                     magnification = magnification,
@@ -435,87 +444,40 @@ private fun LandscapeLayout(
                     }
                 )
 
-                FloatingMenu(
-                    onOpenSettings = onOpenSettings,
-                    onOpenDrawer = onOpenDrawer,
-                    modifier = Modifier.align(Alignment.BottomEnd)
-                )
             }
         }
 
         if (uiMode == UiMode.PRO) {
-            BottomControlPanel(
-                focusMode = focusMode,
-                afMode = afMode,
-                magnification = magnification,
-                peakingEnabled = peakingEnabled,
+            ProBottomControlPanel(
                 exposure = exposure,
                 metering = metering,
                 isLandscape = true,
-                onFocusModeChange = viewModel::setFocusMode,
-                onAfModeChange = viewModel::setAfMode,
-                onMagnificationChange = viewModel::setFocusMagnification,
-                onPeakingChange = viewModel::setFocusPeakingEnabled,
-                onMeteringModeChange = viewModel::setMeteringMode,
-                onExposureChange = { a, s, i, e -> viewModel.setExposure(a, s, i, e) },
+                peakingEnabled = peakingEnabled,
+                gridType = gridType,
+                histogramType = histogramType,
+                zebraPattern = zebraPattern,
+                liveViewEnabled = liveViewEnabled,
+                onSelectParam = onSelectParam,
                 onCapture = { viewModel.captureImage() },
+                onOpenGallery = { /* TODO */ },
+                onMeteringModeChange = viewModel::setMeteringMode,
+                onTogglePeaking = { viewModel.setFocusPeakingEnabled(!peakingEnabled) },
+                onToggleGrid = { viewModel.setGridType(if (gridType == GridType.None) GridType.RuleOfThirds else GridType.None) },
+                onToggleHistogram = { viewModel.setHistogramType(if (histogramType == HistogramType.None) HistogramType.Luminance else HistogramType.None) },
+                onToggleZebra = { viewModel.setZebraPattern(if (zebraPattern == ZebraPattern.None) ZebraPattern.Over else ZebraPattern.None) },
+                onToggleLiveView = { viewModel.setLiveViewEnabled(!liveViewEnabled) },
                 onBurst = { viewModel.startBurstCapture(cameraSettings.burstCount) },
-                onBulb = { viewModel.startBulb(bulbSettings.durationSeconds) },
-                onTimer = { viewModel.captureWithTimer(timerSettings.delaySeconds) },
-                onIntervalometer = { viewModel.startIntervalometer(intervalometer) },
-                onAeb = { viewModel.captureAeb(aebSettings) }
+                onBulb = { viewModel.startBulb(bulbSettings.durationSeconds) }
             )
         } else {
-            SimpleControlPanel(
-                focusMode = focusMode,
+            CleanBottomControlPanel(
                 exposure = exposure,
+                metering = metering,
                 isLandscape = true,
-                onFocusModeChange = viewModel::setFocusMode,
-                onIsoChange = { viewModel.setIso(it) },
-                onApertureChange = { viewModel.setAperture(it) },
-                onShutterChange = { viewModel.setShutter(it) },
-                onEvChange = { viewModel.setExposure(null, null, null, it) },
-                onCapture = { viewModel.captureImage() }
-            )
-        }
-    }
-}
-
-@Composable
-private fun FloatingMenu(
-    onOpenSettings: () -> Unit,
-    onOpenDrawer: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier.padding(12.dp),
-        horizontalAlignment = Alignment.End,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        FloatingActionButton(
-            onClick = onOpenDrawer,
-            modifier = Modifier.size(44.dp),
-            shape = CircleShape,
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
-        ) {
-            Icon(
-                imageVector = Icons.Default.Menu,
-                contentDescription = stringResource(id = R.string.capture_settings),
-                tint = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.size(22.dp)
-            )
-        }
-        FloatingActionButton(
-            onClick = onOpenSettings,
-            modifier = Modifier.size(44.dp),
-            shape = CircleShape,
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
-        ) {
-            Icon(
-                imageVector = Icons.Default.Settings,
-                contentDescription = stringResource(id = R.string.settings),
-                tint = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.size(22.dp)
+                onSelectParam = onSelectParam,
+                onCapture = { viewModel.captureImage() },
+                onOpenGallery = { /* TODO */ },
+                onMeteringModeChange = viewModel::setMeteringMode
             )
         }
     }
@@ -526,6 +488,7 @@ private fun LiveViewLayer(
     frame: Bitmap?,
     peakingEnabled: Boolean,
     metering: MeteringResult,
+    histogramType: HistogramType,
     scale: Float,
     offset: Offset,
     magnification: Float,
@@ -587,6 +550,23 @@ private fun LiveViewLayer(
         } ?: NoSignalMessage()
 
         MeteringOverlay(metering = metering)
+
+        AnimatedVisibility(
+            visible = histogramType != HistogramType.None,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(12.dp)
+                .size(120.dp, 80.dp)
+                .background(
+                    MaterialTheme.colorScheme.background.copy(alpha = 0.5f),
+                    CircleShape
+                )
+        ) {
+            // HistogramView is placeholder until data is wired
+            Box(modifier = Modifier.fillMaxSize())
+        }
     }
 }
 

@@ -160,6 +160,7 @@ class CameraViewModel @Inject constructor(
 
     fun fetchCameraStatus() = viewModelScope.launch { repository.fetchCameraStatus() }
     fun syncDateTime() = viewModelScope.launch { repository.syncDateTime() }
+    fun resetToDefaults() = viewModelScope.launch { repository.resetToDefaults() }
     fun executeGphoto2Command(command: String) = viewModelScope.launch { repository.executeGphoto2Command(command) }
 
     fun listPhotos(folder: String = "/store_00010001") = viewModelScope.launch { repository.listPhotos(folder) }

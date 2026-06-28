@@ -19,10 +19,17 @@
     <!-- Focus -->
     <string name="focus_mode_af">AF</string>
     <string name="focus_mode_mf">MF</string>
+    <string name="focus">Focus</string>
     <string name="af_single">AF-S</string>
     <string name="af_continuous">AF-F</string>
     <string name="magnification_format">Mag %1$.0fx</string>
     <string name="focus_peaking">Peaking</string>
+    <string name="grid">Grid</string>
+    <string name="histogram">Histogram</string>
+    <string name="zebra">Zebra</string>
+    <string name="gallery">Gallery</string>
+    <string name="usb">USB</string>
+    <string name="wifi">Wi-Fi</string>
 
     <!-- Exposure -->
     <string name="metering_mode">Metering</string>
@@ -30,6 +37,9 @@
     <string name="metering_matrix">Matrix</string>
     <string name="metering_center">Center</string>
     <string name="metering_spot">Spot</string>
+    <string name="metering_matrix_short">全局</string>
+    <string name="metering_center_short">区域</string>
+    <string name="metering_spot_short">点</string>
 
     <!-- Capture Settings -->
     <string name="iso">ISO</string>
@@ -39,6 +49,7 @@
     <string name="image_size">Image Size</string>
     <string name="burst_speed">Burst Speed</string>
     <string name="capture_settings">Capture Settings</string>
+    <string name="reset_to_defaults">Reset to Defaults</string>
 
     <!-- Capture -->
     <string name="burst">Burst</string>
@@ -63,6 +74,62 @@
     <string name="bulb">Bulb</string>
     <string name="interval">Interval</string>
     <string name="aeb">AEB</string>
+
+    <!-- Focus / metering labels -->
+    <string name="focus_mf">MF</string>
+    <string name="focus_af">AF</string>
+    <string name="focus_mode">Focus Mode</string>
+    <string name="af_s">AF-S</string>
+    <string name="af_c">AF-C</string>
+    <string name="af_mode">AF Mode</string>
+
+    <!-- White balance -->
+    <string name="wb_auto">Auto</string>
+    <string name="wb_daylight">Daylight</string>
+    <string name="wb_cloudy">Cloudy</string>
+    <string name="wb_shade">Shade</string>
+    <string name="wb_tungsten">Tungsten</string>
+    <string name="wb_fluorescent">Fluorescent</string>
+    <string name="wb_kelvin">Kelvin</string>
+
+    <!-- Flash -->
+    <string name="flash_off">Off</string>
+    <string name="flash_on">On</string>
+    <string name="flash_auto">Auto</string>
+    <string name="flash_slow_sync">Slow Sync</string>
+
+    <!-- Assist -->
+    <string name="off">Off</string>
+    <string name="histogram_luminance">Luminance</string>
+    <string name="histogram_rgb">RGB</string>
+    <string name="grid_rule_of_thirds">Rule of Thirds</string>
+    <string name="grid_center">Center</string>
+    <string name="grid_diagonal">Diagonal</string>
+    <string name="zebra_over">Over</string>
+    <string name="zebra_under">Under</string>
+
+    <!-- Presets -->
+    <string name="preset_portrait">Portrait</string>
+    <string name="preset_landscape">Landscape</string>
+    <string name="preset_sports">Sports</string>
+    <string name="preset_night">Night</string>
+    <string name="preset_macro">Macro</string>
+    <string name="preset_studio">Studio</string>
+    <string name="preset_user1">User 1</string>
+    <string name="preset_user2">User 2</string>
+    <string name="wb_flash">Flash</string>
+    <string name="wb_custom">Custom</string>
+    <string name="flash_red_eye">Red-Eye</string>
+    <string name="flash_rear_sync">Rear Sync</string>
+    <string name="grid_golden_ratio">Golden Ratio</string>
+    <string name="zebra_both">Both</string>
+
+    <!-- Advanced capture summaries -->
+    <string name="burst_summary">Capture multiple frames</string>
+    <string name="bulb_summary">Long exposure timer</string>
+    <string name="timer_summary">Delayed single shot</string>
+    <string name="interval_summary">Time-lapse sequence</string>
+    <string name="aeb_summary">Auto exposure bracketing</string>
 
     <!-- Splash -->
     <string name="splash_subtitle">Professional Camera Remote</string>
@@ -113,6 +180,10 @@
     <string name="debug_mode_summary">Output detailed USB/PTP logs to logcat</string>
     <string name="wifi_experimental">WiFi Connection (Experimental)</string>
     <string name="wifi_experimental_summary">Enable experimental WiFi camera connection</string>
+    <string name="connection">Connection</string>
+    <string name="connection_status">Status</string>
+    <string name="connect">Connect</string>
+    <string name="disconnect">Disconnect</string>
     <string name="connection_hint_title">Connection</string>
     <string name="usb_device_detected">USB camera detected: %1$s</string>
     <string name="tap_to_connect_usb">Tap to connect via USB</string>
@@ -130,4 +201,9 @@
     <string name="usb_guide_step_4">4. The app will detect the camera and you can tap "Connect USB".</string>
     <string name="usb_guide_note">Note: Some phones require enabling OTG in system settings.</string>
     <string name="version_format">Version %1$s</string>
+    <string name="credits">Credits</string>
+    <string name="credits_summary">Program by LanChe · UI design by 安信一・プロス (One Bucket)</string>
+    <string name="select_param">Select %1$s</string>
+    <string name="tap_to_input">Tap value to input</string>
+    <string name="shutter_speed">Shutter Speed</string>
 </resources>

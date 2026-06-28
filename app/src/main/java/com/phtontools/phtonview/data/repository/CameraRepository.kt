@@ -61,6 +61,7 @@ interface CameraRepository {
     suspend fun setFlashCompensation(ev: Float)
     suspend fun setStorageTarget(target: StorageTarget)
     suspend fun applyPreset(preset: ShootingPreset)
+    suspend fun resetToDefaults()
 
     suspend fun captureImage(delayMs: Long = 0)
     suspend fun captureBurst(count: Int)

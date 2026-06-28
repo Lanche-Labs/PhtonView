@@ -401,6 +401,28 @@ class CameraRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun resetToDefaults() {
+        val defaults = ExposureSettings()
+        _exposureSettings.value = defaults
+        _cameraSettings.value = CameraSettings().copy(
+            brand = _cameraSettings.value.brand,
+            connectionType = _cameraSettings.value.connectionType
+        )
+        _meteringResult.value = MeteringResult()
+        _focusMode.value = FocusMode.AF
+        _afMode.value = AfMode.AF_S
+        _focusMagnification.value = 1f
+        _focusPeakingEnabled.value = false
+        _intervalometer.value = IntervalometerSettings()
+        _bulbSettings.value = BulbSettings()
+        _timerSettings.value = TimerSettings()
+        _aebSettings.value = AebSettings()
+        _histogramType.value = HistogramType.None
+        _gridType.value = GridType.None
+        _zebraPattern.value = ZebraPattern.None
+        _liveViewEnabled.value = false
+    }
+
     override suspend fun captureImage(delayMs: Long) {
         if (delayMs > 0) delay(delayMs)
         if (!ensureConnected()) return

@@ -25,6 +25,7 @@ import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -63,7 +64,11 @@ fun ErrorBanner(
         )
 
         LaunchedEffect(isError) {
-            if (isError) dismissState.reset()
+            if (isError) {
+                dismissState.reset()
+                delay(5000)
+                onDismiss()
+            }
         }
 
         SwipeToDismissBox(

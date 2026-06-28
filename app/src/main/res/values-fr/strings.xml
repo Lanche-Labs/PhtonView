@@ -21,6 +21,7 @@
     <string name="language_german">Deutsch</string>
     <string name="language_spanish">Espanol</string>
     <string name="language_russian">Русский</string>
+    <string name="focus">Mise au point</string>
     <string name="debug_mode">Mode debogage</string>
     <string name="wifi_experimental">Connexion WiFi (experimental)</string>
     <string name="version_format">Version %1$s</string>

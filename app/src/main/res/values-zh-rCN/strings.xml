@@ -19,10 +19,17 @@
     <!-- 对焦 -->
     <string name="focus_mode_af">AF</string>
     <string name="focus_mode_mf">MF</string>
+    <string name="focus">对焦</string>
     <string name="af_single">单次对焦</string>
     <string name="af_continuous">连续对焦</string>
     <string name="magnification_format">放大 %1$.0fx</string>
     <string name="focus_peaking">峰值对焦</string>
+    <string name="grid">网格</string>
+    <string name="histogram">直方图</string>
+    <string name="zebra">斑马纹</string>
+    <string name="gallery">图库</string>
+    <string name="usb">USB</string>
+    <string name="wifi">Wi-Fi</string>
 
     <!-- 曝光 -->
     <string name="metering_mode">测光模式</string>
@@ -30,6 +37,9 @@
     <string name="metering_matrix">矩阵测光</string>
     <string name="metering_center">中央重点</string>
     <string name="metering_spot">点测光</string>
+    <string name="metering_matrix_short">全局</string>
+    <string name="metering_center_short">区域</string>
+    <string name="metering_spot_short">点</string>
 
     <!-- 拍摄设置 -->
     <string name="iso">ISO</string>
@@ -39,6 +49,7 @@
     <string name="image_size">图像尺寸</string>
     <string name="burst_speed">连拍速度</string>
     <string name="capture_settings">拍摄设置</string>
+    <string name="reset_to_defaults">恢复默认</string>
 
     <!-- 拍摄 -->
     <string name="burst">连拍</string>
@@ -63,6 +74,62 @@
     <string name="bulb">B门</string>
     <string name="interval">间隔</string>
     <string name="aeb">包围曝光</string>
+
+    <!-- 对焦/测光 -->
+    <string name="focus_mf">手动</string>
+    <string name="focus_af">自动</string>
+    <string name="focus_mode">对焦模式</string>
+    <string name="af_s">单次对焦</string>
+    <string name="af_c">连续对焦</string>
+    <string name="af_mode">AF 模式</string>
+
+    <!-- 白平衡 -->
+    <string name="wb_auto">自动</string>
+    <string name="wb_daylight">日光</string>
+    <string name="wb_cloudy">阴天</string>
+    <string name="wb_shade">阴影</string>
+    <string name="wb_tungsten">钨丝灯</string>
+    <string name="wb_fluorescent">荧光灯</string>
+    <string name="wb_kelvin">色温</string>
+
+    <!-- 闪光灯 -->
+    <string name="flash_off">关闭</string>
+    <string name="flash_on">开启</string>
+    <string name="flash_auto">自动</string>
+    <string name="flash_slow_sync">慢同步</string>
+
+    <!-- 辅助 -->
+    <string name="off">关</string>
+    <string name="histogram_luminance">亮度</string>
+    <string name="histogram_rgb">RGB</string>
+    <string name="grid_rule_of_thirds">三分线</string>
+    <string name="grid_center">中心线</string>
+    <string name="grid_diagonal">对角线</string>
+    <string name="zebra_over">过曝</string>
+    <string name="zebra_under">欠曝</string>
+
+    <!-- 预设 -->
+    <string name="preset_portrait">人像</string>
+    <string name="preset_landscape">风景</string>
+    <string name="preset_sports">运动</string>
+    <string name="preset_night">夜景</string>
+    <string name="preset_macro">微距</string>
+    <string name="preset_studio">影棚</string>
+    <string name="preset_user1">用户 1</string>
+    <string name="preset_user2">用户 2</string>
+    <string name="wb_flash">闪光灯</string>
+    <string name="wb_custom">自定义</string>
+    <string name="flash_red_eye">防红眼</string>
+    <string name="flash_rear_sync">后帘同步</string>
+    <string name="grid_golden_ratio">黄金比例</string>
+    <string name="zebra_both">全部</string>
+
+    <!-- 高级拍摄说明 -->
+    <string name="burst_summary">连续拍摄多张照片</string>
+    <string name="bulb_summary">长曝光计时拍摄</string>
+    <string name="timer_summary">延时单张拍摄</string>
+    <string name="interval_summary">延时摄影序列</string>
+    <string name="aeb_summary">自动包围曝光</string>
 
     <!-- 启动页 -->
     <string name="splash_subtitle">专业相机遥控</string>
@@ -114,6 +181,10 @@
     <string name="debug_mode_summary">向 logcat 输出详细 USB/PTP 日志</string>
     <string name="wifi_experimental">WiFi 连接（实验性）</string>
     <string name="wifi_experimental_summary">启用实验性 WiFi 相机连接</string>
+    <string name="connection">连接</string>
+    <string name="connection_status">状态</string>
+    <string name="connect">连接</string>
+    <string name="disconnect">断开</string>
     <string name="connection_hint_title">连接</string>
     <string name="usb_device_detected">检测到 USB 相机：%1$s</string>
     <string name="tap_to_connect_usb">点击使用 USB 连接</string>
@@ -131,4 +202,9 @@
     <string name="usb_guide_step_4">4. 应用检测到相机后点击“连接 USB”即可。</string>
     <string name="usb_guide_note">提示：部分手机需要在系统设置中开启 OTG 功能。</string>
     <string name="version_format">版本 %1$s</string>
+    <string name="credits">鸣谢</string>
+    <string name="credits_summary">澜澈LanChe 程序制作 · 安信一・プロス（一桶） UI设计</string>
+    <string name="select_param">选择%1$s</string>
+    <string name="tap_to_input">点击数值可手动输入</string>
+    <string name="shutter_speed">快门速度</string>
 </resources>

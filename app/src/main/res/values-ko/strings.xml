@@ -18,6 +18,7 @@
     <!-- 초점 -->
     <string name="focus_mode_af">AF</string>
     <string name="focus_mode_mf">MF</string>
+    <string name="focus">초점</string>
     <string name="af_single">AF-S</string>
     <string name="af_continuous">AF-C</string>
     <string name="magnification_format">확대 %1$.0fx</string>

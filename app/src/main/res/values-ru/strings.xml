@@ -18,6 +18,7 @@
     <!-- Фокус -->
     <string name="focus_mode_af">AF</string>
     <string name="focus_mode_mf">MF</string>
+    <string name="focus">Фокус</string>
     <string name="af_single">AF-S</string>
     <string name="af_continuous">AF-C</string>
     <string name="magnification_format">Увеличение %1$.0fx</string>

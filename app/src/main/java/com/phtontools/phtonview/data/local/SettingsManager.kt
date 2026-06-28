@@ -37,7 +37,7 @@ class SettingsManager @Inject constructor(
         set(value) = prefs.edit().putBoolean(KEY_FIRST_LAUNCH, value).apply()
 
     var themeMode: ThemeMode
-        get() = ThemeMode.fromOrdinal(prefs.getInt(KEY_THEME_MODE, ThemeMode.SYSTEM.ordinal))
+        get() = ThemeMode.fromOrdinal(prefs.getInt(KEY_THEME_MODE, ThemeMode.DARK.ordinal))
         set(value) {
             prefs.edit().putInt(KEY_THEME_MODE, value.ordinal).apply()
             _themeModeFlow.value = value
@@ -72,7 +72,7 @@ class SettingsManager @Inject constructor(
         }
 
     var wifiExperimental: Boolean
-        get() = prefs.getBoolean(KEY_WIFI_EXPERIMENTAL, true)
+        get() = prefs.getBoolean(KEY_WIFI_EXPERIMENTAL, false)
         set(value) {
             prefs.edit().putBoolean(KEY_WIFI_EXPERIMENTAL, value).apply()
             _wifiExperimentalFlow.value = value
