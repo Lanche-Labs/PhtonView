@@ -223,16 +223,227 @@
             color: var(--muted);
         }
 
+        /* Feature Showcase */
+        .feature-section {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            padding: 100px 0;
+            position: relative;
+            z-index: 1;
+        }
+        .feature-section.alt { background: var(--bg-2); }
+        .feature-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 80px;
+            align-items: center;
+        }
+        .feature-section.alt .feature-layout { direction: rtl; }
+        .feature-section.alt .feature-layout > * { direction: ltr; }
+
+        .feature-text .num {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--accent);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 16px;
+        }
+        .feature-text h2 {
+            font-size: clamp(2.4rem, 5vw, 3.8rem);
+            font-weight: 900;
+            line-height: 1.1;
+            margin-bottom: 24px;
+            letter-spacing: -1px;
+        }
+        .feature-text p {
+            font-size: 1.15rem;
+            color: var(--muted);
+            max-width: 460px;
+        }
+
+        .feature-visual {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .visual-frame {
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            max-width: 480px;
+            border-radius: 32px;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.08);
+            padding: 28px;
+            position: relative;
+            overflow: hidden;
+        }
+        .visual-frame::before {
+            content: ''; position: absolute; inset: 0;
+            background: radial-gradient(circle at 50% 50%, rgba(79,140,201,0.08), transparent 60%);
+            pointer-events: none;
+        }
+        .demo-stage {
+            width: 100%; height: 100%;
+            border-radius: 20px;
+            background: rgba(0,0,0,0.25);
+            border: 1px solid rgba(255,255,255,0.06);
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Demo animations */
+        .demo-liveview {
+            width: 100%; height: 100%;
+            background: linear-gradient(135deg, #1a2332, #0e141c);
+            position: relative;
+        }
+        .demo-liveview::before, .demo-liveview::after {
+            content: ''; position: absolute;
+            width: 48px; height: 48px;
+            border: 3px solid rgba(79,140,201,0.45);
+            animation: scanCorner 2.5s ease-in-out infinite alternate;
+        }
+        .demo-liveview::before { top: 20px; left: 20px; border-right: 0; border-bottom: 0; }
+        .demo-liveview::after { bottom: 20px; right: 20px; border-left: 0; border-top: 0; }
+        .focus-point {
+            position: absolute; top: 50%; left: 50%;
+            width: 72px; height: 72px;
+            transform: translate(-50%, -50%);
+            border: 2px solid var(--accent);
+            border-radius: 6px;
+            animation: focusLock 2s ease-in-out infinite;
+        }
+        .focus-point::before, .focus-point::after {
+            content: ''; position: absolute; background: var(--accent);
+        }
+        .focus-point::before { top: 50%; left: 0; width: 100%; height: 2px; transform: translateY(-50%); }
+        .focus-point::after { left: 50%; top: 0; height: 100%; width: 2px; transform: translateX(-50%); }
+
+        .demo-params {
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            gap: 18px; height: 100%; padding: 24px;
+        }
+        .param-tag {
+            width: 100%; max-width: 220px;
+            padding: 18px 0;
+            text-align: center;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.06);
+            font-size: 1rem;
+            color: var(--muted);
+            transition: all 0.3s;
+            animation: paramPulse 2.4s ease-in-out infinite;
+        }
+        .param-tag:nth-child(1) { animation-delay: 0s; }
+        .param-tag:nth-child(2) { animation-delay: 0.8s; }
+        .param-tag:nth-child(3) { animation-delay: 1.6s; }
+
+        .demo-modes {
+            display: flex; align-items: center; justify-content: center;
+            gap: 22px; height: 100%;
+        }
+        .mode-dot {
+            width: 72px; height: 72px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.08);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.1rem;
+            color: var(--muted);
+            animation: modeActivate 2.8s ease-in-out infinite;
+        }
+        .mode-dot:nth-child(1) { animation-delay: 0s; }
+        .mode-dot:nth-child(2) { animation-delay: 0.7s; }
+        .mode-dot:nth-child(3) { animation-delay: 1.4s; }
+        .mode-dot:nth-child(4) { animation-delay: 2.1s; }
+
+        .demo-conn {
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            height: 100%; gap: 24px;
+        }
+        .conn-item {
+            width: 160px;
+            padding: 18px 0;
+            text-align: center;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.06);
+            font-size: 1rem;
+            color: var(--muted);
+            animation: connSwitch 3s ease-in-out infinite;
+        }
+
+        .demo-ui {
+            display: flex; align-items: center; justify-content: center;
+            height: 100%; gap: 32px;
+        }
+        .ui-card {
+            width: 110px; height: 160px;
+            border-radius: 14px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.06);
+            position: relative;
+            overflow: hidden;
+            animation: uiSwitch 3.2s ease-in-out infinite;
+        }
+        .ui-card::before {
+            content: ''; position: absolute;
+            top: 14px; left: 14px; right: 14px; height: 10px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 5px;
+        }
+        .ui-card::after {
+            content: ''; position: absolute;
+            bottom: 14px; left: 14px; right: 14px; height: 42px;
+            background: rgba(79,140,201,0.2);
+            border-radius: 5px;
+        }
+
+        .demo-code {
+            padding: 28px;
+            font-family: "SFMono-Regular", Consolas, monospace;
+            font-size: 0.85rem;
+            color: var(--muted);
+            height: 100%;
+            overflow: hidden;
+        }
+        .code-line {
+            height: 12px;
+            border-radius: 6px;
+            background: rgba(255,255,255,0.07);
+            margin-bottom: 14px;
+            animation: codeType 2s ease-in-out infinite;
+        }
+        .code-line:nth-child(1) { width: 70%; animation-delay: 0s; }
+        .code-line:nth-child(2) { width: 55%; animation-delay: 0.3s; }
+        .code-line:nth-child(3) { width: 80%; animation-delay: 0.6s; }
+        .code-line:nth-child(4) { width: 45%; animation-delay: 0.9s; }
+        .code-line:nth-child(5) { width: 65%; animation-delay: 1.2s; }
+
+        @keyframes scanCorner { to { width: 70px; height: 70px; } }
+        @keyframes focusLock { 0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.7; } 50% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; } }
+        @keyframes paramPulse { 0%, 100% { color: var(--muted); background: rgba(255,255,255,0.04); } 50% { color: var(--text); background: var(--accent-dim); transform: scale(1.05); } }
+        @keyframes modeActivate { 0%, 100% { transform: scale(1); color: var(--muted); } 50% { transform: scale(1.18); color: var(--text); background: var(--accent-dim); } }
+        @keyframes connSwitch { 0%, 45% { opacity: 1; transform: translateY(0); } 55%, 100% { opacity: 0.4; transform: translateY(4px); } }
+        @keyframes uiSwitch { 0%, 45% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.08); opacity: 1; } 55%, 100% { transform: scale(1); opacity: 0.5; } }
+        @keyframes codeType { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; background: rgba(79,140,201,0.25); } }
+
         .reveal {
             opacity: 0;
-            transform: translateY(40px);
-            transition: all 0.9s cubic-bezier(0.2, 0.8, 0.2, 1);
+            transform: translateY(50px);
+            transition: all 1s cubic-bezier(0.2, 0.8, 0.2, 1);
         }
         .reveal.visible { opacity: 1; transform: translateY(0); }
 
-        .features {
-            padding: 140px 0;
-            background: var(--bg-2);
+        .deps {
+            padding: 140px 0 100px;
+            background: var(--bg);
             position: relative;
             z-index: 1;
         }
@@ -243,184 +454,6 @@
             margin-bottom: 18px;
         }
         .section-head p { color: var(--muted); font-size: 1.15rem; }
-        .feature-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 24px;
-        }
-        .feature-card {
-            background: rgba(255,255,255,0.025);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            padding: 28px;
-            transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
-        }
-        .feature-card:hover {
-            transform: translateY(-8px);
-            border-color: rgba(79, 140, 201, 0.35);
-            box-shadow: 0 24px 60px rgba(0,0,0,0.35);
-        }
-        .feature-card h3 { font-size: 1.2rem; margin-bottom: 10px; }
-        .feature-card p { color: var(--muted); font-size: 0.92rem; margin-bottom: 20px; }
-
-        .demo-box {
-            width: 100%;
-            aspect-ratio: 16 / 10;
-            background: rgba(0,0,0,0.25);
-            border: 1px solid rgba(255,255,255,0.06);
-            border-radius: 14px;
-            overflow: hidden;
-            position: relative;
-        }
-
-        /* Demo: Live View */
-        .demo-liveview {
-            width: 100%; height: 100%;
-            background: linear-gradient(135deg, #1a2332, #0e141c);
-            position: relative;
-        }
-        .demo-liveview::before, .demo-liveview::after {
-            content: ''; position: absolute;
-            width: 30px; height: 30px;
-            border: 2px solid rgba(79,140,201,0.5);
-            animation: scanCorner 2.5s ease-in-out infinite alternate;
-        }
-        .demo-liveview::before { top: 10px; left: 10px; border-right: 0; border-bottom: 0; }
-        .demo-liveview::after { bottom: 10px; right: 10px; border-left: 0; border-top: 0; }
-        .focus-point {
-            position: absolute; top: 50%; left: 50%;
-            width: 40px; height: 40px;
-            transform: translate(-50%, -50%);
-            border: 1px solid var(--accent);
-            border-radius: 4px;
-            animation: focusLock 2s ease-in-out infinite;
-        }
-        .focus-point::before, .focus-point::after {
-            content: ''; position: absolute; background: var(--accent);
-        }
-        .focus-point::before { top: 50%; left: 0; width: 100%; height: 1px; transform: translateY(-50%); }
-        .focus-point::after { left: 50%; top: 0; height: 100%; width: 1px; transform: translateX(-50%); }
-
-        /* Demo: Parameters */
-        .demo-params {
-            display: flex; align-items: center; justify-content: center;
-            gap: 10px; height: 100%; padding: 0 16px;
-        }
-        .param-tag {
-            flex: 1;
-            padding: 10px 0;
-            text-align: center;
-            border-radius: 8px;
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.06);
-            font-size: 0.75rem;
-            color: var(--muted);
-            transition: all 0.3s;
-            animation: paramPulse 2.4s ease-in-out infinite;
-        }
-        .param-tag:nth-child(1) { animation-delay: 0s; }
-        .param-tag:nth-child(2) { animation-delay: 0.8s; }
-        .param-tag:nth-child(3) { animation-delay: 1.6s; }
-
-        /* Demo: Modes */
-        .demo-modes {
-            display: flex; align-items: center; justify-content: center;
-            gap: 14px; height: 100%;
-        }
-        .mode-dot {
-            width: 42px; height: 42px;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.08);
-            display: flex; align-items: center; justify-content: center;
-            font-size: 0.7rem;
-            color: var(--muted);
-            animation: modeActivate 2.8s ease-in-out infinite;
-        }
-        .mode-dot:nth-child(1) { animation-delay: 0s; }
-        .mode-dot:nth-child(2) { animation-delay: 0.7s; }
-        .mode-dot:nth-child(3) { animation-delay: 1.4s; }
-        .mode-dot:nth-child(4) { animation-delay: 2.1s; }
-
-        /* Demo: Connection */
-        .demo-conn {
-            display: flex; align-items: center; justify-content: center;
-            height: 100%; gap: 20px;
-        }
-        .conn-item {
-            padding: 12px 20px;
-            border-radius: 10px;
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.06);
-            font-size: 0.8rem;
-            color: var(--muted);
-            animation: connSwitch 3s ease-in-out infinite;
-        }
-        .conn-item.active { background: var(--accent-dim); color: var(--text); border-color: rgba(79,140,201,0.3); }
-
-        /* Demo: UI Mode */
-        .demo-ui {
-            display: flex; align-items: center; justify-content: center;
-            height: 100%; gap: 12px;
-        }
-        .ui-card {
-            width: 64px; height: 90px;
-            border-radius: 8px;
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.06);
-            position: relative;
-            overflow: hidden;
-            animation: uiSwitch 3.2s ease-in-out infinite;
-        }
-        .ui-card::before {
-            content: ''; position: absolute;
-            top: 8px; left: 8px; right: 8px; height: 6px;
-            background: rgba(255,255,255,0.1);
-            border-radius: 3px;
-        }
-        .ui-card::after {
-            content: ''; position: absolute;
-            bottom: 8px; left: 8px; right: 8px; height: 24px;
-            background: rgba(79,140,201,0.2);
-            border-radius: 3px;
-        }
-
-        /* Demo: Open Source */
-        .demo-code {
-            padding: 14px;
-            font-family: "SFMono-Regular", Consolas, monospace;
-            font-size: 0.7rem;
-            color: var(--muted);
-            height: 100%;
-            overflow: hidden;
-        }
-        .code-line {
-            height: 8px;
-            border-radius: 4px;
-            background: rgba(255,255,255,0.07);
-            margin-bottom: 8px;
-            animation: codeType 2s ease-in-out infinite;
-        }
-        .code-line:nth-child(1) { width: 70%; animation-delay: 0s; }
-        .code-line:nth-child(2) { width: 55%; animation-delay: 0.3s; }
-        .code-line:nth-child(3) { width: 80%; animation-delay: 0.6s; }
-        .code-line:nth-child(4) { width: 45%; animation-delay: 0.9s; }
-        .code-line:nth-child(5) { width: 65%; animation-delay: 1.2s; }
-
-        @keyframes scanCorner { to { width: 44px; height: 44px; } }
-        @keyframes focusLock { 0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.7; } 50% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; } }
-        @keyframes paramPulse { 0%, 100% { color: var(--muted); background: rgba(255,255,255,0.04); } 50% { color: var(--text); background: var(--accent-dim); transform: scale(1.05); } }
-        @keyframes modeActivate { 0%, 100% { transform: scale(1); color: var(--muted); } 50% { transform: scale(1.15); color: var(--text); background: var(--accent-dim); } }
-        @keyframes connSwitch { 0%, 45% { opacity: 1; transform: translateY(0); } 55%, 100% { opacity: 0.4; transform: translateY(4px); } }
-        @keyframes uiSwitch { 0%, 45% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.08); opacity: 1; } 55%, 100% { transform: scale(1); opacity: 0.5; } }
-        @keyframes codeType { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; background: rgba(79,140,201,0.25); } }
-
-        .deps {
-            padding: 140px 0 100px;
-            background: var(--bg-2);
-            position: relative;
-            z-index: 1;
-        }
         .dep-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -469,17 +502,20 @@
         }
 
         @media (max-width: 960px) {
-            .hero-grid, .showcase-grid { grid-template-columns: 1fr; text-align: center; }
-            .hero p, .showcase-text { margin-left: auto; margin-right: auto; }
+            .hero-grid { grid-template-columns: 1fr; text-align: center; }
+            .hero p { margin-left: auto; margin-right: auto; }
             .cta-group { justify-content: center; }
-            .feature-grid { grid-template-columns: 1fr; }
+            .feature-layout { grid-template-columns: 1fr; text-align: center; gap: 48px; }
+            .feature-section.alt .feature-layout { direction: ltr; }
+            .feature-text p { margin: 0 auto; }
+            .visual-frame { max-width: 360px; }
             .dep-grid { grid-template-columns: repeat(2, 1fr); }
-            .showcase-list { display: inline-block; text-align: left; }
             .phone-wrapper { transform: none !important; }
         }
         @media (max-width: 560px) {
             .dep-grid { grid-template-columns: 1fr; }
             .phone-frame { width: 240px; height: 480px; }
+            .visual-frame { aspect-ratio: 4 / 3; }
         }
     </style>
 </head>
@@ -538,75 +574,136 @@
         </div>
     </section>
 
-    <section class="features" id="features">
+    <section class="feature-section" id="features">
         <div class="container">
-            <div class="section-head reveal">
-                <h2>专业功能，一手掌控</h2>
-                <p>每个核心功能都经过精心设计，让手机成为你的专业遥控台</p>
+            <div class="feature-layout">
+                <div class="feature-visual reveal">
+                    <div class="visual-frame">
+                        <div class="demo-stage">
+                            <div class="demo-liveview"><div class="focus-point"></div></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="feature-text reveal">
+                    <div class="num">01 / Live View</div>
+                    <h2>实时取景</h2>
+                    <p>手机屏幕即可查看相机实时画面，峰值对焦与构图辅助，让每一次取景都精准可控。</p>
+                </div>
             </div>
-            <div class="feature-grid">
-                <div class="feature-card reveal">
-                    <h3>实时取景</h3>
-                    <p>手机屏幕即可查看相机实时画面，峰值对焦与构图辅助，精准掌控每一帧。</p>
-                    <div class="demo-box">
-                        <div class="demo-liveview"><div class="focus-point"></div></div>
-                    </div>
-                </div>
-                <div class="feature-card reveal">
-                    <h3>全参数遥控</h3>
-                    <p>ISO、光圈、快门速度、曝光补偿、测光模式、白平衡，指尖滑动即可调节。</p>
-                    <div class="demo-box">
-                        <div class="demo-params">
-                            <div class="param-tag">ISO</div>
-                            <div class="param-tag">F/2.8</div>
-                            <div class="param-tag">1/200s</div>
+        </div>
+    </section>
+
+    <section class="feature-section alt">
+        <div class="container">
+            <div class="feature-layout">
+                <div class="feature-visual reveal">
+                    <div class="visual-frame">
+                        <div class="demo-stage">
+                            <div class="demo-params">
+                                <div class="param-tag">ISO 800</div>
+                                <div class="param-tag">F / 2.8</div>
+                                <div class="param-tag">1 / 200s</div>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="feature-card reveal">
-                    <h3>高级拍摄模式</h3>
-                    <p>单拍、连拍、定时、B门、间隔拍摄、包围曝光，专业场景全支持。</p>
-                    <div class="demo-box">
-                        <div class="demo-modes">
-                            <div class="mode-dot">S</div>
-                            <div class="mode-dot">C</div>
-                            <div class="mode-dot">T</div>
-                            <div class="mode-dot">B</div>
+                <div class="feature-text reveal">
+                    <div class="num">02 / Parameters</div>
+                    <h2>全参数遥控</h2>
+                    <p>ISO、光圈、快门速度、曝光补偿、测光模式、白平衡，指尖滑动即可远程调节。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="feature-section">
+        <div class="container">
+            <div class="feature-layout">
+                <div class="feature-visual reveal">
+                    <div class="visual-frame">
+                        <div class="demo-stage">
+                            <div class="demo-modes">
+                                <div class="mode-dot">S</div>
+                                <div class="mode-dot">C</div>
+                                <div class="mode-dot">T</div>
+                                <div class="mode-dot">B</div>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="feature-card reveal">
-                    <h3>双连接方式</h3>
-                    <p>USB OTG 稳定低延迟；实验性 WiFi 连接，摆脱线缆束缚。</p>
-                    <div class="demo-box">
-                        <div class="demo-conn">
-                            <div class="conn-item">USB</div>
-                            <div class="conn-item">WiFi</div>
+                <div class="feature-text reveal">
+                    <div class="num">03 / Modes</div>
+                    <h2>高级拍摄模式</h2>
+                    <p>单拍、连拍、定时、B门、间隔拍摄、包围曝光，覆盖从日常创作到专业场景的需求。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="feature-section alt">
+        <div class="container">
+            <div class="feature-layout">
+                <div class="feature-visual reveal">
+                    <div class="visual-frame">
+                        <div class="demo-stage">
+                            <div class="demo-conn">
+                                <div class="conn-item">USB OTG</div>
+                                <div class="conn-item">WiFi</div>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="feature-card reveal">
-                    <h3>双界面模式</h3>
-                    <p>简洁模式快速上手，专业模式释放全部功能，按需切换。</p>
-                    <div class="demo-box">
-                        <div class="demo-ui">
-                            <div class="ui-card"></div>
-                            <div class="ui-card"></div>
+                <div class="feature-text reveal">
+                    <div class="num">04 / Connection</div>
+                    <h2>双连接方式</h2>
+                    <p>USB OTG 稳定低延迟；实验性 WiFi 连接，让你摆脱线缆束缚，自由布置机位。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="feature-section">
+        <div class="container">
+            <div class="feature-layout">
+                <div class="feature-visual reveal">
+                    <div class="visual-frame">
+                        <div class="demo-stage">
+                            <div class="demo-ui">
+                                <div class="ui-card"></div>
+                                <div class="ui-card"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="feature-card reveal">
-                    <h3>开源免费</h3>
-                    <p>基于 MIT 协议开源，社区驱动，持续迭代优化。</p>
-                    <div class="demo-box">
-                        <div class="demo-code">
-                            <div class="code-line"></div>
-                            <div class="code-line"></div>
-                            <div class="code-line"></div>
-                            <div class="code-line"></div>
-                            <div class="code-line"></div>
+                <div class="feature-text reveal">
+                    <div class="num">05 / Interface</div>
+                    <h2>双界面模式</h2>
+                    <p>简洁模式快速上手，专业模式释放全部功能。两种界面，按需切换。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="feature-section alt">
+        <div class="container">
+            <div class="feature-layout">
+                <div class="feature-visual reveal">
+                    <div class="visual-frame">
+                        <div class="demo-stage">
+                            <div class="demo-code">
+                                <div class="code-line"></div>
+                                <div class="code-line"></div>
+                                <div class="code-line"></div>
+                                <div class="code-line"></div>
+                                <div class="code-line"></div>
+                            </div>
                         </div>
                     </div>
+                </div>
+                <div class="feature-text reveal">
+                    <div class="num">06 / Open Source</div>
+                    <h2>开源免费</h2>
+                    <p>基于 MIT 协议开源，代码公开透明，社区驱动，持续迭代优化。</p>
                 </div>
             </div>
         </div>
@@ -671,10 +768,8 @@
 
         const observer = new IntersectionObserver((entries) => {
             entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
-        }, { threshold: 0.12 });
+        }, { threshold: 0.2 });
         document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
-
-
     </script>
 </body>
 </html>
