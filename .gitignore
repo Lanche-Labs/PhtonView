@@ -18,25 +18,25 @@ app/.cxx/
 app/build/
 *.apk
 *.aab
+!releases/*.apk
 
-# Native build intermediates and prebuilt libraries
+# Native build intermediates (prebuilt runtime drivers in assets are kept)
 .gphoto2-build/
 app/gphoto2/prebuilt/
-app/src/main/assets/gphoto2/
 tmp_apk/
-*.so
 
 # Signing keystore (NEVER commit)
 keystore/
 *.jks
 *.keystore
 
-# Screenshots and logs generated during debugging
+# Screenshots, logs and local release outputs
 screen*.png
 *.log
 app-debug-logcat*.txt
 app.png
 ui.xml
+releases/
 
 # OS files
 .DS_Store
