@@ -1,13 +1,16 @@
 package com.phtontools.phtonview.ui.settings
 
 import android.app.Activity
-import android.content.Intent
-import android.net.Uri
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,7 +31,6 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.filled.Wifi
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -42,7 +44,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,11 +52,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -65,12 +65,17 @@ import com.phtontools.phtonview.data.local.AppLanguage
 import com.phtontools.phtonview.data.local.SettingsManager
 import com.phtontools.phtonview.data.local.ThemeMode
 import com.phtontools.phtonview.data.local.UiMode
+import com.phtontools.phtonview.data.model.CameraSettings
 import com.phtontools.phtonview.data.model.ConnectionState
 import com.phtontools.phtonview.data.model.ConnectionType
 import com.phtontools.phtonview.ui.CameraViewModel
 import com.phtontools.phtonview.util.AppLogger
 import com.phtontools.phtonview.util.UpdateChecker
 import kotlinx.coroutines.launch
+
+private enum class SettingsPage {
+    Main, Theme, Language, UiMode, Credits, Update
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,20 +91,13 @@ fun SettingsScreen(
     val connectionState by viewModel.connectionState.collectAsStateWithLifecycle()
     val cameraSettings by viewModel.cameraSettings.collectAsStateWithLifecycle()
     val detectedUsb by viewModel.detectedUsbDevice.collectAsStateWithLifecycle()
-    val wifiEnabled by viewModel.wifiExperimental.collectAsStateWithLifecycle()
-    var showThemeDialog by remember { mutableStateOf(false) }
-    var showLanguageDialog by remember { mutableStateOf(false) }
-    var showUiModeDialog by remember { mutableStateOf(false) }
-    var showUpdateDialog by remember { mutableStateOf(false) }
-    var showEasterEgg by remember { mutableStateOf(false) }
-    var showCreditsDialog by remember { mutableStateOf(false) }
+    var currentPage by remember { mutableStateOf(SettingsPage.Main) }
     var currentTheme by remember { mutableStateOf(settingsManager.themeMode) }
     var currentLanguage by remember { mutableStateOf(settingsManager.language) }
     var currentUiMode by remember { mutableStateOf(settingsManager.uiMode) }
     var debugMode by remember { mutableStateOf(settingsManager.debugMode) }
     var wifiExperimental by remember { mutableStateOf(settingsManager.wifiExperimental) }
     var pendingRelease by remember { mutableStateOf<UpdateChecker.ReleaseInfo?>(null) }
-    var easterEggClicks by remember { mutableStateOf(0) }
 
     val checkUpdate: () -> Unit = {
         scope.launch {
@@ -110,25 +108,33 @@ fun SettingsScreen(
                 android.widget.Toast.makeText(context, "当前已是最新版本", android.widget.Toast.LENGTH_SHORT).show()
             } else {
                 pendingRelease = release
-                showUpdateDialog = true
+                currentPage = SettingsPage.Update
             }
         }
     }
 
-    val onVersionClick: () -> Unit = {
-        easterEggClicks += 1
-        if (easterEggClicks >= 5) {
-            easterEggClicks = 0
-            showEasterEgg = true
+    val navigateBack: () -> Unit = {
+        if (currentPage == SettingsPage.Main) {
+            onBack()
+        } else {
+            currentPage = SettingsPage.Main
         }
     }
 
+    val pageTitle = when (currentPage) {
+        SettingsPage.Main -> stringResource(id = R.string.settings)
+        SettingsPage.Theme -> stringResource(id = R.string.theme)
+        SettingsPage.Language -> stringResource(id = R.string.language)
+        SettingsPage.UiMode -> stringResource(id = R.string.select_ui_mode)
+        SettingsPage.Credits -> stringResource(id = R.string.credits)
+        SettingsPage.Update -> stringResource(id = R.string.check_update)
+    }
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(id = R.string.settings)) },
+                title = { Text(pageTitle) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = navigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back"
@@ -138,155 +144,422 @@ fun SettingsScreen(
             )
         }
     ) { padding ->
+        AnimatedContent(
+            targetState = currentPage,
+            transitionSpec = {
+                if (targetState.ordinal > initialState.ordinal) {
+                    fadeIn(animationSpec = tween(200)) + slideInHorizontally { it } togetherWith
+                        fadeOut(animationSpec = tween(200)) + slideOutHorizontally { -it }
+                } else {
+                    fadeIn(animationSpec = tween(200)) + slideInHorizontally { -it } togetherWith
+                        fadeOut(animationSpec = tween(200)) + slideOutHorizontally { it }
+                }
+            },
+            label = "settings_page",
+            modifier = Modifier
+                .pointerInput(Unit) {
+                    var consumed = false
+                    detectHorizontalDragGestures(
+                        onDragStart = { consumed = false },
+                        onHorizontalDrag = { change, dragAmount ->
+                            if (!consumed && dragAmount > 30f) {
+                                change.consume()
+                                consumed = true
+                                if (currentPage == SettingsPage.Main) {
+                                    onBack()
+                                } else {
+                                    currentPage = SettingsPage.Main
+                                }
+                            }
+                        }
+                    )
+                }
+        ) { page ->
+            when (page) {
+                SettingsPage.Main -> MainSettingsContent(
+                    padding = padding,
+                    currentTheme = currentTheme,
+                    currentLanguage = currentLanguage,
+                    currentUiMode = currentUiMode,
+                    wifiExperimental = wifiExperimental,
+                    debugMode = debugMode,
+                    connectionState = connectionState,
+                    cameraSettings = cameraSettings,
+                    detectedUsb = detectedUsb,
+                    onThemeClick = { currentPage = SettingsPage.Theme },
+                    onLanguageClick = { currentPage = SettingsPage.Language },
+                    onUiModeClick = { currentPage = SettingsPage.UiMode },
+                    onCreditsClick = { currentPage = SettingsPage.Credits },
+                    onCheckUpdate = checkUpdate,
+                    onConnectionTypeChange = {
+                        viewModel.setConnectionType(it)
+                        viewModel.connect()
+                    },
+                    onConnect = { viewModel.connect() },
+                    onDisconnect = { viewModel.disconnect() },
+                    onPairWifi = { address ->
+                        viewModel.setConnectionType(ConnectionType.WiFi)
+                        viewModel.pairWifi(address)
+                        viewModel.connect()
+                    },
+                    onWifiExperimentalChange = {
+                        wifiExperimental = it
+                        settingsManager.wifiExperimental = it
+                    },
+                    onDebugModeChange = {
+                        debugMode = it
+                        settingsManager.debugMode = it
+                        AppLogger.debugEnabled = it
+                    }
+                )
+
+                SettingsPage.Theme -> ThemePage(
+                    modifier = Modifier.padding(padding),
+                    currentTheme = currentTheme,
+                    onThemeSelected = {
+                        currentTheme = it
+                        settingsManager.themeMode = it
+                        activity?.recreate()
+                    }
+                )
+
+                SettingsPage.Language -> LanguagePage(
+                    modifier = Modifier.padding(padding),
+                    currentLanguage = currentLanguage,
+                    onLanguageSelected = {
+                        currentLanguage = it
+                        settingsManager.language = it
+                        activity?.recreate()
+                    }
+                )
+
+                SettingsPage.UiMode -> UiModePage(
+                    modifier = Modifier.padding(padding),
+                    currentMode = currentUiMode,
+                    onModeSelected = {
+                        currentUiMode = it
+                        settingsManager.uiMode = it
+                    }
+                )
+
+                SettingsPage.Credits -> CreditsPage(
+                    modifier = Modifier.padding(padding)
+                )
+
+                SettingsPage.Update -> UpdatePage(
+                    modifier = Modifier.padding(padding),
+                    release = pendingRelease,
+                    onConfirm = {
+                        pendingRelease?.let { release ->
+                            if (UpdateChecker.canInstallUpdate(context)) {
+                                UpdateChecker.downloadAndInstall(context, release)
+                            } else {
+                                UpdateChecker.requestInstallPermission(context)
+                            }
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MainSettingsContent(
+    padding: androidx.compose.foundation.layout.PaddingValues,
+    currentTheme: ThemeMode,
+    currentLanguage: AppLanguage,
+    currentUiMode: UiMode,
+    wifiExperimental: Boolean,
+    debugMode: Boolean,
+    connectionState: ConnectionState,
+    cameraSettings: CameraSettings,
+    detectedUsb: String?,
+    onThemeClick: () -> Unit,
+    onLanguageClick: () -> Unit,
+    onUiModeClick: () -> Unit,
+    onCreditsClick: () -> Unit,
+    onCheckUpdate: () -> Unit,
+    onConnectionTypeChange: (ConnectionType) -> Unit,
+    onConnect: () -> Unit,
+    onDisconnect: () -> Unit,
+    onPairWifi: (String) -> Unit,
+    onWifiExperimentalChange: (Boolean) -> Unit,
+    onDebugModeChange: (Boolean) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(padding)
+            .verticalScroll(rememberScrollState())
+    ) {
+        SettingsHeader(title = stringResource(id = R.string.appearance))
+        SettingsItem(
+            icon = Icons.Default.Palette,
+            title = stringResource(id = R.string.theme),
+            summary = themeLabel(currentTheme),
+            onClick = onThemeClick
+        )
+        SettingsItem(
+            icon = Icons.Default.Language,
+            title = stringResource(id = R.string.language),
+            summary = languageLabel(currentLanguage),
+            onClick = onLanguageClick
+        )
+
+        SettingsHeader(title = stringResource(id = R.string.camera))
+        SettingsItem(
+            icon = Icons.Default.CameraAlt,
+            title = stringResource(id = R.string.select_ui_mode),
+            summary = uiModeLabel(currentUiMode),
+            onClick = onUiModeClick
+        )
+        ConnectionSection(
+            connectionState = connectionState,
+            connectionType = cameraSettings.connectionType,
+            wifiExperimental = wifiExperimental,
+            detectedUsb = detectedUsb,
+            onConnectionTypeChange = onConnectionTypeChange,
+            onConnect = onConnect,
+            onDisconnect = onDisconnect,
+            onPairWifi = onPairWifi
+        )
+
+        SettingsHeader(title = stringResource(id = R.string.general))
+        SettingsSwitchItem(
+            icon = Icons.Default.Wifi,
+            title = stringResource(id = R.string.wifi_experimental),
+            summary = stringResource(id = R.string.wifi_experimental_summary),
+            checked = wifiExperimental,
+            onCheckedChange = onWifiExperimentalChange
+        )
+        SettingsSwitchItem(
+            icon = Icons.Default.BugReport,
+            title = stringResource(id = R.string.debug_mode),
+            summary = stringResource(id = R.string.debug_mode_summary),
+            checked = debugMode,
+            onCheckedChange = onDebugModeChange
+        )
+        SettingsItem(
+            icon = Icons.Default.Update,
+            title = stringResource(id = R.string.check_update),
+            summary = stringResource(id = R.string.latest_version),
+            onClick = onCheckUpdate
+        )
+
+        SettingsHeader(title = stringResource(id = R.string.about))
+        SettingsItem(
+            icon = Icons.Default.Info,
+            title = stringResource(id = R.string.app_name),
+            summary = String.format(stringResource(id = R.string.version_format), BuildConfig.VERSION_NAME) +
+                    " · lanche-furry",
+            onClick = {}
+        )
+        SettingsItem(
+            icon = Icons.Default.People,
+            title = stringResource(id = R.string.credits),
+            summary = "",
+            onClick = onCreditsClick
+        )
+    }
+}
+
+@Composable
+private fun ThemePage(
+    modifier: Modifier = Modifier,
+    currentTheme: ThemeMode,
+    onThemeSelected: (ThemeMode) -> Unit
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(vertical = 8.dp)
+    ) {
+        ThemeMode.entries.forEach { mode ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onThemeSelected(mode) }
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                RadioButton(
+                    selected = currentTheme == mode,
+                    onClick = { onThemeSelected(mode) }
+                )
+                Text(
+                    text = themeLabel(mode),
+                    modifier = Modifier.padding(start = 8.dp),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
+            HorizontalDivider(modifier = Modifier.padding(start = 56.dp))
+        }
+    }
+}
+
+@Composable
+private fun LanguagePage(
+    modifier: Modifier = Modifier,
+    currentLanguage: AppLanguage,
+    onLanguageSelected: (AppLanguage) -> Unit
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(vertical = 8.dp)
+    ) {
+        AppLanguage.entries.forEach { lang ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onLanguageSelected(lang) }
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                RadioButton(
+                    selected = currentLanguage == lang,
+                    onClick = { onLanguageSelected(lang) }
+                )
+                Text(
+                    text = languageLabel(lang),
+                    modifier = Modifier.padding(start = 8.dp),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
+            HorizontalDivider(modifier = Modifier.padding(start = 56.dp))
+        }
+    }
+}
+
+@Composable
+private fun UiModePage(
+    modifier: Modifier = Modifier,
+    currentMode: UiMode,
+    onModeSelected: (UiMode) -> Unit
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(vertical = 8.dp)
+    ) {
+        UiMode.entries.forEach { mode ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onModeSelected(mode) }
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                RadioButton(
+                    selected = currentMode == mode,
+                    onClick = { onModeSelected(mode) }
+                )
+                Column(modifier = Modifier.padding(start = 8.dp)) {
+                    Text(text = uiModeLabel(mode), style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        text = uiModeSummary(mode),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+            }
+            HorizontalDivider(modifier = Modifier.padding(start = 56.dp))
+        }
+    }
+}
+
+@Composable
+private fun CreditsPage(
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                .padding(16.dp)
         ) {
-            SettingsHeader(title = stringResource(id = R.string.appearance))
-            SettingsItem(
-                icon = Icons.Default.Palette,
-                title = stringResource(id = R.string.theme),
-                summary = themeLabel(currentTheme),
-                onClick = { showThemeDialog = true }
+            Text(
+                text = "澜澈LanChe",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
             )
-            SettingsItem(
-                icon = Icons.Default.Language,
-                title = stringResource(id = R.string.language),
-                summary = languageLabel(currentLanguage),
-                onClick = { showLanguageDialog = true }
+            Text(
+                text = "程序制作",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
-
-            SettingsHeader(title = stringResource(id = R.string.camera))
-            SettingsItem(
-                icon = Icons.Default.CameraAlt,
-                title = stringResource(id = R.string.select_ui_mode),
-                summary = uiModeLabel(currentUiMode),
-                onClick = { showUiModeDialog = true }
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                .padding(16.dp)
+        ) {
+            Text(
+                text = "安信一・プロス（一桶）",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
             )
-            ConnectionSection(
-                connectionState = connectionState,
-                connectionType = cameraSettings.connectionType,
-                wifiExperimental = wifiEnabled,
-                detectedUsb = detectedUsb,
-                onConnectionTypeChange = {
-                    viewModel.setConnectionType(it)
-                    viewModel.connect()
-                },
-                onConnect = { viewModel.connect() },
-                onDisconnect = { viewModel.disconnect() },
-                onPairWifi = { address ->
-                    viewModel.setConnectionType(ConnectionType.WiFi)
-                    viewModel.pairWifi(address)
-                    viewModel.connect()
-                }
-            )
-
-            SettingsHeader(title = stringResource(id = R.string.general))
-            SettingsSwitchItem(
-                icon = Icons.Default.Wifi,
-                title = stringResource(id = R.string.wifi_experimental),
-                summary = stringResource(id = R.string.wifi_experimental_summary),
-                checked = wifiExperimental,
-                onCheckedChange = {
-                    wifiExperimental = it
-                    settingsManager.wifiExperimental = it
-                }
-            )
-            SettingsSwitchItem(
-                icon = Icons.Default.BugReport,
-                title = stringResource(id = R.string.debug_mode),
-                summary = stringResource(id = R.string.debug_mode_summary),
-                checked = debugMode,
-                onCheckedChange = {
-                    debugMode = it
-                    settingsManager.debugMode = it
-                    AppLogger.debugEnabled = it
-                }
-            )
-            SettingsItem(
-                icon = Icons.Default.Update,
-                title = stringResource(id = R.string.check_update),
-                summary = stringResource(id = R.string.latest_version),
-                onClick = checkUpdate
-            )
-
-            SettingsHeader(title = stringResource(id = R.string.about))
-            SettingsItem(
-                icon = Icons.Default.Info,
-                title = stringResource(id = R.string.app_name),
-                summary = String.format(stringResource(id = R.string.version_format), BuildConfig.VERSION_NAME) +
-                        " · lanche-furry",
-                onClick = onVersionClick
-            )
-            SettingsItem(
-                icon = Icons.Default.People,
-                title = stringResource(id = R.string.credits),
-                summary = "",
-                onClick = { showCreditsDialog = true }
+            Text(
+                text = "UI设计",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
         }
     }
+}
 
-    if (showThemeDialog) {
-        ThemeDialog(
-            currentTheme = currentTheme,
-            onThemeSelected = {
-                currentTheme = it
-                settingsManager.themeMode = it
-                activity?.recreate()
-            },
-            onDismiss = { showThemeDialog = false }
-        )
-    }
-
-    if (showLanguageDialog) {
-        LanguageDialog(
-            currentLanguage = currentLanguage,
-            onLanguageSelected = {
-                currentLanguage = it
-                settingsManager.language = it
-                activity?.recreate()
-            },
-            onDismiss = { showLanguageDialog = false }
-        )
-    }
-
-    if (showUiModeDialog) {
-        UiModeDialog(
-            currentMode = currentUiMode,
-            onModeSelected = {
-                currentUiMode = it
-                settingsManager.uiMode = it
-            },
-            onDismiss = { showUiModeDialog = false }
-        )
-    }
-
-    if (showUpdateDialog) {
-        UpdateDialog(
-            release = pendingRelease,
-            onConfirm = {
-                showUpdateDialog = false
-                pendingRelease?.let { release ->
-                    if (UpdateChecker.canInstallUpdate(context)) {
-                        UpdateChecker.downloadAndInstall(context, release)
-                    } else {
-                        UpdateChecker.requestInstallPermission(context)
-                    }
-                }
-            },
-            onDismiss = { showUpdateDialog = false }
-        )
-    }
-
-    if (showEasterEgg) {
-        EasterEggDialog(onDismiss = { showEasterEgg = false })
-    }
-
-    if (showCreditsDialog) {
-        CreditsDialog(onDismiss = { showCreditsDialog = false })
+@Composable
+private fun UpdatePage(
+    modifier: Modifier = Modifier,
+    release: UpdateChecker.ReleaseInfo?,
+    onConfirm: () -> Unit
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        if (release == null) {
+            Text(
+                text = "暂无新版本信息",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+            )
+        } else {
+            Text(
+                text = "最新版本：${release.version}",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold
+            )
+            if (release.body.isNotBlank()) {
+                Text(
+                    text = release.body,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            Button(
+                onClick = onConfirm,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("下载并安装")
+            }
+        }
     }
 }
 
@@ -372,151 +645,12 @@ private fun SettingsSwitchItem(
 }
 
 @Composable
-private fun ThemeDialog(
-    currentTheme: ThemeMode,
-    onThemeSelected: (ThemeMode) -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(id = R.string.theme)) },
-        text = {
-            Column {
-                ThemeMode.entries.forEach { mode ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                onThemeSelected(mode)
-                                onDismiss()
-                            }
-                            .padding(vertical = 8.dp)
-                    ) {
-                        RadioButton(
-                            selected = currentTheme == mode,
-                            onClick = {
-                                onThemeSelected(mode)
-                                onDismiss()
-                            }
-                        )
-                        Text(
-                            text = themeLabel(mode),
-                            modifier = Modifier.padding(start = 8.dp)
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(id = android.R.string.ok))
-            }
-        }
-    )
-}
-
-@Composable
-private fun LanguageDialog(
-    currentLanguage: AppLanguage,
-    onLanguageSelected: (AppLanguage) -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(id = R.string.language)) },
-        text = {
-            Column {
-                AppLanguage.entries.forEach { lang ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                onLanguageSelected(lang)
-                                onDismiss()
-                            }
-                            .padding(vertical = 8.dp)
-                    ) {
-                        RadioButton(
-                            selected = currentLanguage == lang,
-                            onClick = {
-                                onLanguageSelected(lang)
-                                onDismiss()
-                            }
-                        )
-                        Text(
-                            text = languageLabel(lang),
-                            modifier = Modifier.padding(start = 8.dp)
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(id = android.R.string.ok))
-            }
-        }
-    )
-}
-
-@Composable
 private fun themeLabel(mode: ThemeMode): String {
     return stringResource(
         id = when (mode) {
             ThemeMode.SYSTEM -> R.string.theme_system
             ThemeMode.LIGHT -> R.string.theme_light
             ThemeMode.DARK -> R.string.theme_dark
-        }
-    )
-}
-
-@Composable
-private fun UiModeDialog(
-    currentMode: UiMode,
-    onModeSelected: (UiMode) -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(id = R.string.select_ui_mode)) },
-        text = {
-            Column {
-                UiMode.entries.forEach { mode ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                onModeSelected(mode)
-                                onDismiss()
-                            }
-                            .padding(vertical = 8.dp)
-                    ) {
-                        RadioButton(
-                            selected = currentMode == mode,
-                            onClick = {
-                                onModeSelected(mode)
-                                onDismiss()
-                            }
-                        )
-                        Column(modifier = Modifier.padding(start = 8.dp)) {
-                            Text(text = uiModeLabel(mode))
-                            Text(
-                                text = uiModeSummary(mode),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(id = android.R.string.ok))
-            }
         }
     )
 }
@@ -541,8 +675,6 @@ private fun uiModeSummary(mode: UiMode): String {
     )
 }
 
-
-
 @Composable
 private fun languageLabel(language: AppLanguage): String {
     return stringResource(
@@ -556,132 +688,6 @@ private fun languageLabel(language: AppLanguage): String {
             AppLanguage.GERMAN -> R.string.language_german
             AppLanguage.SPANISH -> R.string.language_spanish
             AppLanguage.RUSSIAN -> R.string.language_russian
-        }
-    )
-}
-
-@Composable
-private fun UpdateDialog(
-    release: UpdateChecker.ReleaseInfo?,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    if (release == null) return
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("发现新版本") },
-        text = {
-            Column {
-                Text(
-                    text = "最新版本：${release.version}",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                if (release.body.isNotBlank()) {
-                    Text(
-                        text = release.body,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            Button(onClick = onConfirm) {
-                Text("下载并安装")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
-            }
-        }
-    )
-}
-
-@Composable
-private fun EasterEggDialog(
-    onDismiss: () -> Unit
-) {
-    val rotation = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            rotation.animateTo(
-                targetValue = rotation.value + 360f,
-                animationSpec = tween(2000, easing = LinearEasing)
-            )
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("彩蛋") },
-        text = {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(
-                    imageVector = Icons.Default.CameraAlt,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(96.dp)
-                        .graphicsLayer { rotationZ = rotation.value },
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = "PhtonView 由 lanche-furry 出品\n感谢使用！",
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 16.dp)
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(id = android.R.string.ok))
-            }
-        }
-    )
-}
-
-@Composable
-private fun CreditsDialog(
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(id = R.string.credits)) },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = "澜澈LanChe",
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "程序制作",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-                HorizontalDivider()
-                Text(
-                    text = "安信一・プロス（一桶）",
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "UI设计",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(id = android.R.string.ok))
-            }
         }
     )
 }
@@ -747,7 +753,6 @@ private fun ConnectionSection(
             }
         }
 
-        // USB / WiFi 切换
         if (wifiExperimental) {
             Row(
                 modifier = Modifier
@@ -770,7 +775,6 @@ private fun ConnectionSection(
             }
         }
 
-        // WiFi 配对输入
         if (wifiExperimental && connectionType == ConnectionType.WiFi) {
             androidx.compose.material3.OutlinedTextField(
                 value = wifiAddress,
@@ -791,7 +795,6 @@ private fun ConnectionSection(
             )
         }
 
-        // USB 设备检测提示
         if (!wifiExperimental && connectionType == ConnectionType.USB && detectedUsb != null) {
             Text(
                 text = stringResource(id = R.string.usb_device_detected, detectedUsb),
@@ -815,7 +818,7 @@ private fun ConnectionChip(
 
     Row(
         modifier = modifier
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(bg)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),

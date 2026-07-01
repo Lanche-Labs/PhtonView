@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -87,7 +88,17 @@ class UsbCameraConnection @Inject constructor(
                         intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
                     }
                     AppLogger.d("USB device attached: $device")
-                    device?.let { requestPermission(it) }
+                    device?.let {
+                        if (isKnownCamera(it)) {
+                            _detectedDevice.value = it.productName ?: "Camera"
+                            if (usbManager.hasPermission(it)) {
+                                _permissionState.value = true
+                                openDevice(it)
+                            } else {
+                                requestPermission(it)
+                            }
+                        }
+                    }
                 }
                 UsbManager.ACTION_USB_DEVICE_DETACHED -> {
                     val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -120,9 +131,33 @@ class UsbCameraConnection @Inject constructor(
             } else {
                 context.registerReceiver(usbReceiver, filter)
             }
-            findAndRequestCamera()
+            findAndOpenExistingCamera()
         } catch (e: Exception) {
             AppLogger.e("UsbCameraConnection init failed", e)
+        }
+    }
+
+    /**
+     * At startup, look for an already-attached camera that we already have
+     * permission for and open it immediately. If no permission yet, fall back
+     * to requesting it so the permission dialog can appear.
+     */
+    private fun findAndOpenExistingCamera() {
+        val deviceList = usbManager.deviceList.values
+        AppLogger.d("Startup USB scan, found: ${deviceList.map { "${it.vendorId}/${it.productId}" }}")
+        val camera = deviceList.find { isKnownCamera(it) }
+        if (camera != null) {
+            AppLogger.d("Startup found camera: ${camera.productName} (${camera.vendorId}/${camera.productId})")
+            _detectedDevice.value = camera.productName ?: "Camera"
+            if (usbManager.hasPermission(camera)) {
+                _permissionState.value = true
+                openDevice(camera)
+            } else {
+                requestPermission(camera)
+            }
+        } else {
+            AppLogger.d("No supported camera at startup")
+            _detectedDevice.value = null
         }
     }
 
@@ -146,6 +181,36 @@ class UsbCameraConnection @Inject constructor(
             _detectedDevice.value = null
         }
         return camera
+    }
+
+    /**
+     * Re-scan USB devices with retries. Useful when the device was already
+     * connected before the app started and the first enumeration missed it.
+     */
+    suspend fun rescanUsbDevices(): UsbDevice? {
+        return findAndRequestCameraWithRetry()
+    }
+
+    private suspend fun findAndRequestCameraWithRetry(retryCount: Int = 12, delayMs: Long = 500): UsbDevice? {
+        repeat(retryCount) { attempt ->
+            val deviceList = usbManager.deviceList.values
+            AppLogger.d("Scanning USB devices (attempt ${attempt + 1}/$retryCount), found: ${deviceList.map { "${it.vendorId}/${it.productId}" }}")
+            val camera = deviceList.find { isKnownCamera(it) }
+            if (camera != null) {
+                AppLogger.d("Found camera: ${camera.productName} (${camera.vendorId}/${camera.productId})")
+                _detectedDevice.value = camera.productName ?: "Camera"
+                if (usbManager.hasPermission(camera)) {
+                    _permissionState.value = true
+                    openDevice(camera)
+                } else {
+                    requestPermission(camera)
+                }
+                return camera
+            }
+            if (attempt < retryCount - 1) delay(delayMs)
+        }
+        AppLogger.d("No supported camera detected after $retryCount attempts")
+        return null
     }
 
     /**
@@ -173,11 +238,18 @@ class UsbCameraConnection @Inject constructor(
 
     override suspend fun connect() {
         AppLogger.d("connect() called")
-        _connectionState.value = CameraConnection.ConnectionState.Connecting
+        // Avoid resetting back to Connecting if we are already connected.
+        if (_connectionState.value !is CameraConnection.ConnectionState.Connected) {
+            _connectionState.value = CameraConnection.ConnectionState.Connecting
+        }
         try {
-            val device = findAndRequestCamera()
+            val device = findAndRequestCameraWithRetry()
             if (device == null) {
-                _connectionState.value = CameraConnection.ConnectionState.Error("No supported camera detected")
+                // The camera might not be enumerated yet (common when the app
+                // starts while the camera is already plugged in). Keep the state
+                // as Connecting so that the USB attached/permission broadcasts
+                // can finish the connection instead of showing an error.
+                AppLogger.d("No camera found during connect(); waiting for USB broadcast")
             }
         } catch (e: Exception) {
             AppLogger.e("USB connect failed", e)
@@ -228,11 +300,20 @@ class UsbCameraConnection @Inject constructor(
 
         scope.launch {
             try {
+                // #region debug-point A:open-session
+                AppLogger.report("A", "UsbCameraConnection.kt:openDevice", "Opening PTP session", mapOf("device" to (device.productName ?: "unknown")))
+                // #endregion
                 openSession(PtpConstants.DEFAULT_SESSION_ID)
+                // #region debug-point A:device-info
                 val model = getDeviceInfo()
+                AppLogger.report("A", "UsbCameraConnection.kt:openDevice", "Device info received", mapOf("model" to model))
+                // #endregion
                 _connectionState.value = CameraConnection.ConnectionState.Connected(model)
                 AppLogger.d("USB device connected: $model")
             } catch (e: Exception) {
+                // #region debug-point A:open-error
+                AppLogger.report("A", "UsbCameraConnection.kt:openDevice", "PTP session failed", mapOf("error" to (e.message ?: "unknown")))
+                // #endregion
                 AppLogger.e("Failed to open PTP session", e)
                 _connectionState.value = CameraConnection.ConnectionState.Connected(device.productName ?: "Camera")
             }
@@ -281,8 +362,8 @@ class UsbCameraConnection @Inject constructor(
         return code == PtpConstants.RESPONSE_OK
     }
 
-    override suspend fun sendCommand(code: Short, vararg params: Int) {
-        sendCommandInternal(PtpCommand(code, nextTransactionId(), params))
+    override suspend fun sendCommand(code: Short, vararg params: Int): Pair<Short, IntArray> {
+        return sendCommandInternal(PtpCommand(code, nextTransactionId(), params))
     }
 
     override suspend fun sendCommandWithData(code: Short, vararg params: Int): ByteArray {
@@ -298,6 +379,9 @@ class UsbCameraConnection @Inject constructor(
 
         val commandBytes = command.encode()
         AppLogger.logUsb("OUT", commandBytes)
+        // #region debug-point B:ptp-command
+        AppLogger.report("B", "UsbCameraConnection.kt:sendCommandInternal", "PTP command", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "tid" to command.transactionId.toString(), "params" to command.parameters.joinToString()))
+        // #endregion
         val written = conn.bulkTransfer(outEp, commandBytes, commandBytes.size, PtpConstants.DEFAULT_TIMEOUT_MS)
         AppLogger.d("bulkTransfer OUT returned: $written")
 
@@ -305,10 +389,17 @@ class UsbCameraConnection @Inject constructor(
         val length = conn.bulkTransfer(inEp, responseBuffer, responseBuffer.size, PtpConstants.DEFAULT_TIMEOUT_MS)
         AppLogger.d("bulkTransfer IN returned: $length")
         if (length <= 0) {
+            // #region debug-point B:ptp-response-empty
+            AppLogger.report("B", "UsbCameraConnection.kt:sendCommandInternal", "PTP response empty", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "length" to length.toString()))
+            // #endregion
             throw IllegalStateException("Failed to read response")
         }
         AppLogger.logUsb("IN", responseBuffer, length)
-        PtpCommand.decodeResponse(responseBuffer.copyOf(length))
+        val (responseCode, responseParams) = PtpCommand.decodeResponse(responseBuffer.copyOf(length))
+        // #region debug-point B:ptp-response
+        AppLogger.report("B", "UsbCameraConnection.kt:sendCommandInternal", "PTP response", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "responseCode" to String.format(Locale.US, "0x%04X", responseCode), "responseParams" to responseParams.joinToString()))
+        // #endregion
+        responseCode to responseParams
     }
 
     private suspend fun sendCommandWithDataInternal(command: PtpCommand): ByteArray = withContext(Dispatchers.IO) {
@@ -318,28 +409,48 @@ class UsbCameraConnection @Inject constructor(
 
         val commandBytes = command.encode()
         AppLogger.logUsb("OUT", commandBytes)
+        // #region debug-point B:ptp-data-command
+        AppLogger.report("B", "UsbCameraConnection.kt:sendCommandWithDataInternal", "PTP data command", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "tid" to command.transactionId.toString(), "params" to command.parameters.joinToString()))
+        // #endregion
         val written = conn.bulkTransfer(outEp, commandBytes, commandBytes.size, PtpConstants.DEFAULT_TIMEOUT_MS)
         AppLogger.d("bulkTransfer OUT returned: $written")
 
         val result = mutableListOf<Byte>()
+        var responseCode: Short = -1
         while (true) {
             val buffer = ByteArray(4096)
             val length = conn.bulkTransfer(inEp, buffer, buffer.size, PtpConstants.DEFAULT_TIMEOUT_MS)
             AppLogger.d("bulkTransfer IN chunk returned: $length")
             if (length <= 0) break
             AppLogger.logUsb("IN", buffer, length)
-            result.addAll(buffer.copyOf(length).toList())
 
             val bb = ByteBuffer.wrap(buffer, 0, length)
             bb.order(ByteOrder.LITTLE_ENDIAN)
             if (length >= 12) {
-                val containerType = bb.getShort(6)
+                val containerType = bb.getShort(4)
                 if (containerType == PtpConstants.CONTAINER_TYPE_RESPONSE) {
+                    // Response arrived as its own packet
+                    responseCode = bb.getShort(6)
                     break
                 }
             }
-            if (length < buffer.size) break
+            // Data container: accumulate and keep reading for the following response container
+            result.addAll(buffer.copyOf(length).toList())
         }
+        // Response container may also be appended to the last data packet; extract it from the tail.
+        if (responseCode == (-1).toShort() && result.size >= 12) {
+            val tailOffset = result.size - 12
+            val bb = ByteBuffer.wrap(result.toByteArray(), tailOffset, 12)
+            bb.order(ByteOrder.LITTLE_ENDIAN)
+            val containerType = bb.getShort(4)
+            if (containerType == PtpConstants.CONTAINER_TYPE_RESPONSE) {
+                responseCode = bb.getShort(6)
+                repeat(12) { result.removeAt(result.size - 1) }
+            }
+        }
+        // #region debug-point B:ptp-data-response
+        AppLogger.report("B", "UsbCameraConnection.kt:sendCommandWithDataInternal", "PTP data response", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "responseCode" to String.format(Locale.US, "0x%04X", responseCode), "bytes" to result.size.toString()))
+        // #endregion
         result.toByteArray()
     }
 
@@ -351,30 +462,59 @@ class UsbCameraConnection @Inject constructor(
     }
 
     override suspend fun getDeviceProperty(code: Short): Int? {
+        // #region debug-point C:property-get
+        AppLogger.report("C", "UsbCameraConnection.kt:getDeviceProperty", "Getting property", mapOf("code" to String.format(Locale.US, "0x%04X", code)))
+        // #endregion
         val data = sendCommandWithDataInternal(
             PtpCommand(PtpConstants.OPERATION_DEVICE_PROP_VALUE_GET, nextTransactionId(), intArrayOf(code.toInt()))
         )
         val payload = PtpCommand.decodeDataPayload(data)
-        if (payload.size < 2) return null
-        val buffer = ByteBuffer.wrap(payload)
-        buffer.order(ByteOrder.LITTLE_ENDIAN)
-        return when (payload.size) {
-            1 -> buffer.get().toInt()
-            2 -> buffer.getShort().toInt()
-            4 -> buffer.getInt()
-            else -> buffer.getInt()
+        val value = if (payload.size < 2) null else {
+            val buffer = ByteBuffer.wrap(payload)
+            buffer.order(ByteOrder.LITTLE_ENDIAN)
+            when (payload.size) {
+                1 -> buffer.get().toInt()
+                2 -> buffer.getShort().toInt()
+                4 -> buffer.getInt()
+                else -> buffer.getInt()
+            }
         }
+        // #region debug-point C:property-get-result
+        AppLogger.report("C", "UsbCameraConnection.kt:getDeviceProperty", "Property value", mapOf("code" to String.format(Locale.US, "0x%04X", code), "value" to value.toString(), "payloadSize" to payload.size.toString()))
+        // #endregion
+        return value
     }
 
     override suspend fun setDeviceProperty(code: Short, value: Int): Boolean {
         return setDevicePropertyValue(code, encodeInt32(value))
     }
 
+    override suspend fun getDevicePropertyDesc(code: Short): ByteArray {
+        return try {
+            val data = sendCommandWithDataInternal(
+                PtpCommand(PtpConstants.OPERATION_DEVICE_PROP_DESC, nextTransactionId(), intArrayOf(code.toInt()))
+            )
+            PtpCommand.decodeDataPayload(data)
+        } catch (e: Exception) {
+            AppLogger.e("getDevicePropertyDesc failed for 0x${String.format(Locale.US, "%04X", code)}", e)
+            ByteArray(0)
+        }
+    }
+
     suspend fun setDevicePropertyValue(code: Short, data: ByteArray): Boolean {
+        // #region debug-point C:property-set
+        AppLogger.report("C", "UsbCameraConnection.kt:setDevicePropertyValue", "Setting property", mapOf("code" to String.format(Locale.US, "0x%04X", code), "hex" to data.joinToString(" ") { String.format(Locale.US, "%02X", it) }))
+        // #endregion
         return try {
             val (responseCode, _) = sendSetPropertyCommand(code, data)
+            // #region debug-point C:property-set-result
+            AppLogger.report("C", "UsbCameraConnection.kt:setDevicePropertyValue", "Property set result", mapOf("code" to String.format(Locale.US, "0x%04X", code), "responseCode" to String.format(Locale.US, "0x%04X", responseCode)))
+            // #endregion
             responseCode == PtpConstants.RESPONSE_OK
         } catch (e: Exception) {
+            // #region debug-point C:property-set-error
+            AppLogger.report("C", "UsbCameraConnection.kt:setDevicePropertyValue", "Property set error", mapOf("code" to String.format(Locale.US, "0x%04X", code), "error" to (e.message ?: "unknown")))
+            // #endregion
             false
         }
     }

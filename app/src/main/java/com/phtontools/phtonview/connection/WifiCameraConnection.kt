@@ -127,8 +127,9 @@ class WifiCameraConnection @Inject constructor() : CameraConnection {
         return sendPtpCommand(0x1003)
     }
 
-    override suspend fun sendCommand(code: Short, vararg params: Int) {
-        sendPtpCommand(code.toInt(), params)
+    override suspend fun sendCommand(code: Short, vararg params: Int): Pair<Short, IntArray> {
+        val success = sendPtpCommand(code.toInt(), params)
+        return Pair(if (success) 0x2001.toShort() else 0x2002.toShort(), IntArray(0))
     }
 
     override suspend fun sendCommandWithData(code: Short, vararg params: Int): ByteArray {

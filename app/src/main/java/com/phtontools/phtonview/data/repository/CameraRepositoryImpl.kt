@@ -102,6 +102,24 @@ class CameraRepositoryImpl @Inject constructor(
     override val liveViewEnabled: StateFlow<Boolean> = _liveViewEnabled
 
     private var currentConnection: CameraConnection? = null
+    private var currentModelName: String = ""
+    private val isNikon: Boolean
+        get() = currentModelName.contains("Nikon", ignoreCase = true) || currentModelName.contains("NIKON", ignoreCase = true)
+            || detectBrand(currentModelName) == CameraBrand.Nikon
+
+    /**
+     * Nikon cameras (especially older bodies like the D5200) control the regular
+     * shutter speed through the standard PTP ExposureTime property 0x500D using
+     * 1/10000-second units. The vendor-specific property 0xD100 uses a different
+     * (x<<16)|y encoding and is not always writable on these bodies. We still
+     * mirror values to 0xD100 when possible for newer models, but 0x500D is the
+     * authoritative source for exposure control and Bulb mode.
+     */
+    private val shutterPropertyCode: Short
+        get() = if (isNikon) PtpConstants.DEVICE_PROP_EXPOSURE_TIME else PtpConstants.DEVICE_PROP_EXPOSURE_TIME
+
+    private val nikonShutterPropertyCode: Short
+        get() = PtpConstants.DEVICE_PROP_NIKON_EXPOSURE_TIME
 
     init {
         // 始终使用通用品牌，不再按品牌选择
@@ -142,9 +160,113 @@ class CameraRepositoryImpl @Inject constructor(
                 _connectionState.value = when (state) {
                     is CameraConnection.ConnectionState.Disconnected -> ConnectionState.Disconnected
                     is CameraConnection.ConnectionState.Connecting -> ConnectionState.Connecting
-                    is CameraConnection.ConnectionState.Connected -> ConnectionState.Connected(state.model)
+                    is CameraConnection.ConnectionState.Connected -> {
+                        currentModelName = state.model
+                        val detectedBrand = detectBrand(state.model)
+                        _cameraSettings.value = _cameraSettings.value.copy(brand = detectedBrand)
+                        if (detectedBrand == CameraBrand.Nikon) {
+                            inspectNikonProperties()
+                            readNikonExposureFromCamera()
+                        }
+                        ConnectionState.Connected(state.model)
+                    }
                     is CameraConnection.ConnectionState.Error -> ConnectionState.Error(state.message)
                 }
+            }
+        }
+    }
+
+    private fun detectBrand(model: String): CameraBrand {
+        val upper = model.uppercase()
+        return when {
+            upper.contains("NIKON") -> CameraBrand.Nikon
+            upper.startsWith("D") && upper.length >= 3 && upper.substring(1, 2).toIntOrNull() != null -> CameraBrand.Nikon
+            upper.matches(Regex("^Z\\d.*")) -> CameraBrand.Nikon
+            upper.startsWith("COOLPIX") -> CameraBrand.Nikon
+            upper.contains("CANON") -> CameraBrand.Canon
+            upper.contains("SONY") -> CameraBrand.Sony
+            upper.contains("FUJI") || upper.contains("FUJIFILM") -> CameraBrand.Fuji
+            else -> CameraBrand.Generic
+        }
+    }
+
+    private fun inspectNikonProperties() {
+        scope.launch {
+            val conn = currentConnection ?: return@launch
+            val codes = listOf(
+                PtpConstants.DEVICE_PROP_ISO,
+                PtpConstants.DEVICE_PROP_F_NUMBER,
+                PtpConstants.DEVICE_PROP_EXPOSURE_TIME,
+                PtpConstants.DEVICE_PROP_NIKON_EXPOSURE_TIME,
+                PtpConstants.DEVICE_PROP_EXPOSURE_COMPENSATION,
+                PtpConstants.DEVICE_PROP_METERING_MODE,
+                PtpConstants.DEVICE_PROP_NIKON_LIVE_VIEW_STATUS,
+                PtpConstants.DEVICE_PROP_NIKON_LIVE_VIEW_PROHIBIT_CONDITION
+            )
+            for (code in codes) {
+                runCatching {
+                    val desc = conn.getDevicePropertyDesc(code)
+                    val current = conn.getDeviceProperty(code)
+                    AppLogger.report("N", "CameraRepositoryImpl.kt:inspectNikonProperties", "Property desc", mapOf(
+                        "code" to String.format(Locale.US, "0x%04X", code),
+                        "current" to current.toString(),
+                        "descSize" to desc.size.toString(),
+                        "descHex" to desc.joinToString(" ") { String.format(Locale.US, "%02X", it) }
+                    ))
+                }.onFailure {
+                    AppLogger.report("N", "CameraRepositoryImpl.kt:inspectNikonProperties", "Property desc error", mapOf(
+                        "code" to String.format(Locale.US, "0x%04X", code),
+                        "error" to (it.message ?: "unknown")
+                    ))
+                }
+            }
+        }
+    }
+
+    /**
+     * Read the current exposure parameters from the camera and mirror them in the
+     * UI state. This prevents the app display from drifting away from the actual
+     * camera settings (e.g. when the camera dial or another app changed them).
+     */
+    private fun readNikonExposureFromCamera() {
+        scope.launch {
+            delay(300)
+            if (!ensureConnected()) return@launch
+            val conn = currentConnection ?: return@launch
+            val brand = _cameraSettings.value.brand
+            runCatching {
+                val iso = conn.getDeviceProperty(PtpConstants.DEVICE_PROP_ISO) ?: _exposureSettings.value.iso
+                val fNumber = conn.getDeviceProperty(PtpConstants.DEVICE_PROP_F_NUMBER) ?: PtpValueMapper.apertureToPtp(_exposureSettings.value.aperture)
+                val shutterStandard = conn.getDeviceProperty(PtpConstants.DEVICE_PROP_EXPOSURE_TIME)
+                val shutterNikon = conn.getDeviceProperty(PtpConstants.DEVICE_PROP_NIKON_EXPOSURE_TIME)
+                val ev = conn.getDeviceProperty(PtpConstants.DEVICE_PROP_EXPOSURE_COMPENSATION)
+
+                val shutter = when {
+                    shutterNikon != null && shutterNikon != 0 -> {
+                        PtpValueMapper.ptpToShutter(shutterNikon, brand, PtpConstants.DEVICE_PROP_NIKON_EXPOSURE_TIME)
+                    }
+                    shutterStandard != null -> {
+                        PtpValueMapper.ptpToShutter(shutterStandard, brand, PtpConstants.DEVICE_PROP_EXPOSURE_TIME)
+                    }
+                    else -> _exposureSettings.value.shutter
+                }
+
+                _exposureSettings.value = _exposureSettings.value.copy(
+                    iso = iso.coerceIn(50, 204800),
+                    aperture = PtpValueMapper.ptpToAperture(fNumber),
+                    shutter = shutter,
+                    ev = ev?.let { it / 1000f } ?: _exposureSettings.value.ev
+                )
+                AppLogger.report("N", "CameraRepositoryImpl.kt:readNikonExposureFromCamera", "Exposure synced", mapOf(
+                    "iso" to iso.toString(),
+                    "fNumber" to String.format(Locale.US, "0x%04X", fNumber),
+                    "shutterStandard" to shutterStandard.toString(),
+                    "shutterNikon" to shutterNikon.toString(),
+                    "shutter" to shutter,
+                    "ev" to _exposureSettings.value.ev.toString()
+                ))
+            }.onFailure {
+                AppLogger.report("N", "CameraRepositoryImpl.kt:readNikonExposureFromCamera", "Exposure sync error", mapOf("error" to (it.message ?: "unknown")))
             }
         }
     }
@@ -168,6 +290,9 @@ class CameraRepositoryImpl @Inject constructor(
     }
 
     override suspend fun connect() {
+        // #region debug-point E:connect-start
+        AppLogger.report("E", "CameraRepositoryImpl.kt:connect", "Repository connect start", mapOf("type" to _cameraSettings.value.connectionType.name))
+        // #endregion
         try {
             val type = _cameraSettings.value.connectionType
             val target = resolveConnection(type)
@@ -179,6 +304,9 @@ class CameraRepositoryImpl @Inject constructor(
                 _connectionState.value = ConnectionState.Error("No connection implementation available")
             }
         } catch (e: Exception) {
+            // #region debug-point E:connect-error
+            AppLogger.report("E", "CameraRepositoryImpl.kt:connect", "Repository connect error", mapOf("error" to (e.message ?: "unknown")))
+            // #endregion
             AppLogger.e("Repository connect failed", e)
             _connectionState.value = ConnectionState.Error("Connect failed: ${e.message}")
         }
@@ -192,11 +320,41 @@ class CameraRepositoryImpl @Inject constructor(
     }
 
     override suspend fun startLiveView() {
+        // #region debug-point F:liveview-start
+        AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Start live view", mapOf("connected" to ensureConnected().toString()))
+        // #endregion
         if (!ensureConnected()) return
         _liveViewEnabled.value = true
         val conn = currentConnection ?: return
         if (conn.connectionType == ConnectionType.USB) {
-            runCatching { conn.sendCommand(PtpConstants.NIKON_OPERATION_START_LIVEVIEW) }
+            runCatching {
+                if (isNikon) {
+                    // Nikon 实时取景需要先进入 PC 控制模式，否则可能无法启动。
+                    conn.sendCommand(PtpConstants.NIKON_OPERATION_CHANGE_CAMERA_MODE, 1)
+                    waitForDeviceReady()
+
+                    // Check live view status and prohibit condition as libgphoto2 does.
+                    val lvStatus = conn.getDeviceProperty(PtpConstants.DEVICE_PROP_NIKON_LIVE_VIEW_STATUS)
+                    AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view status", mapOf("status" to (lvStatus?.toString() ?: "null")))
+
+                    val prohibit = conn.getDeviceProperty(PtpConstants.DEVICE_PROP_NIKON_LIVE_VIEW_PROHIBIT_CONDITION)
+                    if (prohibit != null && prohibit != 0) {
+                        AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view prohibited", mapOf("condition" to String.format(Locale.US, "0x%08X", prohibit)))
+                    }
+
+                    // Set recording media to 1 (PC/SDRAM) if the property is supported.
+                    runCatching { conn.setDeviceProperty(PtpConstants.DEVICE_PROP_NIKON_RECORDING_MEDIA, 1) }
+                }
+                val (code, _) = conn.sendCommand(PtpConstants.NIKON_OPERATION_START_LIVEVIEW)
+                // #region debug-point F:liveview-start-ok
+                AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view start command sent", mapOf("responseCode" to String.format(Locale.US, "0x%04X", code)))
+                // #endregion
+                if (isNikon) waitForDeviceReady()
+            }.onFailure {
+                // #region debug-point F:liveview-start-error
+                AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view start error", mapOf("error" to (it.message ?: "unknown")))
+                // #endregion
+            }
         }
         startLiveViewLoop()
     }
@@ -221,17 +379,28 @@ class CameraRepositoryImpl @Inject constructor(
     private fun startLiveViewLoop() {
         liveViewJob?.cancel()
         liveViewJob = scope.launch {
+            var frameCount = 0
             while (isActive && _connectionState.value is ConnectionState.Connected) {
                 try {
                     val conn = currentConnection ?: break
                     if (conn.connectionType == ConnectionType.USB) {
                         val data = conn.sendCommandWithData(PtpConstants.NIKON_OPERATION_GET_LIVEVIEW_IMAGE)
+                        // #region debug-point F:liveview-frame
+                        frameCount++
+                        if (frameCount <= 5 || data.size <= 12) {
+                            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Live view frame", mapOf("bytes" to data.size.toString(), "frame" to frameCount.toString()))
+                        }
+                        // #endregion
                         if (data.size <= 12) continue
-                        val jpegData = data.copyOfRange(12, data.size)
+                        val jpegData = extractNikonLiveViewJpeg(data)
+                        if (jpegData.isEmpty()) continue
                         val bitmap = BitmapFactory.decodeByteArray(jpegData, 0, jpegData.size)
                         bitmap?.let { _liveViewFrame.value = it }
                     }
                 } catch (e: Exception) {
+                    // #region debug-point F:liveview-frame-error
+                    AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Live view frame error", mapOf("error" to (e.message ?: "unknown")))
+                    // #endregion
                     if (settingsManager.debugMode) e.printStackTrace()
                 }
                 delay(33)
@@ -253,6 +422,9 @@ class CameraRepositoryImpl @Inject constructor(
     }
 
     override suspend fun triggerAf() {
+        // #region debug-point H:af-trigger
+        AppLogger.report("H", "CameraRepositoryImpl.kt:triggerAf", "Trigger AF", mapOf("focusMode" to _focusMode.value.name, "connected" to ensureConnected().toString()))
+        // #endregion
         if (_focusMode.value == FocusMode.MF) return
         if (!ensureConnected()) return
         val conn = currentConnection ?: return
@@ -281,6 +453,9 @@ class CameraRepositoryImpl @Inject constructor(
     }
 
     override suspend fun setMeteringMode(mode: MeteringMode) {
+        // #region debug-point I:metering
+        AppLogger.report("I", "CameraRepositoryImpl.kt:setMeteringMode", "Set metering mode", mapOf("mode" to mode.name, "ptpValue" to PtpValueMapper.meteringModeToPtp(mode).toString()))
+        // #endregion
         _meteringResult.value = _meteringResult.value.copy(mode = mode)
         applyPtpProperty(PtpConstants.DEVICE_PROP_METERING_MODE, PtpValueMapper.meteringModeToPtp(mode))
     }
@@ -301,10 +476,22 @@ class CameraRepositoryImpl @Inject constructor(
             iso = iso ?: current.iso,
             ev = ev ?: current.ev
         )
+        // #region debug-point J:exposure
+        AppLogger.report("J", "CameraRepositoryImpl.kt:setExposure", "Set exposure", mapOf(
+            "aperture" to newSettings.aperture,
+            "shutter" to newSettings.shutter,
+            "iso" to newSettings.iso.toString(),
+            "ev" to newSettings.ev.toString(),
+            "isoPtp" to PtpValueMapper.isoToPtp(newSettings.iso).toString(),
+            "aperturePtp" to PtpValueMapper.apertureToPtp(newSettings.aperture).toString(),
+            "shutterPtp" to PtpValueMapper.shutterToPtp(newSettings.shutter, _cameraSettings.value.brand).toString(),
+            "evPtp" to PtpValueMapper.evToPtp(newSettings.ev).toString()
+        ))
+        // #endregion
         _exposureSettings.value = newSettings
         applyPtpProperty(PtpConstants.DEVICE_PROP_ISO, PtpValueMapper.isoToPtp(newSettings.iso))
         applyPtpProperty(PtpConstants.DEVICE_PROP_F_NUMBER, PtpValueMapper.apertureToPtp(newSettings.aperture))
-        applyPtpProperty(PtpConstants.DEVICE_PROP_EXPOSURE_TIME, PtpValueMapper.shutterToPtp(newSettings.shutter))
+        applyShutterProperty(newSettings.shutter)
         applyPtpProperty(PtpConstants.DEVICE_PROP_EXPOSURE_COMPENSATION, PtpValueMapper.evToPtp(newSettings.ev))
     }
 
@@ -320,7 +507,23 @@ class CameraRepositoryImpl @Inject constructor(
 
     override suspend fun setShutter(shutter: String) {
         _exposureSettings.value = _exposureSettings.value.copy(shutter = shutter)
-        applyPtpProperty(PtpConstants.DEVICE_PROP_EXPOSURE_TIME, PtpValueMapper.shutterToPtp(shutter))
+        applyShutterProperty(shutter)
+    }
+
+    /**
+     * Apply shutter speed to the camera. For Nikon we write both the standard
+     * 0x500D property (used by D5200 and similar bodies) and the vendor-specific
+     * 0xD100 property (used by newer bodies), ignoring failures on the optional
+     * 0xD100 write.
+     */
+    private suspend fun applyShutterProperty(shutter: String) {
+        val brand = _cameraSettings.value.brand
+        applyPtpProperty(shutterPropertyCode, PtpValueMapper.shutterToPtp(shutter, brand, shutterPropertyCode))
+        if (isNikon) {
+            runCatching {
+                applyPtpProperty(nikonShutterPropertyCode, PtpValueMapper.shutterToPtp(shutter, brand, nikonShutterPropertyCode))
+            }
+        }
     }
 
     override suspend fun setEv(ev: Float) {
@@ -381,11 +584,27 @@ class CameraRepositoryImpl @Inject constructor(
     }
 
     private suspend fun applyPtpProperty(code: Short, value: Int) {
-        if (!ensureConnected()) return
+        // #region debug-point D:property-apply
+        AppLogger.report("D", "CameraRepositoryImpl.kt:applyPtpProperty", "Applying property", mapOf("code" to String.format(Locale.US, "0x%04X", code), "value" to value.toString()))
+        // #endregion
+        if (!ensureConnected()) {
+            // #region debug-point D:property-not-connected
+            AppLogger.report("D", "CameraRepositoryImpl.kt:applyPtpProperty", "Not connected, skipping", mapOf("code" to String.format(Locale.US, "0x%04X", code)))
+            // #endregion
+            return
+        }
         val conn = currentConnection ?: return
         runCatching {
-            conn.setDeviceProperty(code, value)
-        }.onFailure { AppLogger.e("Failed to set property 0x%04X".format(code), it) }
+            val success = conn.setDeviceProperty(code, value)
+            // #region debug-point D:property-apply-result
+            AppLogger.report("D", "CameraRepositoryImpl.kt:applyPtpProperty", "Property apply result", mapOf("code" to String.format(Locale.US, "0x%04X", code), "success" to success.toString()))
+            // #endregion
+        }.onFailure {
+            // #region debug-point D:property-apply-error
+            AppLogger.report("D", "CameraRepositoryImpl.kt:applyPtpProperty", "Property apply error", mapOf("code" to String.format(Locale.US, "0x%04X", code), "error" to (it.message ?: "unknown")))
+            // #endregion
+            AppLogger.e("Failed to set property ${String.format(Locale.US, "0x%04X", code)}", it)
+        }
     }
 
     override suspend fun applyPreset(preset: ShootingPreset) {
@@ -424,10 +643,40 @@ class CameraRepositoryImpl @Inject constructor(
     }
 
     override suspend fun captureImage(delayMs: Long) {
+        // #region debug-point G:capture
+        AppLogger.report("G", "CameraRepositoryImpl.kt:captureImage", "Capture image", mapOf("delayMs" to delayMs.toString(), "connected" to ensureConnected().toString(), "model" to currentModelName))
+        // #endregion
         if (delayMs > 0) delay(delayMs)
         if (!ensureConnected()) return
         val conn = currentConnection ?: return
-        runCatching { conn.sendCommand(PtpConstants.OPERATION_INITIATE_CAPTURE) }
+        runCatching {
+            if (isNikon) {
+                // Ensure PC control mode before capture; older Nikon bodies need this.
+                conn.sendCommand(PtpConstants.NIKON_OPERATION_CHANGE_CAMERA_MODE, 1)
+                waitForDeviceReady()
+
+                // Nikon: InitiateCaptureRecInMedia (0x9207) requires two params:
+                // param1 = AF mode: 0xFFFFFFFF (no AF), 0xFFFFFFFE (with AF)
+                // param2 = target: 0 (card), 1 (SDRAM)
+                val afParam = if (_focusMode.value == FocusMode.AF) 0xFFFFFFFE.toInt() else 0xFFFFFFFF.toInt()
+                val targetParam = if (_cameraSettings.value.storageTarget == StorageTarget.Camera) 1 else 0
+                val (code, _) = conn.sendCommand(
+                    PtpConstants.NIKON_OPERATION_INITIATE_CAPTURE_REC_IN_MEDIA,
+                    afParam,
+                    targetParam
+                )
+                if (code != PtpConstants.RESPONSE_OK) {
+                    AppLogger.report("G", "CameraRepositoryImpl.kt:captureImage", "Nikon capture fallback", mapOf("responseCode" to String.format(Locale.US, "0x%04X", code)))
+                    conn.sendCommand(PtpConstants.OPERATION_INITIATE_CAPTURE)
+                }
+                waitForDeviceReady()
+                return@runCatching
+            }
+            conn.sendCommand(PtpConstants.OPERATION_INITIATE_CAPTURE)
+        }.onFailure {
+            AppLogger.report("G", "CameraRepositoryImpl.kt:captureImage", "Capture error", mapOf("error" to (it.message ?: "unknown")))
+            runCatching { conn.sendCommand(PtpConstants.OPERATION_INITIATE_CAPTURE) }
+        }
     }
 
     override suspend fun captureBurst(count: Int) {
@@ -444,10 +693,36 @@ class CameraRepositoryImpl @Inject constructor(
         if (!ensureConnected()) return
         bulbJob?.cancel()
         bulbJob = scope.launch {
-            captureImage()
-            delay(seconds * 1000L)
-            // 真正的 B 门结束需要发送终止命令；当前占位
-            stopBulbExposure()
+            val conn = currentConnection ?: return@launch
+            if (isNikon) {
+                // Nikon B门流程参考 libgphoto2 _put_Nikon_Bulb：
+                // 1. 进入 PC 控制模式；2. 曝光程序设为手动；3. 快门设为 Bulb；
+                // 4. 发送 capture2；5. 等待；6. 发送 terminate capture。
+                runCatching {
+                    conn.sendCommand(PtpConstants.NIKON_OPERATION_CHANGE_CAMERA_MODE, 1)
+                    waitForDeviceReady()
+                    applyPtpProperty(PtpConstants.DEVICE_PROP_EXPOSURE_PROGRAM_MODE, 1)
+                    setShutter("Bulb")
+                    waitForDeviceReady()
+                    delay(200)
+                    val targetParam = if (_cameraSettings.value.storageTarget == StorageTarget.Camera) 1 else 0
+                    conn.sendCommand(
+                        PtpConstants.NIKON_OPERATION_INITIATE_CAPTURE_REC_IN_MEDIA,
+                        0xFFFFFFFF.toInt(),
+                        targetParam
+                    )
+                }.onFailure {
+                    AppLogger.report("G", "CameraRepositoryImpl.kt:startBulbExposure", "Nikon bulb start error", mapOf("error" to (it.message ?: "unknown")))
+                }
+                delay(seconds * 1000L)
+                stopBulbExposure()
+            } else {
+                setShutter("Bulb")
+                delay(200)
+                captureImage()
+                delay(seconds * 1000L)
+                stopBulbExposure()
+            }
         }
     }
 
@@ -456,7 +731,15 @@ class CameraRepositoryImpl @Inject constructor(
         _bulbSettings.value = _bulbSettings.value.copy(enabled = false)
         if (!ensureConnected()) return
         val conn = currentConnection ?: return
-        runCatching { conn.sendCommand(PtpConstants.NIKON_OPERATION_TERMINATE_CAPTURE) }
+        runCatching {
+            if (isNikon) {
+                // Nikon TerminateCapture (0x920C) 需要两个参数，通常都传 0。
+                conn.sendCommand(PtpConstants.NIKON_OPERATION_TERMINATE_CAPTURE, 0, 0)
+                waitForDeviceReady()
+            } else {
+                conn.sendCommand(PtpConstants.NIKON_OPERATION_TERMINATE_CAPTURE)
+            }
+        }
     }
 
     override suspend fun captureWithTimer(delaySeconds: Int) {
@@ -534,10 +817,16 @@ class CameraRepositoryImpl @Inject constructor(
     }
 
     override suspend fun fetchCameraStatus() {
+        // #region debug-point K:status
+        AppLogger.report("K", "CameraRepositoryImpl.kt:fetchCameraStatus", "Fetch camera status", mapOf("connected" to ensureConnected().toString()))
+        // #endregion
         if (!ensureConnected()) return
         val conn = currentConnection ?: return
         val battery = conn.getDeviceProperty(PtpConstants.DEVICE_PROP_BATTERY_LEVEL)
         val shots = conn.getDeviceProperty(0xD400.toShort()) // Nikon shots remaining, may vary by brand
+        // #region debug-point K:status-result
+        AppLogger.report("K", "CameraRepositoryImpl.kt:fetchCameraStatus", "Camera status result", mapOf("battery" to battery.toString(), "shots" to shots.toString()))
+        // #endregion
         _cameraStatus.value = CameraStatus(
             batteryLevel = battery ?: -1,
             storageRemaining = -1,
@@ -694,5 +983,66 @@ class CameraRepositoryImpl @Inject constructor(
 
     private fun ensureConnected(): Boolean {
         return _connectionState.value is ConnectionState.Connected
+    }
+
+    /**
+     * Poll Nikon DeviceReady (0x90C8) until the camera reports OK or the timeout
+     * expires. This mirrors libgphoto2's nikon_wait_busy and is required after
+     * starting live view, changing modes, or triggering capture on cameras like
+     * the D5200.
+     */
+    private suspend fun waitForDeviceReady(waitMs: Long = 50, timeoutMs: Long = 2000) {
+        val conn = currentConnection ?: return
+        val end = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < end) {
+            val (code, _) = runCatching {
+                conn.sendCommand(PtpConstants.NIKON_OPERATION_DEVICE_READY)
+            }.getOrDefault(PtpConstants.RESPONSE_GENERAL_ERROR to IntArray(0))
+            if (code == PtpConstants.RESPONSE_OK) return
+            delay(waitMs.coerceAtLeast(20))
+        }
+    }
+
+    /**
+     * Extract the JPEG payload from a Nikon GetLiveViewImage response.
+     * The Nikon live-view frame usually carries a small header before the JPEG,
+     * so we first skip the 12-byte PTP data container and look for SOI/EOI.
+     * If no markers are found in the stripped payload, fall back to scanning
+     * the full data buffer to tolerate variable header lengths.
+     */
+    private fun extractNikonLiveViewJpeg(data: ByteArray): ByteArray {
+        val soiMarker = byteArrayOf(0xFF.toByte(), 0xD8.toByte())
+        val eoiMarker = byteArrayOf(0xFF.toByte(), 0xD9.toByte())
+
+        fun extractFrom(buffer: ByteArray): ByteArray? {
+            val soi = indexOfBytes(buffer, soiMarker)
+            if (soi < 0) return null
+            val eoi = indexOfBytes(buffer, eoiMarker)
+            val end = if (eoi >= soi) (eoi + 2).coerceAtMost(buffer.size) else buffer.size
+            return buffer.copyOfRange(soi, end)
+        }
+
+        // Most frames: PTP data container (12 bytes) + Nikon header + JPEG.
+        if (data.size > 12) {
+            val payload = data.copyOfRange(12, data.size)
+            extractFrom(payload)?.let { return it }
+        }
+        // Fallback: scan the whole received buffer.
+        return extractFrom(data) ?: data
+    }
+
+    private fun indexOfBytes(data: ByteArray, pattern: ByteArray): Int {
+        if (pattern.isEmpty() || data.size < pattern.size) return -1
+        for (i in 0..data.size - pattern.size) {
+            var match = true
+            for (j in pattern.indices) {
+                if (data[i + j] != pattern[j]) {
+                    match = false
+                    break
+                }
+            }
+            if (match) return i
+        }
+        return -1
     }
 }

@@ -1,5 +1,6 @@
 package com.phtontools.phtonview.usb.ptp
 
+import com.phtontools.phtonview.util.AppLogger
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -124,24 +125,35 @@ class PtpCommand(
             buffer.order(ByteOrder.LITTLE_ENDIAN)
             try {
                 buffer.getShort() // StandardVersion
-                buffer.getInt() // VendorExtensionID + VendorExtensionVersion
-                buffer.getShort() // VendorExtensionDesc length byte handled below
+                buffer.getInt() // VendorExtensionID
+                buffer.getShort() // VendorExtensionVersion
+                AppLogger.d("decodeDeviceInfoModel after header pos=${buffer.position()}")
                 // Skip vendor extension desc string
                 readPtpString(buffer)
-                val functionalMode = buffer.getShort()
+                AppLogger.d("decodeDeviceInfoModel after ext desc pos=${buffer.position()}")
+                buffer.getShort() // FunctionalMode
                 val operationsCount = buffer.getInt()
+                AppLogger.d("decodeDeviceInfoModel ops=$operationsCount pos=${buffer.position()}")
                 buffer.position(buffer.position() + operationsCount * 2)
                 val eventsCount = buffer.getInt()
+                AppLogger.d("decodeDeviceInfoModel events=$eventsCount pos=${buffer.position()}")
                 buffer.position(buffer.position() + eventsCount * 2)
                 val propertiesCount = buffer.getInt()
+                AppLogger.d("decodeDeviceInfoModel props=$propertiesCount pos=${buffer.position()}")
                 buffer.position(buffer.position() + propertiesCount * 2)
                 val captureFormatsCount = buffer.getInt()
+                AppLogger.d("decodeDeviceInfoModel caps=$captureFormatsCount pos=${buffer.position()}")
                 buffer.position(buffer.position() + captureFormatsCount * 2)
                 val imageFormatsCount = buffer.getInt()
+                AppLogger.d("decodeDeviceInfoModel imgs=$imageFormatsCount pos=${buffer.position()}")
                 buffer.position(buffer.position() + imageFormatsCount * 2)
-                readPtpString(buffer) // Manufacturer
-                return readPtpString(buffer) ?: "Unknown" // Model
+                val manufacturer = readPtpString(buffer)
+                AppLogger.d("decodeDeviceInfoModel manufacturer='$manufacturer' pos=${buffer.position()}")
+                val model = readPtpString(buffer)
+                AppLogger.d("decodeDeviceInfoModel model='$model' pos=${buffer.position()}")
+                return model ?: "Unknown"
             } catch (e: Exception) {
+                AppLogger.e("decodeDeviceInfoModel failed: ${e.message}", e)
                 return "Unknown"
             }
         }
@@ -151,11 +163,13 @@ class PtpCommand(
             val lengthByte = buffer.get().toInt() and 0xFF
             if (lengthByte == 0) return ""
             val charCount = lengthByte - 1
-            if (buffer.remaining() < charCount * 2) return ""
+            // Length byte counts total code units including the null terminator
+            if (buffer.remaining() < lengthByte * 2) return ""
             val chars = CharArray(charCount)
             for (i in 0 until charCount) {
                 chars[i] = buffer.getShort().toChar()
             }
+            buffer.getShort() // consume null terminator
             return String(chars)
         }
     }

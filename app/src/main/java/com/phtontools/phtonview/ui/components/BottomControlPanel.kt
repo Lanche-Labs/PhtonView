@@ -177,9 +177,9 @@ private fun CleanLandscapeControlColumn(
     Column(
         modifier = Modifier
             .fillMaxHeight()
-            .width(96.dp)
+            .width(120.dp)
             .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 6.dp, vertical = 10.dp),
+            .padding(horizontal = 8.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
@@ -466,7 +466,7 @@ private fun LandscapeParamButton(
 ) {
     Column(
         modifier = Modifier
-            .widthIn(min = 56.dp)
+            .widthIn(min = 64.dp)
             .clip(RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
             .padding(vertical = 6.dp),

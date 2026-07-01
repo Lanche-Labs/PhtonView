@@ -88,18 +88,22 @@ fun ParamSelectorSheet(
             when (kind) {
                 ParamKind.ISO -> IsoParamPicker(
                     current = exposure.iso,
+                    onValueChange = onIsoChange,
                     onSelected = { onIsoChange(it); onDismiss() }
                 )
                 ParamKind.SHUTTER -> ShutterParamPicker(
                     current = exposure.shutter,
+                    onValueChange = onShutterChange,
                     onSelected = { onShutterChange(it); onDismiss() }
                 )
                 ParamKind.EV -> EvParamPicker(
                     current = exposure.ev,
+                    onValueChange = onEvChange,
                     onSelected = { onEvChange(it); onDismiss() }
                 )
                 ParamKind.APERTURE -> ApertureParamPicker(
                     current = exposure.aperture,
+                    onValueChange = onApertureChange,
                     onSelected = { onApertureChange(it); onDismiss() }
                 )
             }
@@ -110,7 +114,11 @@ fun ParamSelectorSheet(
 }
 
 @Composable
-private fun IsoParamPicker(current: Int, onSelected: (Int) -> Unit) {
+private fun IsoParamPicker(
+    current: Int,
+    onValueChange: (Int) -> Unit,
+    onSelected: (Int) -> Unit
+) {
     var temp by remember { mutableFloatStateOf(log2(current.toFloat())) }
     var showInput by remember { mutableStateOf(false) }
     val values = listOf(50, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200, 102400)
@@ -122,20 +130,14 @@ private fun IsoParamPicker(current: Int, onSelected: (Int) -> Unit) {
 
     Slider(
         value = temp,
-        onValueChange = { temp = it },
+        onValueChange = {
+            temp = it
+            onValueChange(2f.pow(temp).roundToInt().coerceIn(50, 102400))
+        },
         valueRange = log2(50f)..log2(102400f),
         steps = 0,
         modifier = Modifier.padding(vertical = 4.dp)
     )
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.End
-    ) {
-        TextButton(onClick = { onSelected(2f.pow(temp).roundToInt().coerceIn(50, 102400)) }) {
-            Text(stringResource(id = android.R.string.ok))
-        }
-    }
 
     PresetGrid(values.map { it.toString() }, current.toString()) { onSelected(it.toInt()) }
 
@@ -150,7 +152,11 @@ private fun IsoParamPicker(current: Int, onSelected: (Int) -> Unit) {
 }
 
 @Composable
-private fun ShutterParamPicker(current: String, onSelected: (String) -> Unit) {
+private fun ShutterParamPicker(
+    current: String,
+    onValueChange: (String) -> Unit,
+    onSelected: (String) -> Unit
+) {
     var tempIndex by remember { mutableFloatStateOf(shutterToIndex(current).toFloat()) }
     var showInput by remember { mutableStateOf(false) }
     val values = listOf(
@@ -166,20 +172,14 @@ private fun ShutterParamPicker(current: String, onSelected: (String) -> Unit) {
 
     Slider(
         value = tempIndex,
-        onValueChange = { tempIndex = it },
+        onValueChange = {
+            tempIndex = it
+            onValueChange(values[it.roundToInt().coerceIn(0, values.lastIndex)])
+        },
         valueRange = 0f..(values.size - 1).toFloat(),
         steps = values.size - 2,
         modifier = Modifier.padding(vertical = 4.dp)
     )
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.End
-    ) {
-        TextButton(onClick = { onSelected(values[tempIndex.roundToInt().coerceIn(0, values.lastIndex)]) }) {
-            Text(stringResource(id = android.R.string.ok))
-        }
-    }
 
     PresetGrid(values, current) { onSelected(it) }
 
@@ -194,7 +194,11 @@ private fun ShutterParamPicker(current: String, onSelected: (String) -> Unit) {
 }
 
 @Composable
-private fun ApertureParamPicker(current: String, onSelected: (String) -> Unit) {
+private fun ApertureParamPicker(
+    current: String,
+    onValueChange: (String) -> Unit,
+    onSelected: (String) -> Unit
+) {
     var tempIndex by remember { mutableFloatStateOf(apertureToIndex(current).toFloat()) }
     var showInput by remember { mutableStateOf(false) }
     val values = listOf(
@@ -209,20 +213,14 @@ private fun ApertureParamPicker(current: String, onSelected: (String) -> Unit) {
 
     Slider(
         value = tempIndex,
-        onValueChange = { tempIndex = it },
+        onValueChange = {
+            tempIndex = it
+            onValueChange(values[it.roundToInt().coerceIn(0, values.lastIndex)])
+        },
         valueRange = 0f..(values.size - 1).toFloat(),
         steps = values.size - 2,
         modifier = Modifier.padding(vertical = 4.dp)
     )
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.End
-    ) {
-        TextButton(onClick = { onSelected(values[tempIndex.roundToInt().coerceIn(0, values.lastIndex)]) }) {
-            Text(stringResource(id = android.R.string.ok))
-        }
-    }
 
     PresetGrid(values, current) { onSelected(it) }
 
@@ -237,7 +235,11 @@ private fun ApertureParamPicker(current: String, onSelected: (String) -> Unit) {
 }
 
 @Composable
-private fun EvParamPicker(current: Float, onSelected: (Float) -> Unit) {
+private fun EvParamPicker(
+    current: Float,
+    onValueChange: (Float) -> Unit,
+    onSelected: (Float) -> Unit
+) {
     var temp by remember { mutableFloatStateOf(current) }
     var showInput by remember { mutableStateOf(false) }
     val values = listOf(-3f, -2f, -1f, -0.7f, -0.3f, 0f, 0.3f, 0.7f, 1f, 2f, 3f)
@@ -249,20 +251,14 @@ private fun EvParamPicker(current: Float, onSelected: (Float) -> Unit) {
 
     Slider(
         value = temp,
-        onValueChange = { temp = it },
+        onValueChange = {
+            temp = it
+            onValueChange(it.coerceIn(-3f, 3f))
+        },
         valueRange = -3f..3f,
         steps = 11,
         modifier = Modifier.padding(vertical = 4.dp)
     )
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.End
-    ) {
-        TextButton(onClick = { onSelected(temp.coerceIn(-3f, 3f)) }) {
-            Text(stringResource(id = android.R.string.ok))
-        }
-    }
 
     PresetGrid(values.map { String.format("%+.1f", it) }, String.format("%+.1f", current)) {
         onSelected(it.toFloat())
@@ -414,7 +410,15 @@ private fun shutterToIndex(shutter: String): Int {
         "1/60", "1/30", "1/15", "1/8", "1/4", "1/2", "1s", "2s", "4s",
         "8s", "15s", "30s", "60s", "Bulb"
     )
-    return values.indexOf(shutter).coerceAtLeast(0)
+    val normalized = shutter.trim().replace(" ", "")
+    val exact = values.indexOf(normalized)
+    if (exact >= 0) return exact
+    // Tolerate camera-returned values like "1" for "1s" or "0/10000" forms.
+    return values.indexOfFirst {
+        it.equals(normalized, ignoreCase = true) ||
+                it.trimEnd('s', 'S').equals(normalized, ignoreCase = true) ||
+                normalized.equals(it.trimEnd('s', 'S'), ignoreCase = true)
+    }.coerceAtLeast(0)
 }
 
 private fun apertureToIndex(aperture: String): Int {

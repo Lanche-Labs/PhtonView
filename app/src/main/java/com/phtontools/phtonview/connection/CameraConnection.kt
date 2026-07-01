@@ -45,10 +45,10 @@ interface CameraConnection {
     suspend fun closeSession(): Boolean = false
 
     /**
-     * Send a command with no data phase. Default no-op.
+     * Send a command with no data phase. Returns response code and parameters.
      */
-    suspend fun sendCommand(code: Short, vararg params: Int) {
-        // override per protocol
+    suspend fun sendCommand(code: Short, vararg params: Int): Pair<Short, IntArray> {
+        return Pair(0.toShort(), IntArray(0))
     }
 
     /**
@@ -87,6 +87,11 @@ interface CameraConnection {
      * Set device property value. Default returns false.
      */
     suspend fun setDeviceProperty(code: Short, value: Int): Boolean = false
+
+    /**
+     * Get device property descriptor raw bytes. Default returns empty array.
+     */
+    suspend fun getDevicePropertyDesc(code: Short): ByteArray = ByteArray(0)
 
     /**
      * Get device info string (model / manufacturer). Default returns empty string.

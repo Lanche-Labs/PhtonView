@@ -1,6 +1,7 @@
 package com.phtontools.phtonview.usb.ptp
 
 import com.phtontools.phtonview.data.model.*
+import kotlin.math.roundToInt
 
 /**
  * Maps high-level UI values to standard PTP / MTP device property values.
@@ -15,23 +16,178 @@ object PtpValueMapper {
         return (value * 100).toInt()
     }
 
+    fun ptpToAperture(ptpValue: Int): String {
+        val value = ptpValue / 100f
+        return if (value == value.toInt().toFloat()) "f/${value.toInt()}" else "f/$value"
+    }
+
+    /**
+     * ExposureTime encoding.
+     * For Nikon 0xD100 uses (x<<16)|y; for Nikon 0x500D uses 1/10000-second units
+     * with Bulb/Time special values; otherwise standard PTP 1/10000-second units.
+     */
+    fun shutterToPtp(shutter: String, brand: CameraBrand, propertyCode: Short = PtpConstants.DEVICE_PROP_EXPOSURE_TIME): Int {
+        return if (brand == CameraBrand.Nikon && propertyCode == PtpConstants.DEVICE_PROP_NIKON_EXPOSURE_TIME) {
+            nikonShutterToPtp(shutter)
+        } else if (brand == CameraBrand.Nikon) {
+            nikonStandardShutterToPtp(shutter)
+        } else {
+            shutterToPtp(shutter)
+        }
+    }
+
+    /**
+     * ExposureTime decoding.
+     */
+    fun ptpToShutter(ptpValue: Int, brand: CameraBrand, propertyCode: Short = PtpConstants.DEVICE_PROP_EXPOSURE_TIME): String {
+        return if (brand == CameraBrand.Nikon && propertyCode == PtpConstants.DEVICE_PROP_NIKON_EXPOSURE_TIME) {
+            nikonPtpToShutter(ptpValue)
+        } else if (brand == CameraBrand.Nikon) {
+            nikonStandardPtpToShutter(ptpValue)
+        } else {
+            ptpToShutter(ptpValue)
+        }
+    }
+
+    /**
+     * Standard PTP ExposureTime (0x500D) encoding.
+     * UINT32 value represents exposure time in 1/10000 second units.
+     * Bulb is represented by 0xFFFFFFFF.
+     */
     fun shutterToPtp(shutter: String): Int {
-        // PTP ExposureTime is commonly stored as the denominator of a fraction with numerator 10000.
         val text = shutter.trim()
         return when {
+            text.equals("bulb", ignoreCase = true) -> -1 // encodes to 0xFFFFFFFF
             text.contains('s', ignoreCase = true) -> {
                 val seconds = text.trimEnd('s', 'S').toFloatOrNull() ?: 1f
-                if (seconds >= 1f) (10000f / seconds).toInt() else (10000f * (1f / seconds)).toInt()
+                (seconds * 10000f).toInt()
             }
             text.contains('/') -> {
                 val parts = text.split('/')
                 val num = parts.getOrNull(0)?.toFloatOrNull() ?: 1f
                 val den = parts.getOrNull(1)?.toFloatOrNull() ?: 1f
-                if (den != 0f) (10000f * num / den).toInt() else 10000
+                if (den != 0f) ((num / den) * 10000f).toInt() else 10000
             }
             else -> {
                 val seconds = text.toFloatOrNull() ?: 1f
-                (10000f / seconds).toInt()
+                (seconds * 10000f).toInt()
+            }
+        }
+    }
+
+    /**
+     * Standard PTP ExposureTime decoding.
+     */
+    fun ptpToShutter(ptpValue: Int): String {
+        if (ptpValue == -1 || ptpValue == 0xFFFFFFFF.toInt()) return "Bulb"
+        if (ptpValue <= 0) return "1s"
+        val seconds = ptpValue / 10000f
+        return when {
+            seconds >= 1f -> String.format("%ds", seconds.toInt())
+            else -> {
+                val den = (10000f / ptpValue).roundToInt()
+                when {
+                    den <= 1 -> "1s"
+                    den >= 8000 -> "1/8000"
+                    else -> "1/$den"
+                }
+            }
+        }
+    }
+
+    /**
+     * Nikon-specific ExposureTime (0xD100) encoding.
+     * Nikon stores the value as (numerator << 16) | denominator.
+     *   "1/2"  -> (1 << 16) | 2  = 0x00010002
+     *   "1" / "1s" -> (1 << 16) | 1  = 0x00010001
+     *   "2" / "2s" -> (2 << 16) | 1  = 0x00020001
+     *   "Bulb" -> 0xFFFFFFFF
+     *   "Time" -> 0xFFFFFFFD
+     */
+    fun nikonShutterToPtp(shutter: String): Int {
+        val text = shutter.trim()
+        return when {
+            text.equals("bulb", ignoreCase = true) -> 0xFFFFFFFF.toInt()
+            text.equals("time", ignoreCase = true) -> 0xFFFFFFFD.toInt()
+            text.contains('/') -> {
+                val parts = text.split('/')
+                val x = parts.getOrNull(0)?.toIntOrNull() ?: 1
+                val y = parts.getOrNull(1)?.toIntOrNull() ?: 1
+                (x shl 16) or y
+            }
+            else -> {
+                // Accept both "2s" (UI) and "2" (libgphoto2 style)
+                val seconds = text.trimEnd('s', 'S').toFloatOrNull() ?: 1f
+                val x = seconds.toInt()
+                (x shl 16) or 1
+            }
+        }
+    }
+
+    /**
+     * Nikon-specific ExposureTime decoding.
+     */
+    fun nikonPtpToShutter(ptpValue: Int): String {
+        return when {
+            ptpValue == 0xFFFFFFFF.toInt() -> "Bulb"
+            ptpValue == 0xFFFFFFFD.toInt() -> "Time"
+            ptpValue == 0xFFFFFFFE.toInt() -> "x 200"
+            else -> {
+                val x = ptpValue ushr 16
+                val y = ptpValue and 0xFFFF
+                when (y) {
+                    1 -> "${x}s"
+                    else -> "$x/$y"
+                }
+            }
+        }
+    }
+
+    /**
+     * Nikon standard ExposureTime (0x500D) encoding.
+     * The D5200 and similar bodies expose the regular shutter speed via the
+     * standard PTP property, using 1/10000-second units. Bulb and Time are
+     * represented by the Nikon-specific special values 0xFFFFFFFF and 0xFFFFFFFD.
+     */
+    fun nikonStandardShutterToPtp(shutter: String): Int {
+        val text = shutter.trim()
+        return when {
+            text.equals("bulb", ignoreCase = true) -> 0xFFFFFFFF.toInt()
+            text.equals("time", ignoreCase = true) -> 0xFFFFFFFD.toInt()
+            text.contains('/') -> {
+                val parts = text.split('/')
+                val num = parts.getOrNull(0)?.toFloatOrNull() ?: 1f
+                val den = parts.getOrNull(1)?.toFloatOrNull() ?: 1f
+                if (den != 0f) ((num / den) * 10000f).toInt() else 10000
+            }
+            else -> {
+                val seconds = text.trimEnd('s', 'S').toFloatOrNull() ?: 1f
+                (seconds * 10000f).toInt()
+            }
+        }
+    }
+
+    /**
+     * Nikon standard ExposureTime (0x500D) decoding.
+     */
+    fun nikonStandardPtpToShutter(ptpValue: Int): String {
+        return when {
+            ptpValue == 0xFFFFFFFF.toInt() -> "Bulb"
+            ptpValue == 0xFFFFFFFD.toInt() -> "Time"
+            ptpValue <= 0 -> "1s"
+            else -> {
+                val seconds = ptpValue / 10000f
+                when {
+                    seconds >= 1f -> String.format("%ds", seconds.toInt())
+                    else -> {
+                        val den = (10000f / ptpValue).roundToInt()
+                        when {
+                            den <= 1 -> "1s"
+                            den >= 8000 -> "1/8000"
+                            else -> "1/$den"
+                        }
+                    }
+                }
             }
         }
     }

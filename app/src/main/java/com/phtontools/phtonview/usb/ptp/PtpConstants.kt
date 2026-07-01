@@ -36,7 +36,10 @@ object PtpConstants {
     const val NIKON_OPERATION_GET_LIVEVIEW_IMAGE: Short = 0x9203.toShort()
     const val NIKON_OPERATION_CHANGE_AF_AREA: Short = 0x9205.toShort()
     const val NIKON_OPERATION_AFDRIVE_D850: Short = 0x90C1.toShort()
-    const val NIKON_OPERATION_TERMINATE_CAPTURE: Short = 0x9208.toShort()
+    const val NIKON_OPERATION_CHANGE_CAMERA_MODE: Short = 0x90C2.toShort()
+    const val NIKON_OPERATION_DEVICE_READY: Short = 0x90C8.toShort()
+    const val NIKON_OPERATION_TERMINATE_CAPTURE: Short = 0x920C.toShort()
+    const val NIKON_OPERATION_INITIATE_CAPTURE_REC_IN_MEDIA: Short = 0x9207.toShort()
 
     // 响应码
     const val RESPONSE_OK: Short = 0x2001
@@ -51,13 +54,20 @@ object PtpConstants {
     // 设备属性
     const val DEVICE_PROP_F_NUMBER: Short = 0x5007
     const val DEVICE_PROP_EXPOSURE_TIME: Short = 0x500D
+    const val DEVICE_PROP_EXPOSURE_PROGRAM_MODE: Short = 0x500E
     const val DEVICE_PROP_ISO: Short = 0x500F
     const val DEVICE_PROP_EXPOSURE_COMPENSATION: Short = 0x5010
     const val DEVICE_PROP_FOCUS_MODE: Short = 0x501A
-    const val DEVICE_PROP_METERING_MODE: Short = 0x501B
+    const val DEVICE_PROP_METERING_MODE: Short = 0x500B // PTP_DPC_ExposureMeteringMode, was wrong 0x501B
     const val DEVICE_PROP_FLASH_MODE: Short = 0x501C
     const val DEVICE_PROP_WHITE_BALANCE: Short = 0x5005
     const val DEVICE_PROP_BATTERY_LEVEL: Short = 0x5001
+
+    // Nikon vendor-specific device properties
+    const val DEVICE_PROP_NIKON_EXPOSURE_TIME: Short = 0xD100.toShort() // Shutter Speed (Nikon-specific)
+    const val DEVICE_PROP_NIKON_LIVE_VIEW_STATUS: Short = 0xD1A2.toShort()
+    const val DEVICE_PROP_NIKON_LIVE_VIEW_PROHIBIT_CONDITION: Short = 0xD1A4.toShort()
+    const val DEVICE_PROP_NIKON_RECORDING_MEDIA: Short = 0xD10B.toShort()
 
     // 对象格式
     const val OBJECT_FORMAT_ASSOCIATION: Short = 0x3001
