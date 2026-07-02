@@ -112,7 +112,7 @@ fun UnifiedSwitchRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .clickable { onCheckedChange(!checked) }
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {

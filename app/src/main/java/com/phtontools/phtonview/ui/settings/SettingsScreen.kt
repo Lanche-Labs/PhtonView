@@ -644,8 +644,7 @@ private fun SettingsSwitchItem(
         summary = summary,
         checked = checked,
         onCheckedChange = onCheckedChange,
-        icon = icon,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+        icon = icon
     )
     HorizontalDivider(modifier = Modifier.padding(start = 56.dp))
 }
