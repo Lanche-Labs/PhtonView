@@ -19,14 +19,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -98,6 +95,8 @@ fun CameraSettingsPanel(
     onTimerChange: (TimerSettings) -> Unit,
     onIntervalometerChange: (IntervalometerSettings) -> Unit,
     onAebChange: (AebSettings) -> Unit,
+    onBurstCountChange: (Int) -> Unit,
+    onBurstSpeedChange: (BurstSpeed) -> Unit,
     onResetToDefaults: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -284,6 +283,24 @@ fun CameraSettingsPanel(
                         onTimer = onTimer,
                         onIntervalometer = onIntervalometer,
                         onAeb = onAeb
+                    )
+                }
+                SectionItem {
+                    SectionLabel(text = stringResource(id = R.string.burst_speed))
+                    HorizontalEnumSelector(
+                        values = BurstSpeed.entries,
+                        selected = settings.burstSpeed,
+                        label = { it.displayName() },
+                        onSelected = onBurstSpeedChange
+                    )
+                }
+                SectionItem {
+                    SliderWithLabel(
+                        label = stringResource(id = R.string.burst_count) + ": ${settings.burstCount}",
+                        value = settings.burstCount.toFloat(),
+                        onValueChange = { onBurstCountChange(it.toInt()) },
+                        valueRange = 2f..50f,
+                        steps = 48
                     )
                 }
                 SectionItem {
@@ -547,25 +564,11 @@ private fun ToggleRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange
-        )
-    }
+    UnifiedSwitchRow(
+        label = label,
+        checked = checked,
+        onCheckedChange = onCheckedChange
+    )
 }
 
 @Composable
@@ -574,34 +577,12 @@ private fun SelectableChip(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    val padding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
-    val modifier = Modifier.widthIn(min = 72.dp)
-    if (selected) {
-        Button(
-            onClick = onClick,
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-            contentPadding = padding,
-            modifier = modifier
-        ) {
-            Text(
-                text = label,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    } else {
-        OutlinedButton(
-            onClick = onClick,
-            contentPadding = padding,
-            modifier = modifier
-        ) {
-            Text(
-                text = label,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
+    UnifiedChip(
+        label = label,
+        selected = selected,
+        onClick = onClick,
+        modifier = Modifier.widthIn(min = 72.dp)
+    )
 }
 
 // 显示名称：优先使用字符串资源，避免直接显示枚举名
@@ -700,3 +681,11 @@ private fun ShootingPreset.displayName(): String = stringResource(
         ShootingPreset.User2 -> R.string.preset_user2
     }
 )
+
+@Composable
+private fun BurstSpeed.displayName(): String = when (this) {
+    BurstSpeed.Low -> "1 fps"
+    BurstSpeed.Medium -> "3 fps"
+    BurstSpeed.High -> "5 fps"
+    BurstSpeed.Max -> "8 fps"
+}

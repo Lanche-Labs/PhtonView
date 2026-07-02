@@ -9,21 +9,13 @@ object Gphoto2Bridge {
 
 
 
-    private fun loadNativeLibraries() {
-        val libs = arrayOf("ltdl", "usb-1.0", "usb-0.1", "gphoto2_port", "gphoto2", "phtonview")
-        for (lib in libs) {
-            try {
-                System.loadLibrary(lib)
-                AppLogger.d("Loaded native library: $lib")
-            } catch (e: UnsatisfiedLinkError) {
-                AppLogger.e("Failed to load native library: $lib", e)
-            }
-        }
+    private fun loadNativeLibraries(context: Context) {
+        NativeLibraryLoader.load(context)
     }
 
     fun init(context: Context): Boolean {
         AppLogger.d("GPhoto2Bridge.init()")
-        loadNativeLibraries()
+        loadNativeLibraries(context)
         return try {
             val base = File(context.filesDir, "gphoto2/modules")
             modulesBasePath = base.absolutePath

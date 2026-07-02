@@ -32,9 +32,23 @@ class SettingsManager @Inject constructor(
     private val _uiModeFlow = MutableStateFlow(uiMode)
     val uiModeFlow: StateFlow<UiMode> = _uiModeFlow
 
+    private val _uxImprovementFlow = MutableStateFlow(uxImprovementEnabled)
+    val uxImprovementFlow: StateFlow<Boolean> = _uxImprovementFlow
+
     var isFirstLaunch: Boolean
         get() = prefs.getBoolean(KEY_FIRST_LAUNCH, true)
         set(value) = prefs.edit().putBoolean(KEY_FIRST_LAUNCH, value).apply()
+
+    var uxImprovementConsentShown: Boolean
+        get() = prefs.getBoolean(KEY_UX_IMPROVEMENT_CONSENT_SHOWN, false)
+        set(value) = prefs.edit().putBoolean(KEY_UX_IMPROVEMENT_CONSENT_SHOWN, value).apply()
+
+    var uxImprovementEnabled: Boolean
+        get() = prefs.getBoolean(KEY_UX_IMPROVEMENT_ENABLED, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_UX_IMPROVEMENT_ENABLED, value).apply()
+            _uxImprovementFlow.value = value
+        }
 
     var themeMode: ThemeMode
         get() = ThemeMode.fromOrdinal(prefs.getInt(KEY_THEME_MODE, ThemeMode.DARK.ordinal))
@@ -95,6 +109,8 @@ class SettingsManager @Inject constructor(
         internal const val KEY_CONNECTION_TYPE = "connection_type"
         internal const val KEY_WIFI_EXPERIMENTAL = "wifi_experimental"
         internal const val KEY_UI_MODE = "ui_mode"
+        internal const val KEY_UX_IMPROVEMENT_ENABLED = "ux_improvement_enabled"
+        internal const val KEY_UX_IMPROVEMENT_CONSENT_SHOWN = "ux_improvement_consent_shown"
     }
 }
 

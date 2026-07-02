@@ -87,6 +87,9 @@ class CameraViewModel @Inject constructor(
     val liveViewEnabled: StateFlow<Boolean> = repository.liveViewEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    val burstRunning: StateFlow<Boolean> = repository.burstRunning
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     val photos: StateFlow<List<PhotoItem>> = repository.photos
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -166,6 +169,9 @@ class CameraViewModel @Inject constructor(
     fun listPhotos(folder: String = "/store_00010001") = viewModelScope.launch { repository.listPhotos(folder) }
     fun downloadPhoto(photo: PhotoItem, destinationPath: String, renamePattern: String? = null) =
         viewModelScope.launch { repository.downloadPhoto(photo, destinationPath, renamePattern) }
+
+    suspend fun downloadPhotoAwait(photo: PhotoItem, destinationPath: String, renamePattern: String? = null): Boolean =
+        repository.downloadPhoto(photo, destinationPath, renamePattern)
     fun deletePhoto(photo: PhotoItem) = viewModelScope.launch { repository.deletePhoto(photo) }
     fun formatStorage(target: StorageTarget) = viewModelScope.launch { repository.formatStorage(target) }
     fun getPhotoExif(photo: PhotoItem) = viewModelScope.launch { repository.getPhotoExif(photo) }

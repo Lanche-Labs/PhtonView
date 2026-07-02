@@ -18,10 +18,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -46,6 +48,7 @@ import com.phtontools.phtonview.ui.settings.SettingsScreen
 import com.phtontools.phtonview.ui.splash.SplashScreen
 import com.phtontools.phtonview.ui.theme.PhtonViewTheme
 import com.phtontools.phtonview.util.AppLogger
+import com.phtontools.phtonview.util.UxImprovementManager
 import dagger.hilt.android.AndroidEntryPoint
 import java.util.Locale
 import javax.inject.Inject
@@ -151,6 +154,10 @@ private fun PhtonViewApp(
                         settingsManager.isFirstLaunch = false
                         showOnboarding = false
                         isPreparingMain = true
+                    },
+                    onUxConsentDecision = { enabled ->
+                        UxImprovementManager.setEnabled(enabled)
+                        UxImprovementManager.markConsentShown()
                     }
                 )
             }

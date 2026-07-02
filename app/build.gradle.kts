@@ -48,6 +48,10 @@ android {
         resValue("string", "developer_team", "LCStudio")
         buildConfigField("String", "DEVELOPER_TEAM", "\"LCStudio\"")
 
+        // 用户体验改进计划：在 local.properties 中配置 GITHUB_TOKEN 以启用自动提交 Issue
+        val githubToken = project.findProperty("GITHUB_TOKEN") as? String ?: ""
+        buildConfigField("String", "GITHUB_TOKEN", "\"$githubToken\"")
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
@@ -90,7 +94,9 @@ android {
             )
         }
         debug {
-            signingConfig = signingConfigs.getByName("release")
+            // Debug 构建使用默认的 debug 签名，避免本地缺少 release keystore 时无法编译。
+            // Release 构建仍需使用项目 release 签名配置。
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
@@ -139,6 +145,42 @@ tasks.register("incrementVersion") {
 
 tasks.named("preBuild") {
     dependsOn("incrementVersion")
+}
+
+// 将 LICENSE / COPYING 复制到 assets/licenses，供应用内许可证页面读取
+val copyLicenseAssets by tasks.registering(Copy::class) {
+    from(rootProject.file("LICENSE"))
+    from(rootProject.file("COPYING"))
+    into(layout.buildDirectory.dir("generated/assets/licenses"))
+}
+
+android.sourceSets["main"].assets.srcDirs(
+    file("src/main/assets"),
+    copyLicenseAssets.map { it.destinationDir }
+)
+
+tasks.whenTaskAdded {
+    if (name.startsWith("merge") && name.endsWith("Assets")) {
+        dependsOn(copyLicenseAssets)
+    }
+}
+
+// 打包编译时使用的源码，Release 构建默认附带
+val packageSource by tasks.registering(Zip::class) {
+    group = "build"
+    description = "Packages the source code used to build this release."
+    archiveFileName.set("app-source.zip")
+    destinationDirectory.set(layout.buildDirectory.dir("outputs/source"))
+    from(rootProject.projectDir) {
+        exclude("**/build/**", "**/.git/**", "**/.gradle/**", "**/*.apk", "**/*.jks", "**/local.properties", "**/*.log")
+        exclude("app/gphoto2/prebuilt/**")
+    }
+}
+
+tasks.whenTaskAdded {
+    if (name == "assembleRelease") {
+        dependsOn(packageSource)
+    }
 }
 
 dependencies {

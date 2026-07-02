@@ -322,15 +322,10 @@ class UsbCameraConnection @Inject constructor(
 
     override fun disconnect() {
         AppLogger.d("disconnect() called")
-        if (sessionOpen) {
-            runBlocking { closeSession() }
-        }
-        connection?.let {
-            try {
-                cameraDevice?.getInterface(0)?.let { iface -> it.releaseInterface(iface) }
-                it.close()
-            } catch (_: Exception) { }
-        }
+        val wasSessionOpen = sessionOpen
+        val conn = connection
+        val iface = cameraDevice?.getInterface(0)
+
         connection = null
         cameraDevice = null
         bulkInEndpoint = null
@@ -339,6 +334,19 @@ class UsbCameraConnection @Inject constructor(
         _connectionState.value = CameraConnection.ConnectionState.Disconnected
         _permissionState.value = false
         _detectedDevice.value = null
+
+        // 在独立协程中完成关闭会话与释放 USB，避免在主线程/BroadcastReceiver 中阻塞。
+        scope.launch {
+            if (wasSessionOpen) {
+                runCatching { closeSession() }
+            }
+            conn?.let {
+                try {
+                    iface?.let { i -> it.releaseInterface(i) }
+                    it.close()
+                } catch (_: Exception) { }
+            }
+        }
     }
 
     override suspend fun openSession(sessionId: Int): Boolean {
@@ -367,7 +375,15 @@ class UsbCameraConnection @Inject constructor(
     }
 
     override suspend fun sendCommandWithData(code: Short, vararg params: Int): ByteArray {
-        return sendCommandWithDataInternal(PtpCommand(code, nextTransactionId(), params))
+        return sendCommandWithDataInternal(PtpCommand(code, nextTransactionId(), params), PtpConstants.DEFAULT_TIMEOUT_MS)
+    }
+
+    /**
+     * Send a command and read the data phase with a custom timeout.
+     * Used by live view to avoid long stalls when the loop is cancelled.
+     */
+    suspend fun sendCommandWithData(code: Short, timeoutMs: Int, vararg params: Int): ByteArray {
+        return sendCommandWithDataInternal(PtpCommand(code, nextTransactionId(), params), timeoutMs)
     }
 
     override fun nextTransactionId(): Int = transactionId++
@@ -402,7 +418,7 @@ class UsbCameraConnection @Inject constructor(
         responseCode to responseParams
     }
 
-    private suspend fun sendCommandWithDataInternal(command: PtpCommand): ByteArray = withContext(Dispatchers.IO) {
+    private suspend fun sendCommandWithDataInternal(command: PtpCommand, timeoutMs: Int = PtpConstants.DEFAULT_TIMEOUT_MS): ByteArray = withContext(Dispatchers.IO) {
         val conn = connection ?: throw IllegalStateException("USB not connected")
         val outEp = bulkOutEndpoint ?: throw IllegalStateException("Output endpoint not found")
         val inEp = bulkInEndpoint ?: throw IllegalStateException("Input endpoint not found")
@@ -412,14 +428,14 @@ class UsbCameraConnection @Inject constructor(
         // #region debug-point B:ptp-data-command
         AppLogger.report("B", "UsbCameraConnection.kt:sendCommandWithDataInternal", "PTP data command", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "tid" to command.transactionId.toString(), "params" to command.parameters.joinToString()))
         // #endregion
-        val written = conn.bulkTransfer(outEp, commandBytes, commandBytes.size, PtpConstants.DEFAULT_TIMEOUT_MS)
+        val written = conn.bulkTransfer(outEp, commandBytes, commandBytes.size, timeoutMs)
         AppLogger.d("bulkTransfer OUT returned: $written")
 
         val result = mutableListOf<Byte>()
         var responseCode: Short = -1
         while (true) {
             val buffer = ByteArray(4096)
-            val length = conn.bulkTransfer(inEp, buffer, buffer.size, PtpConstants.DEFAULT_TIMEOUT_MS)
+            val length = conn.bulkTransfer(inEp, buffer, buffer.size, timeoutMs)
             AppLogger.d("bulkTransfer IN chunk returned: $length")
             if (length <= 0) break
             AppLogger.logUsb("IN", buffer, length)
@@ -486,7 +502,42 @@ class UsbCameraConnection @Inject constructor(
     }
 
     override suspend fun setDeviceProperty(code: Short, value: Int): Boolean {
-        return setDevicePropertyValue(code, encodeInt32(value))
+        return setDevicePropertyValue(code, encodePropertyValue(code, value))
+    }
+
+    /**
+     * Encode a PTP device property value with the correct byte width.
+     * Sending the wrong size (e.g. 4 bytes for a UINT16 property) causes
+     * many cameras to misinterpret ISO / F-number / EV values.
+     */
+    private fun encodePropertyValue(code: Short, value: Int): ByteArray {
+        val width = when (code.toInt() and 0xFFFF) {
+            0x5001 -> 1 // BatteryLevel UINT8
+            0x5005 -> 2 // WhiteBalance UINT16
+            0x5007 -> 2 // FNumber UINT16
+            0x500B -> 2 // ExposureMeteringMode UINT16
+            0x500D -> 4 // ExposureTime UINT32
+            0x500E -> 2 // ExposureProgramMode UINT16
+            0x500F -> 2 // ISO UINT16
+            0x5010 -> 2 // ExposureCompensation INT16
+            0x501A -> 2 // FocusMode UINT16
+            0x501C -> 2 // FlashMode UINT16
+            0xD100 -> 4 // Nikon ShutterSpeed UINT32
+            0xD10B -> 1 // Nikon RecordingMedia UINT8
+            0xD124 -> 2 // Nikon FlashCompensation INT16
+            0xD138 -> 2 // Nikon ShootingMode UINT16
+            0xD1A2 -> 1 // Nikon LiveViewStatus UINT8
+            0xD1A4 -> 4 // Nikon LiveViewProhibitCondition UINT32
+            0xD400 -> 4 // Nikon ShotsRemaining UINT32
+            else -> 4
+        }
+        val bb = ByteBuffer.allocate(width).order(ByteOrder.LITTLE_ENDIAN)
+        when (width) {
+            1 -> bb.put(value.toByte())
+            2 -> bb.putShort(value.toShort())
+            4 -> bb.putInt(value)
+        }
+        return bb.array()
     }
 
     override suspend fun getDevicePropertyDesc(code: Short): ByteArray {
@@ -501,7 +552,7 @@ class UsbCameraConnection @Inject constructor(
         }
     }
 
-    suspend fun setDevicePropertyValue(code: Short, data: ByteArray): Boolean {
+    override suspend fun setDevicePropertyValue(code: Short, data: ByteArray): Boolean {
         // #region debug-point C:property-set
         AppLogger.report("C", "UsbCameraConnection.kt:setDevicePropertyValue", "Setting property", mapOf("code" to String.format(Locale.US, "0x%04X", code), "hex" to data.joinToString(" ") { String.format(Locale.US, "%02X", it) }))
         // #endregion
@@ -569,9 +620,18 @@ class UsbCameraConnection @Inject constructor(
 
         val items = mutableListOf<PhotoItem>()
         for (storageId in storageIds) {
-            val handles = getObjectHandles(storageId, PtpConstants.OBJECT_FORMAT_JPEG.toInt(), 0)
+            val handles = runCatching {
+                // 部分相机不支持 parent = 0xFFFFFFFF，递归失败时回退到根目录遍历。
+                getObjectHandles(storageId, 0, 0xFFFFFFFF.toInt()).toList().takeIf { it.isNotEmpty() }
+                    ?: enumerateObjectsRecursive(storageId, parent = 0)
+            }.getOrDefault(emptyList())
+
             for (handle in handles) {
-                val info = getObjectInfo(handle) ?: continue
+                val info = runCatching { getObjectInfo(handle) }.getOrNull() ?: continue
+                // 跳过文件夹/关联对象和无名文件
+                if (info.objectFormat == PtpConstants.OBJECT_FORMAT_ASSOCIATION || info.filename.isBlank()) continue
+                // 只保留图片/视频格式
+                if (!isImageOrVideoFormat(info.objectFormat)) continue
                 items.add(
                     PhotoItem(
                         id = handle.toString(),
@@ -585,7 +645,34 @@ class UsbCameraConnection @Inject constructor(
                 )
             }
         }
+        // 新照片 handle 通常更大，按无符号长整型降序排在前面
+        items.sortByDescending { unsignedInt(it.id.toIntOrNull() ?: 0) }
         return items
+    }
+
+    /**
+     * 递归枚举指定存储下的所有对象句柄。
+     */
+    private suspend fun enumerateObjectsRecursive(storageId: Int, parent: Int): List<Int> {
+        val result = mutableListOf<Int>()
+        val handles = runCatching { getObjectHandles(storageId, 0, parent) }.getOrDefault(IntArray(0))
+        for (handle in handles) {
+            val info = runCatching { getObjectInfo(handle) }.getOrNull() ?: continue
+            if (info.objectFormat == PtpConstants.OBJECT_FORMAT_ASSOCIATION) {
+                result.addAll(enumerateObjectsRecursive(storageId, handle))
+            } else {
+                result.add(handle)
+            }
+        }
+        return result
+    }
+
+    private fun unsignedInt(value: Int): Long = value.toLong() and 0xFFFFFFFFL
+
+    private fun isImageOrVideoFormat(format: Short): Boolean {
+        val code = format.toInt() and 0xFFFF
+        // PTP 图像格式范围 0x3800-0x38FF，视频格式范围 0x3800-0x38FF 也包含在内
+        return code in 0x3800..0x38FF
     }
 
     private suspend fun getStorageIds(): IntArray {
@@ -612,8 +699,11 @@ class UsbCameraConnection @Inject constructor(
     override suspend fun downloadPhoto(handle: Int): ByteArray? {
         if (!ensureSession()) return null
         return try {
-            val data = sendCommandWithDataInternal(
-                PtpCommand(PtpConstants.OPERATION_GET_OBJECT, nextTransactionId(), intArrayOf(handle))
+            // 照片可能较大，放宽读取超时到 30 秒
+            val data = sendCommandWithData(
+                PtpConstants.OPERATION_GET_OBJECT,
+                timeoutMs = 30000,
+                params = intArrayOf(handle)
             )
             PtpCommand.decodeDataPayload(data).takeIf { it.isNotEmpty() }
         } catch (e: Exception) {

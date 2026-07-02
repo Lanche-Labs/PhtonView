@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -258,6 +260,8 @@ fun ProBottomControlPanel(
     histogramType: HistogramType,
     zebraPattern: ZebraPattern,
     liveViewEnabled: Boolean,
+    burstRunning: Boolean,
+    bulbEnabled: Boolean,
     onSelectParam: (ParamKind) -> Unit,
     onCapture: () -> Unit,
     onOpenGallery: () -> Unit = {},
@@ -289,6 +293,8 @@ fun ProBottomControlPanel(
                 histogramType = histogramType,
                 zebraPattern = zebraPattern,
                 liveViewEnabled = liveViewEnabled,
+                burstRunning = burstRunning,
+                bulbEnabled = bulbEnabled,
                 onTogglePeaking = onTogglePeaking,
                 onToggleGrid = onToggleGrid,
                 onToggleHistogram = onToggleHistogram,
@@ -308,6 +314,8 @@ fun ProBottomControlPanel(
                 histogramType = histogramType,
                 zebraPattern = zebraPattern,
                 liveViewEnabled = liveViewEnabled,
+                burstRunning = burstRunning,
+                bulbEnabled = bulbEnabled,
                 onTogglePeaking = onTogglePeaking,
                 onToggleGrid = onToggleGrid,
                 onToggleHistogram = onToggleHistogram,
@@ -335,6 +343,8 @@ private fun ProToolRow(
     histogramType: HistogramType,
     zebraPattern: ZebraPattern,
     liveViewEnabled: Boolean,
+    burstRunning: Boolean,
+    bulbEnabled: Boolean,
     onTogglePeaking: () -> Unit,
     onToggleGrid: () -> Unit,
     onToggleHistogram: () -> Unit,
@@ -344,13 +354,13 @@ private fun ProToolRow(
     onBulb: () -> Unit
 ) {
     val tools = listOf(
-        ToolItem("峰值", peakingEnabled, onTogglePeaking),
-        ToolItem("网格", gridType != GridType.None, onToggleGrid),
-        ToolItem("直方", histogramType != HistogramType.None, onToggleHistogram),
-        ToolItem("斑马", zebraPattern != ZebraPattern.None, onToggleZebra),
-        ToolItem("取景", liveViewEnabled, onToggleLiveView),
-        ToolItem("连拍", false, onBurst),
-        ToolItem("B门", false, onBulb)
+        ToolItem(stringResource(id = R.string.focus_peaking), peakingEnabled, onTogglePeaking),
+        ToolItem(stringResource(id = R.string.grid), gridType != GridType.None, onToggleGrid),
+        ToolItem(stringResource(id = R.string.histogram), histogramType != HistogramType.None, onToggleHistogram),
+        ToolItem(stringResource(id = R.string.zebra), zebraPattern != ZebraPattern.None, onToggleZebra),
+        ToolItem(stringResource(id = R.string.live_view), liveViewEnabled, onToggleLiveView),
+        ToolItem(stringResource(id = R.string.burst), burstRunning, onBurst),
+        ToolItem(stringResource(id = R.string.bulb), bulbEnabled, onBulb)
     )
 
     androidx.compose.foundation.lazy.LazyRow(
@@ -371,6 +381,8 @@ private fun ProToolColumn(
     histogramType: HistogramType,
     zebraPattern: ZebraPattern,
     liveViewEnabled: Boolean,
+    burstRunning: Boolean,
+    bulbEnabled: Boolean,
     onTogglePeaking: () -> Unit,
     onToggleGrid: () -> Unit,
     onToggleHistogram: () -> Unit,
@@ -380,13 +392,13 @@ private fun ProToolColumn(
     onBulb: () -> Unit
 ) {
     val tools = listOf(
-        ToolItem("峰值", peakingEnabled, onTogglePeaking),
-        ToolItem("网格", gridType != GridType.None, onToggleGrid),
-        ToolItem("直方", histogramType != HistogramType.None, onToggleHistogram),
-        ToolItem("斑马", zebraPattern != ZebraPattern.None, onToggleZebra),
-        ToolItem("取景", liveViewEnabled, onToggleLiveView),
-        ToolItem("连拍", false, onBurst),
-        ToolItem("B门", false, onBulb)
+        ToolItem(stringResource(id = R.string.focus_peaking), peakingEnabled, onTogglePeaking),
+        ToolItem(stringResource(id = R.string.grid), gridType != GridType.None, onToggleGrid),
+        ToolItem(stringResource(id = R.string.histogram), histogramType != HistogramType.None, onToggleHistogram),
+        ToolItem(stringResource(id = R.string.zebra), zebraPattern != ZebraPattern.None, onToggleZebra),
+        ToolItem(stringResource(id = R.string.live_view), liveViewEnabled, onToggleLiveView),
+        ToolItem(stringResource(id = R.string.burst), burstRunning, onBurst),
+        ToolItem(stringResource(id = R.string.bulb), bulbEnabled, onBulb)
     )
 
     Column(
@@ -406,26 +418,12 @@ private data class ToolItem(val label: String, val selected: Boolean, val onClic
 
 @Composable
 private fun ProToolChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    val bg = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)
-    val content = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-    Box(
-        modifier = Modifier
-            .widthIn(min = 42.dp)
-            .height(32.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(bg)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label,
-            color = content,
-            fontSize = 11.sp,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            maxLines = 1
-        )
-    }
+    UnifiedChip(
+        label = label,
+        selected = selected,
+        onClick = onClick,
+        modifier = Modifier.heightIn(min = 32.dp)
+    )
 }
 
 @Composable
@@ -547,18 +545,12 @@ private fun MeteringButton(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    val bg = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)
-    val content = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-
-    Box(
-        modifier = Modifier
-            .size(42.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(bg)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
+    UnifiedChip(
+        selected = selected,
+        onClick = onClick,
+        modifier = Modifier.size(42.dp)
     ) {
-        MeteringIcon(mode = mode, color = content)
+        MeteringIcon(mode = mode, color = LocalContentColor.current)
     }
 }
 

@@ -23,12 +23,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Policy
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Button
@@ -39,7 +42,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -69,12 +71,17 @@ import com.phtontools.phtonview.data.model.CameraSettings
 import com.phtontools.phtonview.data.model.ConnectionState
 import com.phtontools.phtonview.data.model.ConnectionType
 import com.phtontools.phtonview.ui.CameraViewModel
+import com.phtontools.phtonview.ui.components.UnifiedChip
+import com.phtontools.phtonview.ui.components.UnifiedSettingsHeader
+import com.phtontools.phtonview.ui.components.UnifiedSettingsItem
+import com.phtontools.phtonview.ui.components.UnifiedSwitchRow
 import com.phtontools.phtonview.util.AppLogger
 import com.phtontools.phtonview.util.UpdateChecker
+import com.phtontools.phtonview.util.UxImprovementManager
 import kotlinx.coroutines.launch
 
 private enum class SettingsPage {
-    Main, Theme, Language, UiMode, Credits, Update
+    Main, Theme, Language, UiMode, Credits, Update, Privacy, License
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -97,6 +104,7 @@ fun SettingsScreen(
     var currentUiMode by remember { mutableStateOf(settingsManager.uiMode) }
     var debugMode by remember { mutableStateOf(settingsManager.debugMode) }
     var wifiExperimental by remember { mutableStateOf(settingsManager.wifiExperimental) }
+    var uxImprovement by remember { mutableStateOf(settingsManager.uxImprovementEnabled) }
     var pendingRelease by remember { mutableStateOf<UpdateChecker.ReleaseInfo?>(null) }
 
     val checkUpdate: () -> Unit = {
@@ -128,6 +136,8 @@ fun SettingsScreen(
         SettingsPage.UiMode -> stringResource(id = R.string.select_ui_mode)
         SettingsPage.Credits -> stringResource(id = R.string.credits)
         SettingsPage.Update -> stringResource(id = R.string.check_update)
+        SettingsPage.Privacy -> stringResource(id = R.string.privacy_policy)
+        SettingsPage.License -> stringResource(id = R.string.license)
     }
     Scaffold(
         topBar = {
@@ -183,6 +193,7 @@ fun SettingsScreen(
                     currentUiMode = currentUiMode,
                     wifiExperimental = wifiExperimental,
                     debugMode = debugMode,
+                    uxImprovement = uxImprovement,
                     connectionState = connectionState,
                     cameraSettings = cameraSettings,
                     detectedUsb = detectedUsb,
@@ -190,6 +201,8 @@ fun SettingsScreen(
                     onLanguageClick = { currentPage = SettingsPage.Language },
                     onUiModeClick = { currentPage = SettingsPage.UiMode },
                     onCreditsClick = { currentPage = SettingsPage.Credits },
+                    onPrivacyClick = { currentPage = SettingsPage.Privacy },
+                    onLicenseClick = { currentPage = SettingsPage.License },
                     onCheckUpdate = checkUpdate,
                     onConnectionTypeChange = {
                         viewModel.setConnectionType(it)
@@ -210,6 +223,10 @@ fun SettingsScreen(
                         debugMode = it
                         settingsManager.debugMode = it
                         AppLogger.debugEnabled = it
+                    },
+                    onUxImprovementChange = {
+                        uxImprovement = it
+                        UxImprovementManager.setEnabled(it)
                     }
                 )
 
@@ -259,6 +276,14 @@ fun SettingsScreen(
                         }
                     }
                 )
+
+                SettingsPage.Privacy -> PrivacyPolicyPage(
+                    modifier = Modifier.padding(padding)
+                )
+
+                SettingsPage.License -> LicensePage(
+                    modifier = Modifier.padding(padding)
+                )
             }
         }
     }
@@ -272,6 +297,7 @@ private fun MainSettingsContent(
     currentUiMode: UiMode,
     wifiExperimental: Boolean,
     debugMode: Boolean,
+    uxImprovement: Boolean,
     connectionState: ConnectionState,
     cameraSettings: CameraSettings,
     detectedUsb: String?,
@@ -279,13 +305,16 @@ private fun MainSettingsContent(
     onLanguageClick: () -> Unit,
     onUiModeClick: () -> Unit,
     onCreditsClick: () -> Unit,
+    onPrivacyClick: () -> Unit,
+    onLicenseClick: () -> Unit,
     onCheckUpdate: () -> Unit,
     onConnectionTypeChange: (ConnectionType) -> Unit,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
     onPairWifi: (String) -> Unit,
     onWifiExperimentalChange: (Boolean) -> Unit,
-    onDebugModeChange: (Boolean) -> Unit
+    onDebugModeChange: (Boolean) -> Unit,
+    onUxImprovementChange: (Boolean) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -340,6 +369,13 @@ private fun MainSettingsContent(
             checked = debugMode,
             onCheckedChange = onDebugModeChange
         )
+        SettingsSwitchItem(
+            icon = Icons.Default.Analytics,
+            title = stringResource(id = R.string.ux_improvement_title),
+            summary = stringResource(id = R.string.ux_improvement_summary),
+            checked = uxImprovement,
+            onCheckedChange = onUxImprovementChange
+        )
         SettingsItem(
             icon = Icons.Default.Update,
             title = stringResource(id = R.string.check_update),
@@ -360,6 +396,18 @@ private fun MainSettingsContent(
             title = stringResource(id = R.string.credits),
             summary = "",
             onClick = onCreditsClick
+        )
+        SettingsItem(
+            icon = Icons.Default.Policy,
+            title = stringResource(id = R.string.privacy_policy),
+            summary = stringResource(id = R.string.privacy_policy_summary),
+            onClick = onPrivacyClick
+        )
+        SettingsItem(
+            icon = Icons.Default.Description,
+            title = stringResource(id = R.string.license),
+            summary = stringResource(id = R.string.license_summary),
+            onClick = onLicenseClick
         )
     }
 }
@@ -565,12 +613,7 @@ private fun UpdatePage(
 
 @Composable
 private fun SettingsHeader(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
-    )
+    UnifiedSettingsHeader(title = title)
 }
 
 @Composable
@@ -580,28 +623,12 @@ private fun SettingsItem(
     summary: String,
     onClick: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-        )
-        Column(modifier = Modifier.padding(start = 16.dp)) {
-            Text(text = title, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                text = summary,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-            )
-        }
-    }
-    HorizontalDivider(modifier = Modifier.padding(start = 56.dp))
+    UnifiedSettingsItem(
+        icon = icon,
+        title = title,
+        summary = summary,
+        onClick = onClick
+    )
 }
 
 @Composable
@@ -612,35 +639,14 @@ private fun SettingsSwitchItem(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) }
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-        )
-        Column(
-            modifier = Modifier
-                .padding(start = 16.dp)
-                .weight(1f)
-        ) {
-            Text(text = title, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                text = summary,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-            )
-        }
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange
-        )
-    }
+    UnifiedSwitchRow(
+        label = title,
+        summary = summary,
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        icon = icon,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+    )
     HorizontalDivider(modifier = Modifier.padding(start = 56.dp))
 }
 
@@ -813,23 +819,10 @@ private fun ConnectionChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val bg = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)
-    val content = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-
-    Row(
+    UnifiedChip(
+        label = label,
+        selected = selected,
+        onClick = onClick,
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(bg)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            color = content,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
-        )
-    }
+    )
 }

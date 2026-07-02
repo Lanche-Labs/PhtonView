@@ -14,6 +14,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material3.Button
@@ -47,9 +48,10 @@ fun OnboardingScreen(
     initialUiMode: UiMode,
     onThemeSelected: (ThemeMode) -> Unit,
     onUiModeSelected: (UiMode) -> Unit,
-    onFinished: () -> Unit
+    onFinished: () -> Unit,
+    onUxConsentDecision: (Boolean) -> Unit
 ) {
-    val pagerState = rememberPagerState(pageCount = { 4 })
+    val pagerState = rememberPagerState(pageCount = { 5 })
     val scope = rememberCoroutineScope()
 
     var selectedTheme by remember { mutableStateOf(initialThemeMode) }
@@ -82,10 +84,20 @@ fun OnboardingScreen(
                         onUiModeSelected(it)
                     }
                 )
+                4 -> UxConsentPage(
+                    onAgree = {
+                        onUxConsentDecision(true)
+                        onFinished()
+                    },
+                    onDecline = {
+                        onUxConsentDecision(false)
+                        onFinished()
+                    }
+                )
             }
         }
 
-        PageIndicator(pageCount = 4, currentPage = pagerState.currentPage)
+        PageIndicator(pageCount = 5, currentPage = pagerState.currentPage)
 
         Row(
             modifier = Modifier
@@ -94,9 +106,9 @@ fun OnboardingScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (pagerState.currentPage < 3) {
+            if (pagerState.currentPage < 4) {
                 OutlinedButton(
-                    onClick = { scope.launch { pagerState.animateScrollToPage(3) } }
+                    onClick = { scope.launch { pagerState.animateScrollToPage(4) } }
                 ) {
                     Text(text = stringResource(id = R.string.onboarding_skip))
                 }
@@ -106,11 +118,22 @@ fun OnboardingScreen(
                     Text(text = stringResource(id = R.string.onboarding_next))
                 }
             } else {
-                Button(
-                    onClick = onFinished,
-                    modifier = Modifier.fillMaxWidth()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(text = stringResource(id = R.string.onboarding_get_started))
+                    OutlinedButton(
+                        onClick = { onUxConsentDecision(false); onFinished() },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(text = stringResource(id = R.string.ux_improvement_decline))
+                    }
+                    Button(
+                        onClick = { onUxConsentDecision(true); onFinished() },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(text = stringResource(id = R.string.ux_improvement_agree))
+                    }
                 }
             }
         }
@@ -300,6 +323,39 @@ private fun ModeConnectionPage(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun UxConsentPage(
+    onAgree: () -> Unit,
+    onDecline: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.Analytics,
+            contentDescription = null,
+            modifier = Modifier.size(100.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+        Text(
+            text = stringResource(id = R.string.ux_improvement_title),
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 24.dp)
+        )
+        Text(
+            text = stringResource(id = R.string.ux_improvement_desc),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 16.dp)
+        )
     }
 }
 

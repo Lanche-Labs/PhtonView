@@ -13,6 +13,7 @@
     <!-- Camera info -->
     <string name="camera_info_format">EV %1$+.1f  %2$s  %3$s  ISO %4$d</string>
     <string name="waiting_for_camera">Waiting for camera…</string>
+    <string name="camera_connected">Camera connected</string>
     <string name="preparing_main">Preparing camera interface…</string>
     <string name="live_view">Live View</string>
 
@@ -28,6 +29,8 @@
     <string name="histogram">Histogram</string>
     <string name="zebra">Zebra</string>
     <string name="gallery">Gallery</string>
+    <string name="no_photos">No photos found on camera</string>
+    <string name="download_preview">Download &amp; Preview</string>
     <string name="usb">USB</string>
     <string name="wifi">Wi-Fi</string>
 
@@ -48,6 +51,7 @@
     <string name="image_format">Image Format</string>
     <string name="image_size">Image Size</string>
     <string name="burst_speed">Burst Speed</string>
+    <string name="burst_count">Burst Count</string>
     <string name="capture_settings">Capture Settings</string>
     <string name="reset_to_defaults">Reset to Defaults</string>
 
@@ -206,4 +210,19 @@
     <string name="select_param">Select %1$s</string>
     <string name="tap_to_input">Tap value to input</string>
     <string name="shutter_speed">Shutter Speed</string>
+
+    <!-- User Experience Improvement Program -->
+    <string name="ux_improvement_title">User Experience Improvement Program</string>
+    <string name="ux_improvement_desc">Help us improve PhtonView by automatically sending anonymous logs from app start to close. Logs are submitted as GitHub issues and may include device model and app version.</string>
+    <string name="ux_improvement_summary">Automatically submit anonymous session logs</string>
+    <string name="ux_improvement_agree">Agree</string>
+    <string name="ux_improvement_decline">Decline</string>
+
+    <!-- Privacy Policy -->
+    <string name="privacy_policy">Privacy Policy</string>
+    <string name="privacy_policy_summary">How we collect and use your data</string>
+
+    <!-- License -->
+    <string name="license">License</string>
+    <string name="license_summary">View LICENSE and COPYING</string>
 </resources>

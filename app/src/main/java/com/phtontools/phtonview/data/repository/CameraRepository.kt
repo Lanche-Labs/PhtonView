@@ -30,6 +30,7 @@ interface CameraRepository {
     val zebraPattern: StateFlow<ZebraPattern>
     val photos: StateFlow<List<PhotoItem>>
     val liveViewEnabled: StateFlow<Boolean>
+    val burstRunning: StateFlow<Boolean>
 
     fun setConnectionType(type: ConnectionType)
     fun clearError()

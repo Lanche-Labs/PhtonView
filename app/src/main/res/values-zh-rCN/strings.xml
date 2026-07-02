@@ -13,6 +13,7 @@
     <!-- 相机信息 -->
     <string name="camera_info_format">曝光 %1$+.1f  光圈 %2$s  快门 %3$s  ISO %4$d</string>
     <string name="waiting_for_camera">等待相机…</string>
+    <string name="camera_connected">相机已连接</string>
     <string name="preparing_main">正在准备相机界面…</string>
     <string name="live_view">实时取景</string>
 
@@ -28,6 +29,8 @@
     <string name="histogram">直方图</string>
     <string name="zebra">斑马纹</string>
     <string name="gallery">图库</string>
+    <string name="no_photos">相机中未找到照片</string>
+    <string name="download_preview">下载并预览</string>
     <string name="usb">USB</string>
     <string name="wifi">Wi-Fi</string>
 
@@ -48,6 +51,7 @@
     <string name="image_format">图像格式</string>
     <string name="image_size">图像尺寸</string>
     <string name="burst_speed">连拍速度</string>
+    <string name="burst_count">连拍张数</string>
     <string name="capture_settings">拍摄设置</string>
     <string name="reset_to_defaults">恢复默认</string>
 
@@ -207,4 +211,19 @@
     <string name="select_param">选择%1$s</string>
     <string name="tap_to_input">点击数值可手动输入</string>
     <string name="shutter_speed">快门速度</string>
+
+    <!-- 用户体验改进计划 -->
+    <string name="ux_improvement_title">用户体验改进计划</string>
+    <string name="ux_improvement_desc">同意我们从打开 APP 到关闭期间自动收集匿名日志并提交到 GitHub Issue，以帮助我们改进 PhtonView。日志可能包含设备型号与应用版本。</string>
+    <string name="ux_improvement_summary">自动提交匿名会话日志</string>
+    <string name="ux_improvement_agree">同意</string>
+    <string name="ux_improvement_decline">拒绝</string>
+
+    <!-- 隐私政策 -->
+    <string name="privacy_policy">隐私政策</string>
+    <string name="privacy_policy_summary">我们如何收集和使用您的数据</string>
+
+    <!-- 许可证 -->
+    <string name="license">许可证</string>
+    <string name="license_summary">查看 LICENSE 和 COPYING</string>
 </resources>

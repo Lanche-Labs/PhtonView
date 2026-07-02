@@ -82,6 +82,7 @@ import com.phtontools.phtonview.ui.components.HistogramView
 import com.phtontools.phtonview.ui.components.MeteringOverlay
 import com.phtontools.phtonview.ui.components.ParamKind
 import com.phtontools.phtonview.ui.components.ParamSelectorSheet
+import com.phtontools.phtonview.ui.components.PhotoGallerySheet
 import com.phtontools.phtonview.ui.components.CleanBottomControlPanel
 import com.phtontools.phtonview.ui.components.ProBottomControlPanel
 import com.phtontools.phtonview.ui.components.TopStatusBar
@@ -115,10 +116,13 @@ fun CameraScreen(
     val detectedUsb by viewModel.detectedUsbDevice.collectAsStateWithLifecycle()
     val wifiEnabled by viewModel.wifiExperimental.collectAsStateWithLifecycle()
     val liveViewEnabled by viewModel.liveViewEnabled.collectAsStateWithLifecycle()
+    val burstRunning by viewModel.burstRunning.collectAsStateWithLifecycle()
+    val photos by viewModel.photos.collectAsStateWithLifecycle()
 
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var selectedParam by remember { mutableStateOf<ParamKind?>(null) }
+    var showGallery by remember { mutableStateOf(false) }
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -176,6 +180,8 @@ fun CameraScreen(
                     onTimerChange = { viewModel.setTimerDelay(it.delaySeconds) },
                     onIntervalometerChange = viewModel::setIntervalometer,
                     onAebChange = viewModel::setAeb,
+                    onBurstCountChange = viewModel::setBurstCount,
+                    onBurstSpeedChange = viewModel::setBurstSpeed,
                     onResetToDefaults = viewModel::resetToDefaults
                 )
             }
@@ -216,43 +222,47 @@ fun CameraScreen(
                         offset = offset,
                         onScaleChange = { scale = it },
                         onOffsetChange = { offset = it },
-                        onOpenSettings = onOpenSettings,
-                        onOpenDrawer = { scope.launch { drawerState.open() } },
-                        onSelectParam = { selectedParam = it }
-                    )
-                } else {
-                    PortraitLayout(
-                        viewModel = viewModel,
-                        uiMode = uiMode,
-                        liveViewFrame = liveViewFrame,
-                        metering = metering,
-                        focusMode = focusMode,
-                        connectionState = connectionState,
-                        exposure = exposure,
-                        cameraSettings = cameraSettings,
-                        afMode = afMode,
-                        magnification = magnification,
-                        peakingEnabled = peakingEnabled,
-                        histogramType = histogramType,
-                        gridType = gridType,
-                        zebraPattern = zebraPattern,
-                        intervalometer = intervalometer,
-                        bulbSettings = bulbSettings,
-                        timerSettings = timerSettings,
-                        aebSettings = aebSettings,
-                        liveViewEnabled = liveViewEnabled,
-                        detectedUsb = detectedUsb,
-                        wifiEnabled = wifiEnabled,
-                        scale = scale,
-                        offset = offset,
-                        onScaleChange = { scale = it },
-                        onOffsetChange = { offset = it },
-                        onOpenSettings = onOpenSettings,
-                        onOpenDrawer = { scope.launch { drawerState.open() } },
-                        onSelectParam = { selectedParam = it }
-                    )
-                }
-            }
+                        burstRunning = burstRunning,
+                        onOpenGallery = { viewModel.listPhotos(); showGallery = true },
+                onOpenSettings = onOpenSettings,
+                onOpenDrawer = { scope.launch { drawerState.open() } },
+                onSelectParam = { selectedParam = it }
+            )
+        } else {
+            PortraitLayout(
+                viewModel = viewModel,
+                uiMode = uiMode,
+                liveViewFrame = liveViewFrame,
+                metering = metering,
+                focusMode = focusMode,
+                connectionState = connectionState,
+                exposure = exposure,
+                cameraSettings = cameraSettings,
+                afMode = afMode,
+                magnification = magnification,
+                peakingEnabled = peakingEnabled,
+                histogramType = histogramType,
+                gridType = gridType,
+                zebraPattern = zebraPattern,
+                intervalometer = intervalometer,
+                bulbSettings = bulbSettings,
+                timerSettings = timerSettings,
+                aebSettings = aebSettings,
+                liveViewEnabled = liveViewEnabled,
+                detectedUsb = detectedUsb,
+                wifiEnabled = wifiEnabled,
+                scale = scale,
+                offset = offset,
+                onScaleChange = { scale = it },
+                onOffsetChange = { offset = it },
+                burstRunning = burstRunning,
+                onOpenGallery = { viewModel.listPhotos(); showGallery = true },
+                onOpenSettings = onOpenSettings,
+                onOpenDrawer = { scope.launch { drawerState.open() } },
+                onSelectParam = { selectedParam = it }
+            )
+        }
+    }
 
             selectedParam?.let { kind ->
                 ParamSelectorSheet(
@@ -263,6 +273,17 @@ fun CameraScreen(
                     onShutterChange = viewModel::setShutter,
                     onEvChange = viewModel::setEv,
                     onApertureChange = viewModel::setAperture
+                )
+            }
+
+            if (showGallery) {
+                PhotoGallerySheet(
+                    photos = photos,
+                    loading = false,
+                    onDismiss = { showGallery = false },
+                    onDownload = { photo, destination ->
+                        viewModel.downloadPhotoAwait(photo, destination)
+                    }
                 )
             }
         }
@@ -296,6 +317,8 @@ private fun PortraitLayout(
     offset: Offset,
     onScaleChange: (Float) -> Unit,
     onOffsetChange: (Offset) -> Unit,
+    burstRunning: Boolean,
+    onOpenGallery: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenDrawer: () -> Unit,
     onSelectParam: (ParamKind) -> Unit
@@ -319,23 +342,25 @@ private fun PortraitLayout(
                 .background(MaterialTheme.colorScheme.background)
         ) {
             LiveViewLayer(
-                frame = liveViewFrame,
-                peakingEnabled = peakingEnabled,
-                metering = metering,
-                histogramType = histogramType,
-                scale = scale,
-                offset = offset,
-                magnification = magnification,
-                onScaleChange = onScaleChange,
-                onOffsetChange = onOffsetChange,
-                onTap = { x, y ->
-                    if (metering.mode == MeteringMode.Spot) viewModel.setSpotMeteringPoint(x, y)
-                    if (focusMode == FocusMode.AF) {
-                        viewModel.setAfArea(x, y)
-                        viewModel.triggerAf()
+                    frame = liveViewFrame,
+                    peakingEnabled = peakingEnabled,
+                    metering = metering,
+                    histogramType = histogramType,
+                    connectionState = connectionState,
+                    detectedUsb = detectedUsb,
+                    scale = scale,
+                    offset = offset,
+                    magnification = magnification,
+                    onScaleChange = onScaleChange,
+                    onOffsetChange = onOffsetChange,
+                    onTap = { x, y ->
+                        if (metering.mode == MeteringMode.Spot) viewModel.setSpotMeteringPoint(x, y)
+                        if (focusMode == FocusMode.AF) {
+                            viewModel.setAfArea(x, y)
+                            viewModel.triggerAf()
+                        }
                     }
-                }
-            )
+                )
 
         }
 
@@ -349,17 +374,19 @@ private fun PortraitLayout(
                 histogramType = histogramType,
                 zebraPattern = zebraPattern,
                 liveViewEnabled = liveViewEnabled,
+                burstRunning = burstRunning,
+                bulbEnabled = bulbSettings.enabled,
                 onSelectParam = onSelectParam,
                 onCapture = { viewModel.captureImage() },
-                onOpenGallery = { /* TODO: 打开相册/已下载照片 */ },
+                onOpenGallery = onOpenGallery,
                 onMeteringModeChange = viewModel::setMeteringMode,
                 onTogglePeaking = { viewModel.setFocusPeakingEnabled(!peakingEnabled) },
                 onToggleGrid = { viewModel.setGridType(if (gridType == GridType.None) GridType.RuleOfThirds else GridType.None) },
                 onToggleHistogram = { viewModel.setHistogramType(if (histogramType == HistogramType.None) HistogramType.Luminance else HistogramType.None) },
                 onToggleZebra = { viewModel.setZebraPattern(if (zebraPattern == ZebraPattern.None) ZebraPattern.Over else ZebraPattern.None) },
                 onToggleLiveView = { viewModel.setLiveViewEnabled(!liveViewEnabled) },
-                onBurst = { viewModel.startBurstCapture(cameraSettings.burstCount) },
-                onBulb = { viewModel.startBulb(bulbSettings.durationSeconds) }
+                onBurst = { if (!burstRunning) viewModel.startBurstCapture(cameraSettings.burstCount) },
+                onBulb = { if (bulbSettings.enabled) viewModel.stopBulb() else viewModel.startBulb(bulbSettings.durationSeconds) }
             )
         } else {
             CleanBottomControlPanel(
@@ -368,7 +395,7 @@ private fun PortraitLayout(
                 isLandscape = false,
                 onSelectParam = onSelectParam,
                 onCapture = { viewModel.captureImage() },
-                onOpenGallery = { /* TODO: 打开相册/已下载照片 */ },
+                onOpenGallery = onOpenGallery,
                 onMeteringModeChange = viewModel::setMeteringMode
             )
         }
@@ -402,6 +429,8 @@ private fun LandscapeLayout(
     offset: Offset,
     onScaleChange: (Float) -> Unit,
     onOffsetChange: (Offset) -> Unit,
+    burstRunning: Boolean,
+    onOpenGallery: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenDrawer: () -> Unit,
     onSelectParam: (ParamKind) -> Unit
@@ -430,6 +459,8 @@ private fun LandscapeLayout(
                     peakingEnabled = peakingEnabled,
                     metering = metering,
                     histogramType = histogramType,
+                    connectionState = connectionState,
+                    detectedUsb = detectedUsb,
                     scale = scale,
                     offset = offset,
                     magnification = magnification,
@@ -457,17 +488,19 @@ private fun LandscapeLayout(
                 histogramType = histogramType,
                 zebraPattern = zebraPattern,
                 liveViewEnabled = liveViewEnabled,
+                burstRunning = burstRunning,
+                bulbEnabled = bulbSettings.enabled,
                 onSelectParam = onSelectParam,
                 onCapture = { viewModel.captureImage() },
-                onOpenGallery = { /* TODO */ },
+                onOpenGallery = onOpenGallery,
                 onMeteringModeChange = viewModel::setMeteringMode,
                 onTogglePeaking = { viewModel.setFocusPeakingEnabled(!peakingEnabled) },
                 onToggleGrid = { viewModel.setGridType(if (gridType == GridType.None) GridType.RuleOfThirds else GridType.None) },
                 onToggleHistogram = { viewModel.setHistogramType(if (histogramType == HistogramType.None) HistogramType.Luminance else HistogramType.None) },
                 onToggleZebra = { viewModel.setZebraPattern(if (zebraPattern == ZebraPattern.None) ZebraPattern.Over else ZebraPattern.None) },
                 onToggleLiveView = { viewModel.setLiveViewEnabled(!liveViewEnabled) },
-                onBurst = { viewModel.startBurstCapture(cameraSettings.burstCount) },
-                onBulb = { viewModel.startBulb(bulbSettings.durationSeconds) }
+                onBurst = { if (!burstRunning) viewModel.startBurstCapture(cameraSettings.burstCount) },
+                onBulb = { if (bulbSettings.enabled) viewModel.stopBulb() else viewModel.startBulb(bulbSettings.durationSeconds) }
             )
         } else {
             CleanBottomControlPanel(
@@ -476,7 +509,7 @@ private fun LandscapeLayout(
                 isLandscape = true,
                 onSelectParam = onSelectParam,
                 onCapture = { viewModel.captureImage() },
-                onOpenGallery = { /* TODO */ },
+                onOpenGallery = onOpenGallery,
                 onMeteringModeChange = viewModel::setMeteringMode
             )
         }
@@ -489,6 +522,8 @@ private fun LiveViewLayer(
     peakingEnabled: Boolean,
     metering: MeteringResult,
     histogramType: HistogramType,
+    connectionState: ConnectionState,
+    detectedUsb: String?,
     scale: Float,
     offset: Offset,
     magnification: Float,
@@ -547,7 +582,10 @@ private fun LiveViewLayer(
                     },
                 contentScale = ContentScale.Fit
             )
-        } ?: NoSignalMessage()
+        } ?: NoSignalMessage(
+            connectionState = connectionState,
+            detectedUsb = detectedUsb
+        )
 
         MeteringOverlay(metering = metering)
 
@@ -571,19 +609,30 @@ private fun LiveViewLayer(
 }
 
 @Composable
-private fun NoSignalMessage() {
+private fun NoSignalMessage(
+    connectionState: ConnectionState,
+    detectedUsb: String?
+) {
+    val message = when {
+        connectionState is ConnectionState.Connected -> stringResource(id = R.string.status_connected, connectionState.model)
+        detectedUsb != null -> stringResource(id = R.string.camera_connected)
+        else -> stringResource(id = R.string.waiting_for_camera)
+    }
+    val showProgress = connectionState !is ConnectionState.Connected && detectedUsb == null
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        CircularProgressIndicator(
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(48.dp),
-            strokeWidth = 4.dp
-        )
-        Spacer(modifier = Modifier.height(12.dp))
+        if (showProgress) {
+            CircularProgressIndicator(
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(48.dp),
+                strokeWidth = 4.dp
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+        }
         Text(
-            text = stringResource(id = R.string.waiting_for_camera),
+            text = message,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
             fontSize = 16.sp,
             textAlign = TextAlign.Center

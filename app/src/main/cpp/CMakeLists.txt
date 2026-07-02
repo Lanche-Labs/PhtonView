@@ -56,6 +56,15 @@ add_library(
 find_library(log-lib log)
 
 if(EXISTS ${GPHOTO2_ROOT}/include/gphoto2/gphoto2.h)
+    # 单独编译一个仅导出 libltdl 预加载符号表的 helper so，
+    # 确保 libltdl.so 在加载时能找到缺失的 lt_libltdl_LTX_preloaded_symbols。
+    add_library(
+        ltdl_preload
+        SHARED
+        ltdl_preload.cpp)
+    target_include_directories(ltdl_preload PRIVATE ${GPHOTO2_ROOT}/include)
+    target_link_libraries(ltdl_preload ${log-lib})
+
     target_link_libraries(phtonview
         gphoto2
         gphoto2port

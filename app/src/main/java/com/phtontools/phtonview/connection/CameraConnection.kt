@@ -89,6 +89,11 @@ interface CameraConnection {
     suspend fun setDeviceProperty(code: Short, value: Int): Boolean = false
 
     /**
+     * Set device property raw dataset. Default returns false.
+     */
+    suspend fun setDevicePropertyValue(code: Short, data: ByteArray): Boolean = false
+
+    /**
      * Get device property descriptor raw bytes. Default returns empty array.
      */
     suspend fun getDevicePropertyDesc(code: Short): ByteArray = ByteArray(0)
