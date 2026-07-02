@@ -1,7 +1,8 @@
 # PhtonView
 
 一个适用于 Android 的专业相机遥控应用，通过 USB OTG 或实验性 WiFi 连接控制单反 / 无反相机。
-## 使用了 libgphoto2 库，该库遵循 LGPL-2.1 协议
+### 使用了 libgphoto2 库，该库遵循 LGPL-2.1 协议
+### 使用了 libusb 库，该库遵循 LGPL-2.1 协议
 
 > By lanche-furry
 
