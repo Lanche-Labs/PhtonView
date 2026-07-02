@@ -236,9 +236,12 @@ private fun PhotoPreviewOverlay(
                         destFile.parentFile?.mkdirs()
                         val destination = destFile.absolutePath
                         val success = runCatching { onDownload(destination) }.getOrDefault(false)
-                        if (success) {
+                        if (success && destFile.exists() && destFile.length() > 0) {
+                            android.widget.Toast.makeText(context, "已下载，准备打开预览", android.widget.Toast.LENGTH_SHORT).show()
                             bitmap = loadThumbnailBitmap(destination)
                             openImageWithSystem(context, destination)
+                        } else {
+                            android.widget.Toast.makeText(context, "下载失败或文件为空", android.widget.Toast.LENGTH_SHORT).show()
                         }
                         downloading = false
                     }

@@ -21,6 +21,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.phtontools.phtonview.util.AppLogger
 
 @Composable
 fun LicensePage(
@@ -31,8 +32,8 @@ fun LicensePage(
     var copyingText by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
-        licenseText = loadAssetText(context, "licenses/LICENSE")
-        copyingText = loadAssetText(context, "licenses/COPYING")
+        licenseText = loadAssetText(context, "LICENSE")
+        copyingText = loadAssetText(context, "COPYING")
     }
 
     Column(
@@ -74,7 +75,19 @@ private fun LicenseSection(
 }
 
 private fun loadAssetText(context: android.content.Context, path: String): String {
-    return runCatching {
-        context.assets.open(path).bufferedReader().use { it.readText() }
-    }.getOrDefault("")
+    // build.gradle 会把根目录 LICENSE / COPYING 复制到 assets/licenses/
+    // 某些情况下资源可能被放到根目录，所以优先 licenses/，再回退根目录
+    val candidates = listOf("licenses/$path", path)
+    for (candidate in candidates) {
+        val text = runCatching {
+            context.assets.open(candidate).bufferedReader().use { it.readText() }
+        }.onFailure {
+            AppLogger.report("UI", "LicensePage.kt:loadAssetText", "Load failed", mapOf("path" to candidate, "error" to (it.message ?: "unknown")))
+        }.getOrNull()
+        if (!text.isNullOrBlank()) {
+            AppLogger.report("UI", "LicensePage.kt:loadAssetText", "Load OK", mapOf("path" to candidate, "chars" to text.length.toString()))
+            return text
+        }
+    }
+    return ""
 }

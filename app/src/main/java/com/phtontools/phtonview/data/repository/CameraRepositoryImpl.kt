@@ -444,6 +444,12 @@ class CameraRepositoryImpl @Inject constructor(
                 // #region debug-point F:liveview-start-error
                 AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view start error", mapOf("error" to (it.message ?: "unknown")))
                 // #endregion
+                // 启动失败时退出 PC 模式，避免相机一直显示“正在连接 PC”
+                _liveViewEnabled.value = false
+                runCatching {
+                    conn.sendCommand(PtpConstants.NIKON_OPERATION_CHANGE_CAMERA_MODE, 0)
+                    waitForDeviceReady()
+                }
             }
         }
         startLiveViewLoop()
@@ -766,14 +772,35 @@ class CameraRepositoryImpl @Inject constructor(
         // #endregion
         if (delayMs > 0) delay(delayMs)
         val wasLiveView = _liveViewEnabled.value
-        if (wasLiveView) stopLiveView()
+        if (wasLiveView) {
+            stopLiveView()
+            // 停止取景后给相机一点时间退出 PC 模式，否则紧接着的拍摄命令会被拒绝
+            waitForDeviceReady()
+            delay(300)
+        }
         runCatching { doCaptureImage() }
             .onFailure {
                 AppLogger.report("G", "CameraRepositoryImpl.kt:captureImage", "Capture error", mapOf("error" to (it.message ?: "unknown")))
             }
             .also {
-                if (wasLiveView) runCatching { startLiveView() }
+                if (wasLiveView) {
+                    runCatching { startLiveView() }
+                } else {
+                    // 没有取景时拍完就退出 PC 模式，避免相机一直显示“正在连接 PC”
+                    runCatching { exitPcControlMode() }
+                }
             }
+    }
+
+    /**
+     * 退出 Nikon PC 控制模式，让相机回到正常待机状态。
+     */
+    private suspend fun exitPcControlMode() {
+        if (!isNikon || !ensureConnected()) return
+        runCatching {
+            currentConnection?.sendCommand(PtpConstants.NIKON_OPERATION_CHANGE_CAMERA_MODE, 0)
+            waitForDeviceReady()
+        }
     }
 
     private suspend fun doCaptureImage() {
@@ -912,6 +939,8 @@ class CameraRepositoryImpl @Inject constructor(
         doCaptureImage()
         delay(safeSeconds * 1000L + 500)
         setShutter(preBulbShutter)
+        // 退出 PC 模式，避免相机一直显示“正在连接 PC”
+        runCatching { exitPcControlMode() }
     }
 
     override suspend fun stopBulbExposure() {
@@ -1093,7 +1122,11 @@ class CameraRepositoryImpl @Inject constructor(
         if (!ensureConnected()) return emptyList()
         val conn = currentConnection ?: return emptyList()
         val wasLiveView = _liveViewEnabled.value
-        if (wasLiveView) stopLiveView()
+        if (wasLiveView) {
+            stopLiveView()
+            // 停止取景后等待相机释放存储访问，否则可能拿到空列表
+            delay(500)
+        }
         val items = runCatching { conn.listPhotos(folder) }.getOrDefault(emptyList())
         _photos.value = items
         if (wasLiveView) runCatching { startLiveView() }

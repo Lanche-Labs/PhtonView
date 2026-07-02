@@ -262,6 +262,13 @@ class UsbCameraConnection @Inject constructor(
      */
     private fun openDevice(device: UsbDevice) {
         AppLogger.d("Opening USB device: ${device.productName}")
+        // 已经连接同一台设备时直接跳过，避免广播/权限回调重复触发导致反复重连
+        if (cameraDevice?.deviceId == device.deviceId &&
+            _connectionState.value is CameraConnection.ConnectionState.Connected
+        ) {
+            AppLogger.d("Device ${device.deviceId} already connected, skip duplicate open")
+            return
+        }
         if (connection != null && cameraDevice?.deviceId == device.deviceId) return
 
         val newConnection = usbManager.openDevice(device) ?: run {
@@ -613,9 +620,13 @@ class UsbCameraConnection @Inject constructor(
     }
 
     override suspend fun listPhotos(folder: String): List<PhotoItem> {
-        if (!ensureSession()) return emptyList()
+        if (!ensureSession()) {
+            AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "No session", emptyMap())
+            return emptyList()
+        }
 
         val storageIds = getStorageIds()
+        AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Storage IDs", mapOf("count" to storageIds.size.toString(), "ids" to storageIds.joinToString { "0x${it.toString(16)}" }))
         if (storageIds.isEmpty()) return emptyList()
 
         val items = mutableListOf<PhotoItem>()
@@ -624,14 +635,21 @@ class UsbCameraConnection @Inject constructor(
                 // 部分相机不支持 parent = 0xFFFFFFFF，递归失败时回退到根目录遍历。
                 getObjectHandles(storageId, 0, 0xFFFFFFFF.toInt()).toList().takeIf { it.isNotEmpty() }
                     ?: enumerateObjectsRecursive(storageId, parent = 0)
-            }.getOrDefault(emptyList())
+            }.getOrElse {
+                AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Get handles error", mapOf("error" to (it.message ?: "unknown")))
+                emptyList()
+            }
+            AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Handles", mapOf("storage" to String.format(Locale.US, "0x%08X", storageId), "count" to handles.size.toString()))
 
             for (handle in handles) {
                 val info = runCatching { getObjectInfo(handle) }.getOrNull() ?: continue
                 // 跳过文件夹/关联对象和无名文件
                 if (info.objectFormat == PtpConstants.OBJECT_FORMAT_ASSOCIATION || info.filename.isBlank()) continue
                 // 只保留图片/视频格式
-                if (!isImageOrVideoFormat(info.objectFormat)) continue
+                if (!isImageOrVideoFormat(info.objectFormat)) {
+                    AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Skip non-media", mapOf("file" to info.filename, "format" to String.format(Locale.US, "0x%04X", info.objectFormat)))
+                    continue
+                }
                 items.add(
                     PhotoItem(
                         id = handle.toString(),
@@ -647,6 +665,7 @@ class UsbCameraConnection @Inject constructor(
         }
         // 新照片 handle 通常更大，按无符号长整型降序排在前面
         items.sortByDescending { unsignedInt(it.id.toIntOrNull() ?: 0) }
+        AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Result", mapOf("count" to items.size.toString()))
         return items
     }
 
@@ -671,8 +690,8 @@ class UsbCameraConnection @Inject constructor(
 
     private fun isImageOrVideoFormat(format: Short): Boolean {
         val code = format.toInt() and 0xFFFF
-        // PTP 图像格式范围 0x3800-0x38FF，视频格式范围 0x3800-0x38FF 也包含在内
-        return code in 0x3800..0x38FF
+        // PTP 图像格式范围 0x3800-0x38FF；常见视频格式在 0x3009-0x300D 等
+        return code in 0x3800..0x38FF || code in 0x3000..0x30FF
     }
 
     private suspend fun getStorageIds(): IntArray {
@@ -705,9 +724,11 @@ class UsbCameraConnection @Inject constructor(
                 timeoutMs = 30000,
                 params = intArrayOf(handle)
             )
-            PtpCommand.decodeDataPayload(data).takeIf { it.isNotEmpty() }
+            val payload = PtpCommand.decodeDataPayload(data)
+            AppLogger.report("C", "UsbCameraConnection.kt:downloadPhoto", "Downloaded", mapOf("handle" to String.format(Locale.US, "0x%08X", handle), "bytes" to payload.size.toString()))
+            payload.takeIf { it.isNotEmpty() }
         } catch (e: Exception) {
-            AppLogger.e("downloadPhoto failed", e)
+            AppLogger.report("C", "UsbCameraConnection.kt:downloadPhoto", "Download failed", mapOf("handle" to String.format(Locale.US, "0x%08X", handle), "error" to (e.message ?: "unknown")))
             null
         }
     }
