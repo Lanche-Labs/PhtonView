@@ -133,7 +133,8 @@ android {
     }
 }
 
-// 每次编译前自动递增 build 号，供下一次使用；超过 99 时回绕到 1
+// 手动递增 build 号任务：运行 ./gradlew :app:incrementVersion 后提交 version.properties，
+// 避免自动递增导致 APK versionName 与仓库 version.properties 不一致。
 tasks.register("incrementVersion") {
     doLast {
         val nextBuild = (versionBuild % 99) + 1
@@ -141,10 +142,6 @@ tasks.register("incrementVersion") {
         versionFile.outputStream().use { versionProps.store(it, "PhtonView Version") }
         println("Version bumped to $versionMajor.$versionMinor.$versionPatch.${nextBuild.toString().padStart(2, '0')}")
     }
-}
-
-tasks.named("preBuild") {
-    dependsOn("incrementVersion")
 }
 
 // 将 LICENSE / COPYING 复制到 assets/licenses，供应用内许可证页面读取
