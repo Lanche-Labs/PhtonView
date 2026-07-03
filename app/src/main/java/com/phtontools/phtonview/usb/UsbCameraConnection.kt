@@ -310,10 +310,16 @@ class UsbCameraConnection @Inject constructor(
                 // #region debug-point A:open-session
                 AppLogger.report("A", "UsbCameraConnection.kt:openDevice", "Opening PTP session", mapOf("device" to (device.productName ?: "unknown")))
                 // #endregion
-                openSession(PtpConstants.DEFAULT_SESSION_ID)
+                var sessionOk = false
+                repeat(3) { attempt ->
+                    sessionOk = openSession(PtpConstants.DEFAULT_SESSION_ID)
+                    if (sessionOk) return@repeat
+                    AppLogger.report("A", "UsbCameraConnection.kt:openDevice", "Session retry", mapOf("attempt" to (attempt + 2).toString()))
+                    delay(100)
+                }
                 // #region debug-point A:device-info
-                val model = getDeviceInfo()
-                AppLogger.report("A", "UsbCameraConnection.kt:openDevice", "Device info received", mapOf("model" to model))
+                val model = runCatching { getDeviceInfo() }.getOrDefault(device.productName ?: "Camera")
+                AppLogger.report("A", "UsbCameraConnection.kt:openDevice", "Device info received", mapOf("model" to model, "sessionOk" to sessionOk.toString()))
                 // #endregion
                 _connectionState.value = CameraConnection.ConnectionState.Connected(model)
                 AppLogger.d("USB device connected: $model")
@@ -625,18 +631,15 @@ class UsbCameraConnection @Inject constructor(
             return emptyList()
         }
 
-        val storageIds = getStorageIds()
+        val storageIds = resolveStorageIds()
         AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Storage IDs", mapOf("count" to storageIds.size.toString(), "ids" to storageIds.joinToString { "0x${it.toString(16)}" }))
         if (storageIds.isEmpty()) return emptyList()
 
         val items = mutableListOf<PhotoItem>()
+        val triedStorageIds = storageIds.toMutableList()
         for (storageId in storageIds) {
-            val handles = runCatching {
-                // 部分相机不支持 parent = 0xFFFFFFFF，递归失败时回退到根目录遍历。
-                getObjectHandles(storageId, 0, 0xFFFFFFFF.toInt()).toList().takeIf { it.isNotEmpty() }
-                    ?: enumerateObjectsRecursive(storageId, parent = 0)
-            }.getOrElse {
-                AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Get handles error", mapOf("error" to (it.message ?: "unknown")))
+            val handles = runCatching { enumeratePhotosWithFallback(storageId) }.getOrElse {
+                AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Enumerate failed", mapOf("storage" to String.format(Locale.US, "0x%08X", storageId), "error" to (it.message ?: "unknown")))
                 emptyList()
             }
             AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Handles", mapOf("storage" to String.format(Locale.US, "0x%08X", storageId), "count" to handles.size.toString()))
@@ -663,10 +666,153 @@ class UsbCameraConnection @Inject constructor(
                 )
             }
         }
+
+        // 若常规存储 ID 都没拿到照片，再尝试一组常见默认 storage ID
+        if (items.isEmpty()) {
+            val fallbackIds = intArrayOf(0x00010001, 0x00020001, 0x00010002, 0x00000001, 0x00000002)
+                .filter { it !in triedStorageIds }
+            for (storageId in fallbackIds) {
+                val handles = runCatching { enumeratePhotosWithFallback(storageId) }.getOrElse { emptyList() }
+                for (handle in handles) {
+                    val info = runCatching { getObjectInfo(handle) }.getOrNull() ?: continue
+                    if (info.objectFormat == PtpConstants.OBJECT_FORMAT_ASSOCIATION || info.filename.isBlank()) continue
+                    if (!isImageOrVideoFormat(info.objectFormat)) continue
+                    items.add(
+                        PhotoItem(
+                            id = handle.toString(),
+                            name = info.filename,
+                            path = "$folder/${info.filename}",
+                            sizeBytes = info.compressedSize,
+                            width = info.imagePixWidth,
+                            height = info.imagePixHeight,
+                            isInCamera = true
+                        )
+                    )
+                }
+                if (items.isNotEmpty()) {
+                    AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Fallback storage ok", mapOf("storage" to String.format(Locale.US, "0x%08X", storageId), "count" to items.size.toString()))
+                    break
+                }
+            }
+        }
+
         // 新照片 handle 通常更大，按无符号长整型降序排在前面
         items.sortByDescending { unsignedInt(it.id.toIntOrNull() ?: 0) }
         AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Result", mapOf("count" to items.size.toString()))
         return items
+    }
+
+    /**
+     * 多策略链式降级枚举照片句柄，尽量兼容不同厂商的 PTP/MTP 实现。
+     */
+    private suspend fun enumeratePhotosWithFallback(storageId: Int): List<Int> {
+        val formats = listOf(0x3801, 0x3800, 0x380B, 0x380C, 0x380D, 0x3009, 0x300A, 0x300B, 0x300C)
+        val commonParents = listOf(0, 0xFFFFFFFF.toInt(), 0x00000001, 0x00000002, 0x00000003)
+
+        // 策略 1：format=0, parent=0xFFFFFFFF（一次性递归，部分相机支持）
+        runCatchingWithRetry {
+            val handles = getObjectHandles(storageId, 0, 0xFFFFFFFF.toInt())
+            if (handles.isNotEmpty()) {
+                AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Strategy 1 ok", mapOf("count" to handles.size.toString()))
+                return handles.toList()
+            }
+        }
+
+        // 策略 2：format=0, parent=0（根目录，非递归）
+        runCatchingWithRetry {
+            val handles = getObjectHandles(storageId, 0, 0).toList()
+            if (handles.isNotEmpty()) {
+                AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Strategy 2 ok", mapOf("count" to handles.size.toString()))
+                return handles
+            }
+        }
+
+        // 策略 3：从 parent=0 开始逐目录递归
+        runCatchingWithRetry {
+            val handles = enumerateObjectsRecursive(storageId, parent = 0)
+            if (handles.isNotEmpty()) {
+                AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Strategy 3 ok", mapOf("count" to handles.size.toString()))
+                return handles
+            }
+        }
+
+        // 策略 4：按常见图像格式，parent=0xFFFFFFFF
+        runCatchingWithRetry {
+            val result = formats.flatMap { format ->
+                runCatching { getObjectHandles(storageId, format, 0xFFFFFFFF.toInt()).toList() }.getOrDefault(emptyList())
+            }
+            if (result.isNotEmpty()) {
+                AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Strategy 4 ok", mapOf("count" to result.size.toString()))
+                return result
+            }
+        }
+
+        // 策略 5：按常见图像格式，parent=0
+        runCatchingWithRetry {
+            val result = formats.flatMap { format ->
+                runCatching { getObjectHandles(storageId, format, 0).toList() }.getOrDefault(emptyList())
+            }
+            if (result.isNotEmpty()) {
+                AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Strategy 5 ok", mapOf("count" to result.size.toString()))
+                return result
+            }
+        }
+
+        // 策略 6：尝试常见子目录 parent + format=0
+        runCatchingWithRetry {
+            val result = commonParents.drop(2).flatMap { parent ->
+                runCatching { getObjectHandles(storageId, 0, parent).toList() }.getOrDefault(emptyList())
+            }
+            if (result.isNotEmpty()) {
+                AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Strategy 6 ok", mapOf("count" to result.size.toString()))
+                return result
+            }
+        }
+
+        // 策略 7：对根目录下每个 association 对象递归枚举
+        runCatchingWithRetry {
+            val rootHandles = getObjectHandles(storageId, 0, 0)
+            val result = mutableListOf<Int>()
+            for (handle in rootHandles) {
+                val info = try { getObjectInfo(handle) } catch (_: Exception) { null } ?: continue
+                if (info.objectFormat == PtpConstants.OBJECT_FORMAT_ASSOCIATION) {
+                    try {
+                        result.addAll(enumerateObjectsRecursive(storageId, handle))
+                    } catch (_: Exception) { }
+                }
+            }
+            if (result.isNotEmpty()) {
+                AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Strategy 7 ok", mapOf("count" to result.size.toString()))
+                return result
+            }
+        }
+
+        AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "All strategies empty", mapOf("storage" to String.format(Locale.US, "0x%08X", storageId)))
+        return emptyList()
+    }
+
+    /**
+     * 对指定代码块执行一次重试，用于兼容偶发 USB 传输失败。
+     */
+    private suspend inline fun <T> runCatchingWithRetry(block: () -> T): Result<T> {
+        val first = runCatching { block() }
+        if (first.isSuccess) return first
+        delay(50)
+        return runCatching { block() }
+    }
+
+    /**
+     * 获取存储 ID；若相机未返回，则回退到常见默认值。
+     * 常见 PTP 存储 ID：0x00010001（卡1）、0x00020001（卡2）、0x00010002（内部存储）等。
+     */
+    private suspend fun resolveStorageIds(): IntArray {
+        val ids = runCatching { getStorageIds() }.getOrDefault(IntArray(0))
+        if (ids.isNotEmpty()) {
+            AppLogger.report("C", "UsbCameraConnection.kt:resolveStorageIds", "Got storage IDs", mapOf("ids" to ids.joinToString { "0x${it.toString(16)}" }))
+            return ids
+        }
+        AppLogger.report("C", "UsbCameraConnection.kt:resolveStorageIds", "Fallback storage IDs", emptyMap())
+        return intArrayOf(0x00010001, 0x00020001, 0x00010002, 0x00000001, 0x00000002)
     }
 
     /**
@@ -699,6 +845,26 @@ class UsbCameraConnection @Inject constructor(
             PtpCommand(PtpConstants.OPERATION_GET_STORAGE_IDS, nextTransactionId())
         )
         return PtpCommand.decodeIntArray(data)
+    }
+
+    override suspend fun getStorageInfo(storageId: Int): Pair<Long, Long>? {
+        return try {
+            val data = sendCommandWithDataInternal(
+                PtpCommand(PtpConstants.OPERATION_GET_STORAGE_INFO, nextTransactionId(), intArrayOf(storageId))
+            )
+            val payload = PtpCommand.decodeDataPayload(data)
+            if (payload.size < 26) return null
+            val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
+            buffer.getShort() // StorageType
+            buffer.getShort() // FilesystemType
+            buffer.getShort() // AccessCapability
+            val maxCapacity = buffer.getLong()
+            val freeSpace = buffer.getLong()
+            maxCapacity to freeSpace
+        } catch (e: Exception) {
+            AppLogger.e("getStorageInfo failed", e)
+            null
+        }
     }
 
     private suspend fun getObjectHandles(storageId: Int, format: Int, parent: Int): IntArray {
@@ -767,8 +933,11 @@ class UsbCameraConnection @Inject constructor(
     }
 
     private suspend fun ensureSession(): Boolean {
-        if (!sessionOpen) {
-            openSession(PtpConstants.DEFAULT_SESSION_ID)
+        if (sessionOpen) return true
+        repeat(3) { attempt ->
+            if (openSession(PtpConstants.DEFAULT_SESSION_ID)) return true
+            AppLogger.report("A", "UsbCameraConnection.kt:ensureSession", "Retry open session", mapOf("attempt" to (attempt + 1).toString()))
+            delay(50)
         }
         return sessionOpen
     }

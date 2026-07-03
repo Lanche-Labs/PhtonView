@@ -9,8 +9,10 @@ import com.phtontools.phtonview.data.model.*
 import com.phtontools.phtonview.data.repository.CameraRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -93,6 +95,12 @@ class CameraViewModel @Inject constructor(
     val photos: StateFlow<List<PhotoItem>> = repository.photos
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    private val _statusDialogText = MutableStateFlow<String?>(null)
+    val statusDialogText: StateFlow<String?> = _statusDialogText.asStateFlow()
+
+    private val _syncResultMessage = MutableStateFlow<String?>(null)
+    val syncResultMessage: StateFlow<String?> = _syncResultMessage.asStateFlow()
+
     init {
         // 不在初始化时立即连接，避免首次进入主界面时因无设备而异常
         viewModelScope.launch {
@@ -161,8 +169,32 @@ class CameraViewModel @Inject constructor(
     fun setGridType(type: GridType) { repository.setGridType(type) }
     fun setZebraPattern(pattern: ZebraPattern) { repository.setZebraPattern(pattern) }
 
-    fun fetchCameraStatus() = viewModelScope.launch { repository.fetchCameraStatus() }
-    fun syncDateTime() = viewModelScope.launch { repository.syncDateTime() }
+    fun fetchCameraStatus() = viewModelScope.launch {
+        val status = repository.fetchCameraStatus()
+        _statusDialogText.value = buildString {
+            if (status.isEmpty()) {
+                append("未能获取相机状态")
+            } else {
+                status.forEach { (key, value) ->
+                    append("$key: $value\n")
+                }
+            }
+        }.trimEnd('\n')
+    }
+
+    fun dismissStatusDialog() {
+        _statusDialogText.value = null
+    }
+
+    fun syncDateTime() = viewModelScope.launch {
+        val ok = repository.syncDateTime()
+        _syncResultMessage.value = if (ok) "同步时间成功" else "同步时间失败，请检查连接"
+    }
+
+    fun dismissSyncResultDialog() {
+        _syncResultMessage.value = null
+    }
+
     fun resetToDefaults() = viewModelScope.launch { repository.resetToDefaults() }
     fun executeGphoto2Command(command: String) = viewModelScope.launch { repository.executeGphoto2Command(command) }
 

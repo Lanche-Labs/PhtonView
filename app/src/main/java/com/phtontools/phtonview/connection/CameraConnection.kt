@@ -104,6 +104,12 @@ interface CameraConnection {
     suspend fun getDeviceInfo(): String = ""
 
     /**
+     * Get storage capacity and free space in bytes for the given storage ID.
+     * Default returns null.
+     */
+    suspend fun getStorageInfo(storageId: Int): Pair<Long, Long>? = null
+
+    /**
      * Get the next transaction ID.
      */
     fun nextTransactionId(): Int = 0

@@ -147,7 +147,7 @@ object AppLogger {
                 val conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.doOutput = true
-                conn.setRequestProperty("Authorization", "token $token")
+                conn.setRequestProperty("Authorization", "Bearer $token")
                 conn.setRequestProperty("Accept", "application/vnd.github.v3+json")
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.connectTimeout = 15000
@@ -163,11 +163,17 @@ object AppLogger {
 
                 conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
                 val responseCode = conn.responseCode
+                val responseBody = if (responseCode in 200..299) {
+                    ""
+                } else {
+                    runCatching { conn.errorStream?.bufferedReader()?.use { it.readText() } }.getOrNull() ?: ""
+                }
                 conn.disconnect()
                 if (responseCode in 200..299) {
                     clearCollectedLogs()
+                    Log.i(TAG, "GitHub issue submitted successfully")
                 } else {
-                    Log.w(TAG, "GitHub issue submission failed: HTTP $responseCode")
+                    Log.w(TAG, "GitHub issue submission failed: HTTP $responseCode, body=$responseBody")
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "GitHub issue submission error", e)

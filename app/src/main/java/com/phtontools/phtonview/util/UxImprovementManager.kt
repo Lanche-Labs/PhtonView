@@ -80,14 +80,21 @@ object UxImprovementManager {
      */
     fun submitSessionLogs() {
         val settings = settingsManager ?: return
-        if (!settings.uxImprovementEnabled) return
-        val token = BuildConfig.GITHUB_TOKEN?.takeIf { it.isNotBlank() } ?: return
+        if (!settings.uxImprovementEnabled) {
+            AppLogger.w("UX improvement disabled, skip submission")
+            return
+        }
+        val token = BuildConfig.GITHUB_TOKEN?.takeIf { it.isNotBlank() }
+        if (token.isNullOrBlank()) {
+            AppLogger.w("GITHUB_TOKEN not configured, cannot submit UX improvement issue")
+            return
+        }
         val title = buildTitle()
         AppLogger.submitToGitHubIssue(
             token = token,
             repo = GITHUB_REPO,
             title = title,
-            labels = listOf(DEFAULT_LABEL, BuildConfig.VERSION_NAME)
+            labels = listOf(DEFAULT_LABEL)
         )
     }
 

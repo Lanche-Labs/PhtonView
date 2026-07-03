@@ -24,7 +24,10 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -34,6 +37,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -123,6 +127,10 @@ fun CameraScreen(
     var offset by remember { mutableStateOf(Offset.Zero) }
     var selectedParam by remember { mutableStateOf<ParamKind?>(null) }
     var showGallery by remember { mutableStateOf(false) }
+
+    val statusDialogText by viewModel.statusDialogText.collectAsStateWithLifecycle()
+    val syncResultMessage by viewModel.syncResultMessage.collectAsStateWithLifecycle()
+    val statusScrollState = rememberScrollState()
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -283,6 +291,37 @@ fun CameraScreen(
                     onDismiss = { showGallery = false },
                     onDownload = { photo, destination ->
                         viewModel.downloadPhotoAwait(photo, destination)
+                    }
+                )
+            }
+
+            statusDialogText?.let { text ->
+                AlertDialog(
+                    onDismissRequest = viewModel::dismissStatusDialog,
+                    title = { Text("相机状态") },
+                    text = {
+                        Text(
+                            text = text,
+                            modifier = Modifier.verticalScroll(statusScrollState)
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = viewModel::dismissStatusDialog) {
+                            Text("确定")
+                        }
+                    }
+                )
+            }
+
+            syncResultMessage?.let { message ->
+                AlertDialog(
+                    onDismissRequest = viewModel::dismissSyncResultDialog,
+                    title = { Text("同步时间结果") },
+                    text = { Text(message) },
+                    confirmButton = {
+                        TextButton(onClick = viewModel::dismissSyncResultDialog) {
+                            Text("确定")
+                        }
                     }
                 )
             }

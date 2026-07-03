@@ -84,8 +84,8 @@ interface CameraRepository {
     fun setZebraPattern(pattern: ZebraPattern)
     fun setLiveViewEnabled(enabled: Boolean)
 
-    suspend fun fetchCameraStatus()
-    suspend fun syncDateTime()
+    suspend fun fetchCameraStatus(): Map<String, String>
+    suspend fun syncDateTime(): Boolean
     suspend fun executeGphoto2Command(command: String): String
 
     suspend fun listPhotos(folder: String = "/store_00010001"): List<PhotoItem>

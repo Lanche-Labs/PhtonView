@@ -9,6 +9,7 @@ import com.phtontools.phtonview.data.local.SettingsManager
 import com.phtontools.phtonview.data.model.*
 import com.phtontools.phtonview.ndk.Gphoto2Bridge
 import com.phtontools.phtonview.usb.UsbCameraConnection
+import com.phtontools.phtonview.usb.ptp.PtpCommand
 import com.phtontools.phtonview.usb.ptp.PtpConstants
 import com.phtontools.phtonview.usb.ptp.PtpValueMapper
 import com.phtontools.phtonview.util.AppLogger
@@ -19,6 +20,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -718,16 +721,43 @@ class CameraRepositoryImpl @Inject constructor(
             return
         }
         val conn = currentConnection ?: return
-        runCatching {
-            val success = conn.setDeviceProperty(code, value)
-            // #region debug-point D:property-apply-result
-            AppLogger.report("D", "CameraRepositoryImpl.kt:applyPtpProperty", "Property apply result", mapOf("code" to String.format(Locale.US, "0x%04X", code), "success" to success.toString()))
-            // #endregion
-        }.onFailure {
-            // #region debug-point D:property-apply-error
-            AppLogger.report("D", "CameraRepositoryImpl.kt:applyPtpProperty", "Property apply error", mapOf("code" to String.format(Locale.US, "0x%04X", code), "error" to (it.message ?: "unknown")))
-            // #endregion
-            AppLogger.e("Failed to set property ${String.format(Locale.US, "0x%04X", code)}", it)
+        val success = runCatching {
+            conn.setDeviceProperty(code, value)
+        }.getOrDefault(false)
+        // #region debug-point D:property-apply-result
+        AppLogger.report("D", "CameraRepositoryImpl.kt:applyPtpProperty", "Property apply result", mapOf("code" to String.format(Locale.US, "0x%04X", code), "success" to success.toString()))
+        // #endregion
+
+        if (!success) {
+            // 快门属性失败时回退到另一种快门属性
+            val fallbackCode = when (code) {
+                PtpConstants.DEVICE_PROP_EXPOSURE_TIME -> PtpConstants.DEVICE_PROP_NIKON_EXPOSURE_TIME
+                PtpConstants.DEVICE_PROP_NIKON_EXPOSURE_TIME -> PtpConstants.DEVICE_PROP_EXPOSURE_TIME
+                else -> null
+            }
+            if (fallbackCode != null) {
+                waitForDeviceReady()
+                val fallbackValue = PtpValueMapper.shutterToPtp(
+                    _exposureSettings.value.shutter,
+                    _cameraSettings.value.brand,
+                    fallbackCode
+                )
+                runCatching {
+                    val ok = conn.setDeviceProperty(fallbackCode, fallbackValue)
+                    AppLogger.report("D", "CameraRepositoryImpl.kt:applyPtpProperty", "Fallback property", mapOf("code" to String.format(Locale.US, "0x%04X", fallbackCode), "success" to ok.toString()))
+                }.onFailure {
+                    AppLogger.report("D", "CameraRepositoryImpl.kt:applyPtpProperty", "Fallback error", mapOf("code" to String.format(Locale.US, "0x%04X", fallbackCode), "error" to (it.message ?: "unknown")))
+                }
+            } else {
+                // 其他属性失败时等待设备就绪后重试一次
+                waitForDeviceReady()
+                runCatching {
+                    val ok = conn.setDeviceProperty(code, value)
+                    AppLogger.report("D", "CameraRepositoryImpl.kt:applyPtpProperty", "Retry result", mapOf("code" to String.format(Locale.US, "0x%04X", code), "success" to ok.toString()))
+                }.onFailure {
+                    AppLogger.report("D", "CameraRepositoryImpl.kt:applyPtpProperty", "Retry error", mapOf("code" to String.format(Locale.US, "0x%04X", code), "error" to (it.message ?: "unknown")))
+                }
+            }
         }
     }
 
@@ -1049,51 +1079,282 @@ class CameraRepositoryImpl @Inject constructor(
         _zebraPattern.value = pattern
     }
 
-    override suspend fun fetchCameraStatus() {
-        // #region debug-point K:status
-        AppLogger.report("K", "CameraRepositoryImpl.kt:fetchCameraStatus", "Fetch camera status", mapOf("connected" to ensureConnected().toString()))
-        // #endregion
-        if (!ensureConnected()) return
-        val conn = currentConnection ?: return
+    override suspend fun fetchCameraStatus(): Map<String, String> {
+        val result = mutableMapOf<String, String>()
+        result["connection"] = if (ensureConnected()) "已连接" else "未连接"
+        result["model"] = currentModelName.ifBlank { "未知" }
+        val conn = currentConnection
+        if (conn == null || !ensureConnected()) {
+            result["error"] = "相机未连接"
+            _cameraStatus.value = CameraStatus()
+            return result
+        }
+
         val wasLiveView = _liveViewEnabled.value
         if (wasLiveView) stopLiveView()
+
         runCatching {
-            val battery = conn.getDeviceProperty(PtpConstants.DEVICE_PROP_BATTERY_LEVEL)
-            // 0xD400 是尼康剩余可拍张数；其他品牌可能不支持，失败时回退到 -1
-            val shots = runCatching { conn.getDeviceProperty(0xD400.toShort()) }.getOrNull()
-            // #region debug-point K:status-result
-            AppLogger.report("K", "CameraRepositoryImpl.kt:fetchCameraStatus", "Camera status result", mapOf("battery" to battery.toString(), "shots" to shots.toString()))
-            // #endregion
+            // 基本信息
+            result["型号"] = currentModelName.ifBlank { "未知" }
+
+            // 电量
+            safeReadProperty(conn, PtpConstants.DEVICE_PROP_BATTERY_LEVEL, "电量(%)")?.let {
+                result["电量(%)"] = "$it"
+            }
+
+            // 存储卡：尝试读取 storage info
+            val storageIds = runCatching { conn.sendCommandWithData(PtpConstants.OPERATION_GET_STORAGE_IDS).let { PtpCommand.decodeIntArray(it) } }.getOrDefault(IntArray(0))
+            result["存储卡数量"] = storageIds.size.toString()
+            if (storageIds.isEmpty()) {
+                result["有无卡"] = "未检测到"
+            } else {
+                result["有无卡"] = "有"
+                val sid = storageIds.firstOrNull()
+                if (sid != null) {
+                    val info = conn.getStorageInfo(sid)
+                    info?.let { (max, free) ->
+                        result["总容量"] = formatBytes(max)
+                        result["剩余空间"] = formatBytes(free)
+                    }
+                }
+            }
+
+            // 剩余可拍张数（尼康）
+            safeReadProperty(conn, 0xD400.toShort(), "剩余可拍张数")?.let {
+                result["剩余可拍张数"] = "$it"
+            }
+
+            // 拍摄参数
+            safeReadProperty(conn, PtpConstants.DEVICE_PROP_ISO, "ISO")?.let {
+                result["ISO"] = "$it"
+            }
+            safeReadProperty(conn, PtpConstants.DEVICE_PROP_F_NUMBER, "光圈")?.let {
+                result["光圈"] = formatFNumber(it)
+            }
+            safeReadProperty(conn, PtpConstants.DEVICE_PROP_EXPOSURE_TIME, "快门")?.let {
+                result["快门"] = PtpValueMapper.ptpToShutter(it, _cameraSettings.value.brand, PtpConstants.DEVICE_PROP_EXPOSURE_TIME)
+                result["快门(PTP值)"] = "$it"
+            } ?: safeReadProperty(conn, PtpConstants.DEVICE_PROP_NIKON_EXPOSURE_TIME, "尼康快门")?.let {
+                result["快门"] = PtpValueMapper.ptpToShutter(it, _cameraSettings.value.brand, PtpConstants.DEVICE_PROP_NIKON_EXPOSURE_TIME)
+                result["快门(PTP值)"] = "$it"
+            }
+            safeReadProperty(conn, PtpConstants.DEVICE_PROP_EXPOSURE_COMPENSATION, "曝光补偿")?.let {
+                result["曝光补偿"] = formatEv(it)
+            }
+            safeReadProperty(conn, PtpConstants.DEVICE_PROP_METERING_MODE, "测光模式")?.let {
+                result["测光模式"] = meteringModeName(it)
+            }
+            safeReadProperty(conn, PtpConstants.DEVICE_PROP_WHITE_BALANCE, "白平衡")?.let {
+                result["白平衡"] = whiteBalanceName(it)
+            }
+            safeReadProperty(conn, PtpConstants.DEVICE_PROP_FOCUS_MODE, "对焦模式")?.let {
+                result["对焦模式"] = focusModeName(it)
+            }
+            safeReadProperty(conn, PtpConstants.DEVICE_PROP_FLASH_MODE, "闪光灯")?.let {
+                result["闪光灯"] = flashModeName(it)
+            }
+            safeReadProperty(conn, PtpConstants.DEVICE_PROP_EXPOSURE_PROGRAM_MODE, "曝光程序")?.let {
+                result["曝光程序"] = exposureProgramName(it)
+            }
+
+            // 镜头信息（尼康常见属性，失败也不影响）
+            safeReadProperty(conn, 0xD0E0.toShort(), "镜头ID")?.let {
+                result["镜头ID"] = String.format(Locale.US, "0x%08X", it)
+            }
+            safeReadProperty(conn, 0xD0E1.toShort(), "镜头排序")?.let {
+                result["镜头排序"] = String.format(Locale.US, "0x%08X", it)
+            }
+            safeReadProperty(conn, 0xD0E2.toShort(), "镜头焦距")?.let {
+                result["镜头焦距"] = "$it mm"
+            }
+
+            // 固件/系统版本：从 DeviceInfo 获取
+            result["固件版本"] = parseFirmwareVersion(conn)
+            result["制造商"] = parseManufacturer(conn)
+
+            // 同时更新旧的 CameraStatus
             _cameraStatus.value = CameraStatus(
-                batteryLevel = battery ?: -1,
-                storageRemaining = -1,
-                storageTotal = -1,
+                batteryLevel = result["电量(%)"]?.toIntOrNull() ?: -1,
+                storageRemaining = result["剩余空间"]?.filter { it.isDigit() }?.toIntOrNull() ?: -1,
+                storageTotal = result["总容量"]?.filter { it.isDigit() }?.toIntOrNull() ?: -1,
                 temperatureCelsius = -1,
-                shotsRemaining = shots ?: -1,
+                shotsRemaining = result["剩余可拍张数"]?.toIntOrNull() ?: -1,
                 shutterCount = -1,
-                firmwareVersion = "Unknown"
+                firmwareVersion = result["固件版本"] ?: "Unknown"
             )
         }.onFailure {
             AppLogger.report("K", "CameraRepositoryImpl.kt:fetchCameraStatus", "Fetch status error", mapOf("error" to (it.message ?: "unknown")))
+            result["error"] = it.message ?: "获取状态失败"
         }
+
         if (wasLiveView) runCatching { startLiveView() }
+        return result
     }
 
-    override suspend fun syncDateTime() {
-        if (!ensureConnected()) return
-        val conn = currentConnection ?: return
+    private suspend fun safeReadProperty(conn: CameraConnection, code: Short, label: String): Int? {
+        return runCatching {
+            conn.getDeviceProperty(code)
+        }.getOrNull().also {
+            AppLogger.report("K", "CameraRepositoryImpl.kt:safeReadProperty", label, mapOf("code" to String.format(Locale.US, "0x%04X", code), "value" to (it?.toString() ?: "null")))
+        }
+    }
+
+    private suspend fun parseFirmwareVersion(conn: CameraConnection): String {
+        return runCatching {
+            val data = conn.sendCommandWithData(PtpConstants.OPERATION_GET_DEVICE_INFO)
+            if (data.size < 12) return@runCatching "Unknown"
+            val payload = PtpCommand.decodeDataPayload(data)
+            val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
+            buffer.getShort() // StandardVersion
+            buffer.getInt() // VendorExtensionID
+            buffer.getShort() // VendorExtensionVersion
+            readPtpString(buffer) // vendor extension desc
+            buffer.getShort() // FunctionalMode
+            val opsCount = buffer.getInt()
+            buffer.position(buffer.position() + opsCount * 2)
+            val eventsCount = buffer.getInt()
+            buffer.position(buffer.position() + eventsCount * 2)
+            val propsCount = buffer.getInt()
+            buffer.position(buffer.position() + propsCount * 2)
+            val manufacturer = readPtpString(buffer)
+            val model = readPtpString(buffer)
+            val version = readPtpString(buffer)
+            version.ifBlank { model.ifBlank { manufacturer } }
+        }.getOrDefault("Unknown")
+    }
+
+    private fun formatBytes(bytes: Long): String {
+        if (bytes <= 0) return "未知"
+        val units = arrayOf("B", "KB", "MB", "GB", "TB")
+        var value = bytes.toDouble()
+        var unitIndex = 0
+        while (value >= 1024 && unitIndex < units.lastIndex) {
+            value /= 1024
+            unitIndex++
+        }
+        return String.format(Locale.US, "%.2f %s", value, units[unitIndex])
+    }
+
+    private fun formatFNumber(raw: Int): String {
+        val value = raw / 100f
+        return String.format(Locale.US, "F%.1f", value)
+    }
+
+    private fun formatEv(raw: Int): String {
+        val ev = raw / 1000f
+        return String.format(Locale.US, "%+.1f EV", ev)
+    }
+
+    private fun meteringModeName(raw: Int): String = when (raw) {
+        1 -> "平均测光"
+        2 -> "中央重点"
+        3 -> "点测光"
+        4 -> "多点测光"
+        5 -> "评价测光/矩阵测光"
+        else -> "模式 $raw"
+    }
+
+    private fun whiteBalanceName(raw: Int): String = when (raw) {
+        1 -> "手动"
+        2 -> "自动"
+        3 -> "日光"
+        4 -> "荧光灯"
+        5 -> "钨丝灯"
+        6 -> "闪光灯"
+        7 -> "阴天"
+        8 -> "阴影"
+        32784 -> "自动2"
+        32785 -> "自动3"
+        else -> "模式 $raw"
+    }
+
+    private fun focusModeName(raw: Int): String = when (raw) {
+        1 -> "手动对焦"
+        2 -> "自动对焦"
+        32784 -> "AF-S"
+        32785 -> "AF-C"
+        32786 -> "AF-A"
+        32787 -> "AF-F"
+        else -> "模式 $raw"
+    }
+
+    private fun flashModeName(raw: Int): String = when (raw) {
+        0 -> "默认"
+        1 -> "自动闪光"
+        2 -> "关闭"
+        3 -> "填充闪光"
+        4 -> "红眼减轻"
+        5 -> "红眼减轻+自动"
+        6 -> "红眼减轻+填充"
+        32784 -> "慢同步"
+        32785 -> "后帘同步"
+        else -> "模式 $raw"
+    }
+
+    private fun exposureProgramName(raw: Int): String = when (raw) {
+        1 -> "手动(M)"
+        2 -> "程序自动(P)"
+        3 -> "光圈优先(A)"
+        4 -> "快门优先(S)"
+        5 -> "创意程序"
+        6 -> "运动程序"
+        7 -> "肖像程序"
+        8 -> "风景程序"
+        32784 -> "自动"
+        32785 -> "场景"
+        else -> "模式 $raw"
+    }
+
+    private suspend fun parseManufacturer(conn: CameraConnection): String {
+        return runCatching {
+            val data = conn.sendCommandWithData(PtpConstants.OPERATION_GET_DEVICE_INFO)
+            if (data.size < 12) return@runCatching "Unknown"
+            val payload = PtpCommand.decodeDataPayload(data)
+            val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
+            buffer.getShort() // StandardVersion
+            buffer.getInt() // VendorExtensionID
+            buffer.getShort() // VendorExtensionVersion
+            readPtpString(buffer) // vendor extension desc
+            buffer.getShort() // FunctionalMode
+            val opsCount = buffer.getInt()
+            buffer.position(buffer.position() + opsCount * 2)
+            val eventsCount = buffer.getInt()
+            buffer.position(buffer.position() + eventsCount * 2)
+            val propsCount = buffer.getInt()
+            buffer.position(buffer.position() + propsCount * 2)
+            readPtpString(buffer) // manufacturer
+        }.getOrDefault("Unknown")
+    }
+
+    private fun readPtpString(buffer: ByteBuffer): String {
+        val length = buffer.get().toInt() and 0xFF
+        if (length == 0) return ""
+        val sb = StringBuilder()
+        for (i in 0 until length - 1) {
+            if (buffer.remaining() < 2) break
+            sb.append(buffer.getShort().toInt().toChar())
+        }
+        return sb.toString().trimEnd('\u0000')
+    }
+
+    override suspend fun syncDateTime(): Boolean {
+        if (!ensureConnected()) return false
+        val conn = currentConnection ?: return false
         val wasLiveView = _liveViewEnabled.value
         if (wasLiveView) stopLiveView()
-        runCatching {
+        val success = runCatching {
             val now = SimpleDateFormat("yyyyMMdd'T'HHmmss", Locale.getDefault()).format(Date())
             // PTP DateTime 属性 (0x5011) 使用 length-prefixed UTF-16LE 字符串
             val data = encodePtpString(now)
-            val success = conn.setDevicePropertyValue(0x5011.toShort(), data)
-            AppLogger.report("K", "CameraRepositoryImpl.kt:syncDateTime", "Sync date/time", mapOf("value" to now, "success" to success.toString()))
-        }.onFailure {
+            val ok = conn.setDevicePropertyValue(0x5011.toShort(), data)
+            AppLogger.report("K", "CameraRepositoryImpl.kt:syncDateTime", "Sync date/time", mapOf("value" to now, "success" to ok.toString()))
+            ok
+        }.getOrElse {
             AppLogger.report("K", "CameraRepositoryImpl.kt:syncDateTime", "Sync date/time error", mapOf("error" to (it.message ?: "unknown")))
+            false
         }
         if (wasLiveView) runCatching { startLiveView() }
+        return success
     }
 
     /**
