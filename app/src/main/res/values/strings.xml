@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">PhtonView</string>
-    <string name="developer_team">LCStudio</string>
+    <string name="developer_team">Lanche-Labs</string>
 
     <!-- Connection states -->
     <string name="status_connected">Connected: %1$s</string>
@@ -217,6 +217,10 @@
     <string name="ux_improvement_summary">Automatically submit anonymous session logs</string>
     <string name="ux_improvement_agree">Agree</string>
     <string name="ux_improvement_decline">Decline</string>
+    <string name="report_issue">Report Issue</string>
+    <string name="report_issue_summary">Manually upload current logs to GitHub issue</string>
+    <string name="report_issue_submitted">Issue submitted</string>
+    <string name="report_issue_failed">Failed to submit issue</string>
 
     <!-- Privacy Policy -->
     <string name="privacy_policy">Privacy Policy</string>

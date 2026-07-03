@@ -9,6 +9,8 @@ import com.phtontools.phtonview.data.local.SettingsManager
 import com.phtontools.phtonview.data.model.*
 import com.phtontools.phtonview.ndk.Gphoto2Bridge
 import com.phtontools.phtonview.usb.UsbCameraConnection
+import com.phtontools.phtonview.usb.ptp.BrandStrategy
+import com.phtontools.phtonview.usb.ptp.GenericStrategy
 import com.phtontools.phtonview.usb.ptp.PtpCommand
 import com.phtontools.phtonview.usb.ptp.PtpConstants
 import com.phtontools.phtonview.usb.ptp.PtpValueMapper
@@ -55,6 +57,11 @@ class CameraRepositoryImpl @Inject constructor(
      * 避免两个属性同时写入导致显示与实际不一致。
      */
     private var preferredShutterProperty: Short = PtpConstants.DEVICE_PROP_EXPOSURE_TIME
+
+    /**
+     * 当前连接的品牌策略，连接成功后根据 DeviceInfo 设置。
+     */
+    private var brandStrategy: BrandStrategy = GenericStrategy
 
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     override val connectionState: StateFlow<ConnectionState> = _connectionState
@@ -184,25 +191,97 @@ class CameraRepositoryImpl @Inject constructor(
                     is CameraConnection.ConnectionState.Disconnected -> ConnectionState.Disconnected
                     is CameraConnection.ConnectionState.Connecting -> ConnectionState.Connecting
                     is CameraConnection.ConnectionState.Connected -> {
-                        currentModelName = state.model
-                        val detectedBrand = detectBrand(state.model)
+                        val cleanModel = cleanModelName(state.model)
+                        currentModelName = cleanModel
+                        // 综合 DeviceInfo VendorExtensionID 和型号名识别品牌，任一命中即采用对应策略
+                        val vendorIdBrand = detectBrandFromDeviceInfo(connection)
+                        val modelBrand = detectBrand(state.model)
+                        val detectedBrand = if (modelBrand != CameraBrand.Generic) modelBrand else vendorIdBrand
+                        brandStrategy = BrandStrategy.forBrand(detectedBrand)
                         _cameraSettings.value = _cameraSettings.value.copy(brand = detectedBrand)
-                        if (detectedBrand == CameraBrand.Nikon) {
-                            inspectNikonProperties()
-                            selectShutterProperty(connection)
-                        } else {
+                        AppLogger.report("J", "CameraRepositoryImpl.kt:collectConnectionState", "Brand detected", mapOf("brand" to detectedBrand.name, "rawModel" to state.model, "cleanModel" to cleanModel, "vendorIdBrand" to vendorIdBrand.name))
+
+                        // 根据品牌策略初始化：尼康额外探测属性，其他品牌直接采用策略中的快门码
+                        runCatching {
+                            if (detectedBrand == CameraBrand.Nikon) {
+                                inspectNikonProperties()
+                                selectShutterProperty(connection)
+                            } else {
+                                preferredShutterProperty = brandStrategy.primaryShutterProperty
+                                AppLogger.report("J", "CameraRepositoryImpl.kt:collectConnectionState", "Use brand shutter", mapOf("property" to String.format(Locale.US, "0x%04X", preferredShutterProperty)))
+                            }
+                        }.onFailure {
+                            AppLogger.report("J", "CameraRepositoryImpl.kt:collectConnectionState", "Brand init failed, fallback", mapOf("error" to (it.message ?: "unknown")))
                             preferredShutterProperty = PtpConstants.DEVICE_PROP_EXPOSURE_TIME
                         }
                         // Auto-start live view by default after the camera is connected.
                         if (!_liveViewEnabled.value) {
                             startLiveView()
                         }
-                        ConnectionState.Connected(state.model)
+                        ConnectionState.Connected(cleanModel)
                     }
                     is CameraConnection.ConnectionState.Error -> ConnectionState.Error(state.message)
                 }
             }
         }
+    }
+
+    private suspend fun detectBrandFromDeviceInfo(connection: CameraConnection): CameraBrand {
+        val raw = runCatching { connection.getDeviceInfoRaw() }.getOrDefault(ByteArray(0))
+        val vendorId = if (raw.size >= 12) PtpCommand.decodeVendorExtensionId(raw) else null
+        AppLogger.report("J", "CameraRepositoryImpl.kt:detectBrandFromDeviceInfo", "VendorExtensionID", mapOf("id" to String.format(Locale.US, "0x%08X", vendorId ?: 0), "rawSize" to raw.size.toString()))
+        return when (vendorId) {
+            PtpConstants.VENDOR_EXTENSION_NIKON -> CameraBrand.Nikon
+            PtpConstants.VENDOR_EXTENSION_CANON -> CameraBrand.Canon
+            PtpConstants.VENDOR_EXTENSION_SONY -> CameraBrand.Sony
+            PtpConstants.VENDOR_EXTENSION_FUJI -> CameraBrand.Fuji
+            PtpConstants.VENDOR_EXTENSION_PANASONIC -> CameraBrand.Panasonic
+            PtpConstants.VENDOR_EXTENSION_OLYMPUS -> CameraBrand.Olympus
+            else -> CameraBrand.Generic
+        }
+    }
+
+    /**
+     * 综合 DeviceInfo 和型号名识别品牌，任一来源命中即采用对应策略。
+     */
+    private fun resolveBrand(connection: CameraConnection, model: String): CameraBrand {
+        val modelBrand = detectBrand(model)
+        AppLogger.report("J", "CameraRepositoryImpl.kt:resolveBrand", "Model brand", mapOf("model" to model, "brand" to modelBrand.name))
+        // 型号名优先：包含品牌关键词时直接使用
+        if (modelBrand != CameraBrand.Generic) return modelBrand
+        // 否则依赖 DeviceInfo 的 vendorExtensionID（已由 collectConnectionState 设置 brandStrategy 前调用）
+        return CameraBrand.Generic
+    }
+
+    /**
+     * 清理 PTP DeviceInfo 返回的型号名，去掉常见厂商前缀，便于 UI 展示。
+     * 例如 "NIKON DSC D5200" -> "D5200"，"Canon EOS R5" -> "EOS R5"。
+     * 清洗逻辑保守，仅处理已知前缀，避免误伤自定义名称。
+     */
+    private fun cleanModelName(model: String): String {
+        if (model.isBlank()) return model
+        val trimmed = model.trim()
+        val upper = trimmed.uppercase()
+        val prefixes = listOf(
+            "NIKON DSC ", "NIKON ",
+            "CANON ",
+            "SONY ",
+            "FUJIFILM ", "FUJI ",
+            "PANASONIC ", "LUMIX ",
+            "OLYMPUS ",
+            "PENTAX ",
+            "RICOH ",
+            "SIGMA ",
+            "TAMRON ",
+            "LEICA ",
+            "HASSELBLAD "
+        )
+        for (prefix in prefixes) {
+            if (upper.startsWith(prefix)) {
+                return trimmed.substring(prefix.length).trim().takeIf { it.isNotBlank() } ?: trimmed
+            }
+        }
+        return trimmed
     }
 
     private fun detectBrand(model: String): CameraBrand {
@@ -215,6 +294,8 @@ class CameraRepositoryImpl @Inject constructor(
             upper.contains("CANON") -> CameraBrand.Canon
             upper.contains("SONY") -> CameraBrand.Sony
             upper.contains("FUJI") || upper.contains("FUJIFILM") -> CameraBrand.Fuji
+            upper.contains("LUMIX") || upper.contains("PANASONIC") -> CameraBrand.Panasonic
+            upper.contains("OLYMPUS") || upper.startsWith("E-") || upper.startsWith("EM") -> CameraBrand.Olympus
             else -> CameraBrand.Generic
         }
     }
@@ -425,28 +506,36 @@ class CameraRepositoryImpl @Inject constructor(
         val conn = currentConnection ?: return
         if (conn.connectionType == ConnectionType.USB) {
             runCatching {
-                if (isNikon) {
-                    // Nikon 实时取景需要先进入 PC 控制模式，否则可能无法启动。
-                    conn.sendCommand(PtpConstants.NIKON_OPERATION_CHANGE_CAMERA_MODE, 1)
+                // 根据品牌策略进入实时取景：尼康需先切 PC 模式并检查状态，佳能/索尼/富士用各自操作码，通用品牌不支持
+                if (brandStrategy.brand == CameraBrand.Nikon) {
+                    brandStrategy.changeCameraModeOperation?.let { conn.sendCommand(it, 1) }
                     waitForDeviceReady()
 
-                    // Check live view status and prohibit condition as libgphoto2 does.
-                    val lvStatus = conn.getDeviceProperty(PtpConstants.DEVICE_PROP_NIKON_LIVE_VIEW_STATUS)
-                    AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view status", mapOf("status" to (lvStatus?.toString() ?: "null")))
-
-                    val prohibit = conn.getDeviceProperty(PtpConstants.DEVICE_PROP_NIKON_LIVE_VIEW_PROHIBIT_CONDITION)
-                    if (prohibit != null && prohibit != 0) {
-                        AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view prohibited", mapOf("condition" to String.format(Locale.US, "0x%08X", prohibit)))
+                    brandStrategy.liveViewStatusProperty?.let { prop ->
+                        val lvStatus = conn.getDeviceProperty(prop)
+                        AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view status", mapOf("status" to (lvStatus?.toString() ?: "null")))
                     }
-
-                    // Set recording media to 1 (PC/SDRAM) if the property is supported.
-                    runCatching { conn.setDeviceProperty(PtpConstants.DEVICE_PROP_NIKON_RECORDING_MEDIA, 1) }
+                    brandStrategy.liveViewProhibitProperty?.let { prop ->
+                        val prohibit = conn.getDeviceProperty(prop)
+                        if (prohibit != null && prohibit != 0) {
+                            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view prohibited", mapOf("condition" to String.format(Locale.US, "0x%08X", prohibit)))
+                        }
+                    }
+                    brandStrategy.recordingMediaProperty?.let { prop ->
+                        runCatching { conn.setDeviceProperty(prop, 1) }
+                    }
                 }
-                val (code, _) = conn.sendCommand(PtpConstants.NIKON_OPERATION_START_LIVEVIEW)
-                // #region debug-point F:liveview-start-ok
-                AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view start command sent", mapOf("responseCode" to String.format(Locale.US, "0x%04X", code)))
-                // #endregion
-                if (isNikon) waitForDeviceReady()
+
+                val startOp = brandStrategy.liveViewStartOperation
+                if (startOp != null) {
+                    val (code, _) = conn.sendCommand(startOp)
+                    AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view start command sent", mapOf("brand" to brandStrategy.brand.name, "responseCode" to String.format(Locale.US, "0x%04X", code)))
+                } else {
+                    AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view not supported for brand", mapOf("brand" to brandStrategy.brand.name))
+                    _liveViewEnabled.value = false
+                    return
+                }
+                if (brandStrategy.brand == CameraBrand.Nikon) waitForDeviceReady()
             }.onFailure {
                 // #region debug-point F:liveview-start-error
                 AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view start error", mapOf("error" to (it.message ?: "unknown")))
@@ -454,7 +543,7 @@ class CameraRepositoryImpl @Inject constructor(
                 // 启动失败时退出 PC 模式，避免相机一直显示“正在连接 PC”
                 _liveViewEnabled.value = false
                 runCatching {
-                    conn.sendCommand(PtpConstants.NIKON_OPERATION_CHANGE_CAMERA_MODE, 0)
+                    brandStrategy.changeCameraModeOperation?.let { conn.sendCommand(it, 0) }
                     waitForDeviceReady()
                 }
             }
@@ -471,12 +560,12 @@ class CameraRepositoryImpl @Inject constructor(
             val conn = currentConnection ?: return
             if (conn.connectionType == ConnectionType.USB) {
                 runCatching {
-                    conn.sendCommand(PtpConstants.NIKON_OPERATION_STOP_LIVEVIEW)
-                    if (isNikon) {
+                    brandStrategy.liveViewStopOperation?.let { conn.sendCommand(it) }
+                    if (brandStrategy.brand == CameraBrand.Nikon) {
                         waitForDeviceReady()
                         // Return the camera to normal mode so it no longer shows
                         // "Connecting to PC" on its screen.
-                        conn.sendCommand(PtpConstants.NIKON_OPERATION_CHANGE_CAMERA_MODE, 0)
+                        brandStrategy.changeCameraModeOperation?.let { conn.sendCommand(it, 0) }
                         waitForDeviceReady()
                     }
                 }.onFailure {
@@ -495,54 +584,66 @@ class CameraRepositoryImpl @Inject constructor(
     private fun startLiveViewLoop() {
         liveViewJob?.cancel()
         liveViewJob = scope.launch(liveViewDispatcher) {
+            // 提升实时取景线程优先级，减少被调度器打断的概率
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
+
             // 复用 Options 减少 GC 压力；RGB_565 比 ARGB_8888 解码更快，且实时取景预览够看
             val decodeOptions = BitmapFactory.Options().apply {
                 inPreferredConfig = Bitmap.Config.RGB_565
             }
             var frameCount = 0
-            var lastLogTime = System.currentTimeMillis()
+            var dropCount = 0
+            var lastLogTime = System.nanoTime()
             var lastErrorTime = 0L
+            val targetIntervalNs = 16_666_667L // 60fps
             while (isActive && _liveViewEnabled.value && _connectionState.value is ConnectionState.Connected) {
-                val loopStart = System.currentTimeMillis()
+                val loopStart = System.nanoTime()
+                var captured = false
                 try {
                     val conn = currentConnection ?: break
                     if (conn.connectionType == ConnectionType.USB) {
-                        // 进一步缩短超时，避免取消时卡死；相机通常几十毫秒内就能返回一帧
+                        val getOp = brandStrategy.liveViewGetOperation ?: break
+                        // 缩短超时，避免取消时卡死；相机通常几十毫秒内就能返回一帧
                         val data = if (conn is UsbCameraConnection) {
-                            conn.sendCommandWithData(
-                                PtpConstants.NIKON_OPERATION_GET_LIVEVIEW_IMAGE,
-                                timeoutMs = 500,
-                                params = intArrayOf()
-                            )
+                            conn.sendCommandWithData(getOp, timeoutMs = 300, params = intArrayOf())
                         } else {
-                            conn.sendCommandWithData(PtpConstants.NIKON_OPERATION_GET_LIVEVIEW_IMAGE)
+                            conn.sendCommandWithData(getOp)
                         }
                         if (data.size <= 12) continue
                         val jpegData = extractNikonLiveViewJpeg(data)
                         if (jpegData.isEmpty()) continue
                         val bitmap = BitmapFactory.decodeByteArray(jpegData, 0, jpegData.size, decodeOptions)
-                        bitmap?.let { _liveViewFrame.value = it }
+                        bitmap?.let {
+                            _liveViewFrame.value = it
+                            captured = true
+                        }
 
                         frameCount++
-                        val now = System.currentTimeMillis()
-                        if (now - lastLogTime >= 5000) {
-                            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Live view frames", mapOf("frames" to frameCount.toString(), "avgIntervalMs" to (now - lastLogTime).div(frameCount.coerceAtLeast(1)).toString()))
+                        val now = System.nanoTime()
+                        if (now - lastLogTime >= 5_000_000_000L) {
+                            val avgMs = ((now - lastLogTime) / 1_000_000.0) / frameCount.coerceAtLeast(1)
+                            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Live view frames", mapOf("frames" to frameCount.toString(), "dropped" to dropCount.toString(), "avgIntervalMs" to String.format(Locale.US, "%.2f", avgMs)))
                             frameCount = 0
+                            dropCount = 0
                             lastLogTime = now
                         }
                     }
                 } catch (e: Exception) {
-                    val now = System.currentTimeMillis()
-                    if (now - lastErrorTime >= 1000) {
+                    val now = System.nanoTime()
+                    if (now - lastErrorTime >= 1_000_000_000L) {
                         AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Live view frame error", mapOf("error" to (e.message ?: "unknown")))
                         lastErrorTime = now
                     }
                     if (settingsManager.debugMode) e.printStackTrace()
                 }
-                // 目标约 60fps；如果单帧采集+解码已经超过 16ms，则只给 1ms 让出线程
-                val elapsed = System.currentTimeMillis() - loopStart
-                val delayMs = (16L - elapsed).coerceAtLeast(1L)
-                delay(delayMs)
+                val elapsedNs = System.nanoTime() - loopStart
+                val delayNs = targetIntervalNs - elapsedNs
+                if (delayNs > 0) {
+                    delay(delayNs / 1_000_000)
+                } else if (captured) {
+                    // 已落后超过一帧，跳过下一次等待以追赶，但累计丢帧数便于观察
+                    dropCount++
+                }
             }
             // Clear the frame when the loop exits so the UI doesn't stick on the last frame.
             _liveViewFrame.value = null
@@ -570,7 +671,9 @@ class CameraRepositoryImpl @Inject constructor(
         if (_focusMode.value == FocusMode.MF) return
         if (!ensureConnected()) return
         val conn = currentConnection ?: return
-        runCatching { conn.sendCommand(PtpConstants.NIKON_OPERATION_AF_DRIVE) }
+        brandStrategy.afDriveOperation?.let { op ->
+            runCatching { conn.sendCommand(op) }
+        }
     }
 
     override suspend fun setAfArea(x: Float, y: Float) {
@@ -580,7 +683,9 @@ class CameraRepositoryImpl @Inject constructor(
         val conn = currentConnection ?: return
         val camX = (x * 100).toInt()
         val camY = (y * 100).toInt()
-        runCatching { conn.sendCommand(PtpConstants.NIKON_OPERATION_CHANGE_AF_AREA, camX, camY) }
+        brandStrategy.changeAfAreaOperation?.let { op ->
+            runCatching { conn.sendCommand(op, camX, camY) }
+        }
     }
 
     override fun setFocusMode(mode: FocusMode) {
@@ -747,12 +852,10 @@ class CameraRepositoryImpl @Inject constructor(
         // #endregion
 
         if (!success) {
-            // 快门属性失败时回退到另一种快门属性
-            val fallbackCode = when (code) {
-                PtpConstants.DEVICE_PROP_EXPOSURE_TIME -> PtpConstants.DEVICE_PROP_NIKON_EXPOSURE_TIME
-                PtpConstants.DEVICE_PROP_NIKON_EXPOSURE_TIME -> PtpConstants.DEVICE_PROP_EXPOSURE_TIME
-                else -> null
-            }
+            // 快门属性失败时回退到品牌策略中的备选快门属性
+            val fallbackCode = if (code == brandStrategy.primaryShutterProperty || code == brandStrategy.fallbackShutterProperty) {
+                if (code == brandStrategy.primaryShutterProperty) brandStrategy.fallbackShutterProperty else brandStrategy.primaryShutterProperty
+            } else null
             if (fallbackCode != null) {
                 waitForDeviceReady()
                 val fallbackValue = PtpValueMapper.shutterToPtp(
@@ -841,13 +944,15 @@ class CameraRepositoryImpl @Inject constructor(
     }
 
     /**
-     * 退出 Nikon PC 控制模式，让相机回到正常待机状态。
+     * 退出 PC 控制模式，让相机回到正常待机状态。
      */
     private suspend fun exitPcControlMode() {
-        if (!isNikon || !ensureConnected()) return
+        if (!ensureConnected()) return
         runCatching {
-            currentConnection?.sendCommand(PtpConstants.NIKON_OPERATION_CHANGE_CAMERA_MODE, 0)
-            waitForDeviceReady()
+            brandStrategy.changeCameraModeOperation?.let {
+                currentConnection?.sendCommand(it, 0)
+                waitForDeviceReady()
+            }
         }
     }
 
@@ -855,9 +960,9 @@ class CameraRepositoryImpl @Inject constructor(
         if (!ensureConnected()) return
         val conn = currentConnection ?: return
         runCatching {
-            if (isNikon) {
+            if (brandStrategy.brand == CameraBrand.Nikon) {
                 // Ensure PC control mode before capture; older Nikon bodies need this.
-                conn.sendCommand(PtpConstants.NIKON_OPERATION_CHANGE_CAMERA_MODE, 1)
+                brandStrategy.changeCameraModeOperation?.let { conn.sendCommand(it, 1) }
                 waitForDeviceReady()
 
                 // Nikon: InitiateCaptureRecInMedia (0x9207) requires two params:
@@ -865,11 +970,7 @@ class CameraRepositoryImpl @Inject constructor(
                 // param2 = target: 0 (card), 1 (SDRAM)
                 val afParam = if (_focusMode.value == FocusMode.AF) 0xFFFFFFFE.toInt() else 0xFFFFFFFF.toInt()
                 val targetParam = if (_cameraSettings.value.storageTarget == StorageTarget.Camera) 1 else 0
-                val (code, _) = conn.sendCommand(
-                    PtpConstants.NIKON_OPERATION_INITIATE_CAPTURE_REC_IN_MEDIA,
-                    afParam,
-                    targetParam
-                )
+                val (code, _) = conn.sendCommand(brandStrategy.captureOperation, afParam, targetParam)
                 if (code != PtpConstants.RESPONSE_OK) {
                     AppLogger.report("G", "CameraRepositoryImpl.kt:doCaptureImage", "Nikon capture fallback", mapOf("responseCode" to String.format(Locale.US, "0x%04X", code)))
                     conn.sendCommand(PtpConstants.OPERATION_INITIATE_CAPTURE)
@@ -877,7 +978,7 @@ class CameraRepositoryImpl @Inject constructor(
                 waitForDeviceReady()
                 return@runCatching
             }
-            conn.sendCommand(PtpConstants.OPERATION_INITIATE_CAPTURE)
+            conn.sendCommand(brandStrategy.captureOperation)
         }.onFailure {
             AppLogger.report("G", "CameraRepositoryImpl.kt:doCaptureImage", "Capture error", mapOf("error" to (it.message ?: "unknown")))
             runCatching { conn.sendCommand(PtpConstants.OPERATION_INITIATE_CAPTURE) }
@@ -904,7 +1005,7 @@ class CameraRepositoryImpl @Inject constructor(
                 doCaptureImage()
                 if (index < actual - 1) {
                     // 尼康机身需要等待命令处理完成，再拍下一张
-                    if (isNikon) waitForDeviceReady(waitMs = 50, timeoutMs = 2000)
+                    if (brandStrategy.brand == CameraBrand.Nikon) waitForDeviceReady(waitMs = 50, timeoutMs = 2000)
                     delay(delayMs.toLong())
                 }
             }
@@ -928,7 +1029,7 @@ class CameraRepositoryImpl @Inject constructor(
                 // B门需要退出实时取景，记录状态以便结束后恢复
                 val wasLiveView = _liveViewEnabled.value
                 if (wasLiveView) stopLiveView()
-                if (isNikon) {
+                if (brandStrategy.brand == CameraBrand.Nikon) {
                     doNikonBulbExposure(seconds)
                 } else {
                     doGenericBulbExposure(seconds)
@@ -949,7 +1050,7 @@ class CameraRepositoryImpl @Inject constructor(
     private suspend fun doNikonBulbExposure(seconds: Int) {
         val conn = currentConnection ?: return
         runCatching {
-            conn.sendCommand(PtpConstants.NIKON_OPERATION_CHANGE_CAMERA_MODE, 1)
+            brandStrategy.changeCameraModeOperation?.let { conn.sendCommand(it, 1) }
             waitForDeviceReady()
             // 切到手动模式，确保支持 Bulb
             setShootingMode(ShootingMode.M)
@@ -958,11 +1059,7 @@ class CameraRepositoryImpl @Inject constructor(
             waitForDeviceReady()
             delay(200)
             val targetParam = if (_cameraSettings.value.storageTarget == StorageTarget.Camera) 1 else 0
-            conn.sendCommand(
-                PtpConstants.NIKON_OPERATION_INITIATE_CAPTURE_REC_IN_MEDIA,
-                0xFFFFFFFF.toInt(),
-                targetParam
-            )
+            conn.sendCommand(brandStrategy.captureOperation, 0xFFFFFFFF.toInt(), targetParam)
             waitForDeviceReady()
         }.onFailure {
             AppLogger.report("G", "CameraRepositoryImpl.kt:doNikonBulbExposure", "Nikon bulb start error", mapOf("error" to (it.message ?: "unknown")))
@@ -972,7 +1069,7 @@ class CameraRepositoryImpl @Inject constructor(
         doStopBulbExposure()
         // 退出 PC 控制模式，避免相机一直显示“正在连接 PC”
         runCatching {
-            conn.sendCommand(PtpConstants.NIKON_OPERATION_CHANGE_CAMERA_MODE, 0)
+            brandStrategy.changeCameraModeOperation?.let { conn.sendCommand(it, 0) }
             waitForDeviceReady()
         }
     }
@@ -1002,9 +1099,9 @@ class CameraRepositoryImpl @Inject constructor(
         if (!ensureConnected()) return
         val conn = currentConnection ?: return
         runCatching {
-            if (isNikon) {
+            if (brandStrategy.brand == CameraBrand.Nikon) {
                 // Nikon TerminateCapture (0x920C) 不需要参数
-                conn.sendCommand(PtpConstants.NIKON_OPERATION_TERMINATE_CAPTURE)
+                brandStrategy.terminateCaptureOperation?.let { conn.sendCommand(it) }
                 waitForDeviceReady()
                 // 恢复 B 门之前的快门速度，使显示与实际一致
                 setShutter(preBulbShutter)
@@ -1149,12 +1246,17 @@ class CameraRepositoryImpl @Inject constructor(
             safeReadProperty(conn, PtpConstants.DEVICE_PROP_F_NUMBER, "光圈")?.let {
                 result["光圈"] = formatFNumber(it)
             }
-            safeReadProperty(conn, PtpConstants.DEVICE_PROP_EXPOSURE_TIME, "快门")?.let {
-                result["快门"] = PtpValueMapper.ptpToShutter(it, _cameraSettings.value.brand, PtpConstants.DEVICE_PROP_EXPOSURE_TIME)
+            // 快门：按品牌策略先读主属性，失败再读备选属性
+            val primaryShutter = brandStrategy.primaryShutterProperty
+            val fallbackShutter = brandStrategy.fallbackShutterProperty
+            safeReadProperty(conn, primaryShutter, "快门")?.let {
+                result["快门"] = PtpValueMapper.ptpToShutter(it, _cameraSettings.value.brand, primaryShutter)
                 result["快门(PTP值)"] = "$it"
-            } ?: safeReadProperty(conn, PtpConstants.DEVICE_PROP_NIKON_EXPOSURE_TIME, "尼康快门")?.let {
-                result["快门"] = PtpValueMapper.ptpToShutter(it, _cameraSettings.value.brand, PtpConstants.DEVICE_PROP_NIKON_EXPOSURE_TIME)
-                result["快门(PTP值)"] = "$it"
+            } ?: fallbackShutter?.let { fallback ->
+                safeReadProperty(conn, fallback, "备选快门")?.let {
+                    result["快门"] = PtpValueMapper.ptpToShutter(it, _cameraSettings.value.brand, fallback)
+                    result["快门(PTP值)"] = "$it"
+                }
             }
             safeReadProperty(conn, PtpConstants.DEVICE_PROP_EXPOSURE_COMPENSATION, "曝光补偿")?.let {
                 result["曝光补偿"] = formatEv(it)
@@ -1554,43 +1656,24 @@ class CameraRepositoryImpl @Inject constructor(
 
     /**
      * Extract the JPEG payload from a Nikon GetLiveViewImage response.
-     * The Nikon live-view frame usually carries a small header before the JPEG,
-     * so we first skip the 12-byte PTP data container and look for SOI/EOI.
-     * If no markers are found in the stripped payload, fall back to scanning
-     * the full data buffer to tolerate variable header lengths.
+     * Uses a single-pass marker scan to minimize per-frame allocation and latency.
      */
     private fun extractNikonLiveViewJpeg(data: ByteArray): ByteArray {
-        val soiMarker = byteArrayOf(0xFF.toByte(), 0xD8.toByte())
-        val eoiMarker = byteArrayOf(0xFF.toByte(), 0xD9.toByte())
-
-        fun extractFrom(buffer: ByteArray): ByteArray? {
-            val soi = indexOfBytes(buffer, soiMarker)
-            if (soi < 0) return null
-            val eoi = indexOfBytes(buffer, eoiMarker)
-            val end = if (eoi >= soi) (eoi + 2).coerceAtMost(buffer.size) else buffer.size
-            return buffer.copyOfRange(soi, end)
-        }
-
-        // Most frames: PTP data container (12 bytes) + Nikon header + JPEG.
-        if (data.size > 12) {
-            val payload = data.copyOfRange(12, data.size)
-            extractFrom(payload)?.let { return it }
-        }
-        // Fallback: scan the whole received buffer.
-        return extractFrom(data) ?: data
+        val soi = data.indexOfJpegMarker(0xD8)
+        if (soi < 0 || soi + 1 >= data.size) return data
+        val eoi = data.indexOfJpegMarker(0xD9, start = soi + 2)
+        val end = if (eoi >= soi) (eoi + 2).coerceAtMost(data.size) else data.size
+        return data.copyOfRange(soi, end)
     }
 
-    private fun indexOfBytes(data: ByteArray, pattern: ByteArray): Int {
-        if (pattern.isEmpty() || data.size < pattern.size) return -1
-        for (i in 0..data.size - pattern.size) {
-            var match = true
-            for (j in pattern.indices) {
-                if (data[i + j] != pattern[j]) {
-                    match = false
-                    break
-                }
-            }
-            if (match) return i
+    /**
+     * 在字节数组中查找 JPEG 标记（0xFF + marker）。
+     * 从 [start] 开始单向前进，避免嵌套循环和中间分配。
+     */
+    private fun ByteArray.indexOfJpegMarker(marker: Int, start: Int = 0): Int {
+        val markerByte = marker.toByte()
+        for (i in start until size - 1) {
+            if (this[i] == 0xFF.toByte() && this[i + 1] == markerByte) return i
         }
         return -1
     }

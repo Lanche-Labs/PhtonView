@@ -45,8 +45,8 @@ android {
         versionName = versionNameString
 
         // 开发团队信息
-        resValue("string", "developer_team", "LCStudio")
-        buildConfigField("String", "DEVELOPER_TEAM", "\"LCStudio\"")
+        resValue("string", "developer_team", "Lanche-Labs")
+        buildConfigField("String", "DEVELOPER_TEAM", "\"Lanche-Labs\"")
 
         // 用户体验改进计划：在 local.properties 中配置 GITHUB_TOKEN 以启用自动提交 Issue
         val localProps = Properties().apply {

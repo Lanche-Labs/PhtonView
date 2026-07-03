@@ -123,14 +123,23 @@ object AppLogger {
     /**
      * 将收集到的日志作为 GitHub Issue 提交。
      * 若 [token] 为空或提交失败，仅记录失败并不抛出异常。
+     * [onResult] 会在提交完成后回调 (success, message)。
      */
     fun submitToGitHubIssue(
         token: String,
         repo: String,
         title: String,
-        labels: List<String> = listOf("telemetry", "auto-report")
+        labels: List<String> = listOf("telemetry", "auto-report"),
+        onResult: ((Boolean, String) -> Unit)? = null
     ) {
-        if (token.isBlank() || submitting.getAndSet(true)) return
+        if (token.isBlank()) {
+            onResult?.invoke(false, "GITHUB_TOKEN 未配置")
+            return
+        }
+        if (submitting.getAndSet(true)) {
+            onResult?.invoke(false, "正在提交中，请稍后再试")
+            return
+        }
         val body = buildString {
             appendLine("## PhtonView 自动日志报告")
             appendLine("- 应用版本：${BuildConfig.VERSION_NAME}")
@@ -142,6 +151,8 @@ object AppLogger {
             appendLine("```")
         }
         Thread {
+            var success = false
+            var message = ""
             try {
                 val url = URL("https://api.github.com/repos/$repo/issues")
                 val conn = url.openConnection() as HttpURLConnection
@@ -171,14 +182,21 @@ object AppLogger {
                 conn.disconnect()
                 if (responseCode in 200..299) {
                     clearCollectedLogs()
+                    success = true
+                    message = "日志上报成功"
                     Log.i(TAG, "GitHub issue submitted successfully")
                 } else {
+                    success = false
+                    message = "日志上报失败：HTTP $responseCode"
                     Log.w(TAG, "GitHub issue submission failed: HTTP $responseCode, body=$responseBody")
                 }
             } catch (e: Exception) {
+                success = false
+                message = "日志上报异常：${e.message}"
                 Log.w(TAG, "GitHub issue submission error", e)
             } finally {
                 submitting.set(false)
+                onResult?.invoke(success, message)
             }
         }.start()
     }

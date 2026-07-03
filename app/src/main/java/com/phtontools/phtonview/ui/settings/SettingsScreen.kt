@@ -227,6 +227,11 @@ fun SettingsScreen(
                     onUxImprovementChange = {
                         uxImprovement = it
                         UxImprovementManager.setEnabled(it)
+                    },
+                    onReportIssue = {
+                        UxImprovementManager.forceSubmitLogs { success, message ->
+                            android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
+                        }
                     }
                 )
 
@@ -314,7 +319,8 @@ private fun MainSettingsContent(
     onPairWifi: (String) -> Unit,
     onWifiExperimentalChange: (Boolean) -> Unit,
     onDebugModeChange: (Boolean) -> Unit,
-    onUxImprovementChange: (Boolean) -> Unit
+    onUxImprovementChange: (Boolean) -> Unit,
+    onReportIssue: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -377,6 +383,12 @@ private fun MainSettingsContent(
             onCheckedChange = onUxImprovementChange
         )
         SettingsItem(
+            icon = Icons.Default.BugReport,
+            title = stringResource(id = R.string.report_issue),
+            summary = stringResource(id = R.string.report_issue_summary),
+            onClick = onReportIssue
+        )
+        SettingsItem(
             icon = Icons.Default.Update,
             title = stringResource(id = R.string.check_update),
             summary = stringResource(id = R.string.latest_version),
@@ -388,7 +400,7 @@ private fun MainSettingsContent(
             icon = Icons.Default.Info,
             title = stringResource(id = R.string.app_name),
             summary = String.format(stringResource(id = R.string.version_format), BuildConfig.VERSION_NAME) +
-                    " · lanche-furry",
+                    " · " + stringResource(id = R.string.developer_team),
             onClick = {}
         )
         SettingsItem(

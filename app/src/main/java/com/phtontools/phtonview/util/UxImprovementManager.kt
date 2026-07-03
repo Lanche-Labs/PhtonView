@@ -57,8 +57,9 @@ object UxImprovementManager {
 
     private fun onAppBackground() {
         AppLogger.i("UX improvement session ended")
-        val (submitted, message) = submitSessionLogs()
-        AppLogger.i("UX improvement submission: submitted=$submitted, message=$message")
+        submitSessionLogs { submitted, message ->
+            AppLogger.i("UX improvement submission: submitted=$submitted, message=$message")
+        }
         AppLogger.collectionEnabled = false
     }
 
@@ -78,27 +79,56 @@ object UxImprovementManager {
 
     /**
      * 手动触发日志提交（例如设置页点击“立即提交”）。
-     * 返回 (是否已发起提交, 提示信息)。
+     * [onResult] 会在提交完成后回调 (success, message)。
      */
-    fun submitSessionLogs(): Pair<Boolean, String> {
-        val settings = settingsManager ?: return false to "设置管理器未初始化"
+    fun submitSessionLogs(onResult: ((Boolean, String) -> Unit)? = null) {
+        val settings = settingsManager ?: run {
+            onResult?.invoke(false, "设置管理器未初始化")
+            return
+        }
         if (!settings.uxImprovementEnabled) {
             AppLogger.w("UX improvement disabled, skip submission")
-            return false to "用户体验改进计划未开启"
+            onResult?.invoke(false, "用户体验改进计划未开启")
+            return
         }
+        submitLogsInternal(buildTitle(), listOf(DEFAULT_LABEL), onResult)
+    }
+
+    /**
+     * 强制提交当前日志，不受用户体验改进计划开关限制，用于“功能异常上报”。
+     * [onResult] 会在提交完成后回调 (success, message)。
+     */
+    fun forceSubmitLogs(onResult: ((Boolean, String) -> Unit)? = null) {
+        if (settingsManager == null) {
+            onResult?.invoke(false, "设置管理器未初始化")
+            return
+        }
+        submitLogsInternal(buildManualTitle(), listOf("bug-report", "manual"), onResult)
+    }
+
+    private fun submitLogsInternal(
+        title: String,
+        labels: List<String>,
+        onResult: ((Boolean, String) -> Unit)? = null
+    ) {
         val token = BuildConfig.GITHUB_TOKEN.takeIf { it.isNotBlank() }
         if (token.isNullOrBlank()) {
-            AppLogger.w("GITHUB_TOKEN not configured, cannot submit UX improvement issue")
-            return false to "GITHUB_TOKEN 未配置，请在 local.properties 中填写后重新编译"
+            AppLogger.w("GITHUB_TOKEN not configured, cannot submit issue")
+            onResult?.invoke(false, "GITHUB_TOKEN 未配置，请在 local.properties 中填写后重新编译")
+            return
         }
-        val title = buildTitle()
         AppLogger.submitToGitHubIssue(
             token = token,
             repo = GITHUB_REPO,
             title = title,
-            labels = listOf(DEFAULT_LABEL)
+            labels = labels,
+            onResult = onResult
         )
-        return true to "正在提交日志到 GitHub Issues"
+    }
+
+    private fun buildManualTitle(): String {
+        val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+        return "[Bug Report] PhtonView $time (${BuildConfig.VERSION_NAME})"
     }
 
     private fun buildTitle(): String {

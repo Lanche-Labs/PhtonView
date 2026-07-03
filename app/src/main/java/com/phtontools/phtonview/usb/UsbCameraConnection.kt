@@ -20,6 +20,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.Locale
@@ -461,31 +462,34 @@ class UsbCameraConnection @Inject constructor(
                 throw IllegalStateException("bulkTransfer OUT failed: $written")
             }
 
-            val result = mutableListOf<Byte>()
+            // 使用 ByteArrayOutputStream 避免 MutableList<Byte> 装箱和中间数组分配
+            val result = ByteArrayOutputStream(65536)
             var responseCode: Short = -1
             var dataLengthRemaining = -1
+            var isFirstDataChunk = true
 
             while (true) {
-                val buffer = ByteArray(4096)
+                // 增大单次读取缓冲，减少 USB 传输往返次数
+                val buffer = ByteArray(16384)
                 val length = conn.bulkTransfer(inEp, buffer, buffer.size, timeoutMs)
                 AppLogger.d("bulkTransfer IN chunk returned: $length")
                 if (length <= 0) break
                 AppLogger.logUsb("IN", buffer, length)
 
-                val bb = ByteBuffer.wrap(buffer, 0, length)
-                bb.order(ByteOrder.LITTLE_ENDIAN)
-
                 if (length >= 12) {
+                    val bb = ByteBuffer.wrap(buffer, 0, length)
+                    bb.order(ByteOrder.LITTLE_ENDIAN)
                     val containerLength = bb.getInt(0)
                     val containerType = bb.getShort(4)
                     if (containerType == PtpConstants.CONTAINER_TYPE_RESPONSE) {
                         responseCode = bb.getShort(6)
                         break
                     }
-                    if (containerType == PtpConstants.CONTAINER_TYPE_DATA && dataLengthRemaining < 0) {
+                    if (containerType == PtpConstants.CONTAINER_TYPE_DATA && isFirstDataChunk) {
                         // 首个数据容器包：保留完整头部，供上层 decodeDataPayload 自行剥离
                         dataLengthRemaining = containerLength - length
-                        result.addAll(buffer.copyOf(length).toList())
+                        result.write(buffer, 0, length)
+                        isFirstDataChunk = false
                         if (dataLengthRemaining <= 0) {
                             // 数据已在单包内传完，继续读取响应容器
                             continue
@@ -497,32 +501,34 @@ class UsbCameraConnection @Inject constructor(
                 // 仍在接收数据容器后续字节（不含头部，直接追加）
                 if (dataLengthRemaining > 0) {
                     val take = minOf(length, dataLengthRemaining)
-                    result.addAll(buffer.copyOfRange(0, take).toList())
+                    result.write(buffer, 0, take)
                     dataLengthRemaining -= take
                     if (dataLengthRemaining <= 0) {
                         // 数据传完，下一轮应该是响应容器
                         continue
                     }
                 } else {
-                    result.addAll(buffer.copyOf(length).toList())
+                    result.write(buffer, 0, length)
                 }
             }
 
+            var dataBytes = result.toByteArray()
+
             // 兼容：响应容器可能粘在最后一个数据包尾部
-            if (responseCode == (-1).toShort() && result.size >= 12) {
-                val tailOffset = result.size - 12
-                val bb = ByteBuffer.wrap(result.toByteArray(), tailOffset, 12)
+            if (responseCode == (-1).toShort() && dataBytes.size >= 12) {
+                val tailOffset = dataBytes.size - 12
+                val bb = ByteBuffer.wrap(dataBytes, tailOffset, 12)
                 bb.order(ByteOrder.LITTLE_ENDIAN)
                 val containerType = bb.getShort(4)
                 if (containerType == PtpConstants.CONTAINER_TYPE_RESPONSE) {
                     responseCode = bb.getShort(6)
-                    repeat(12) { result.removeAt(result.size - 1) }
+                    dataBytes = dataBytes.copyOf(tailOffset)
                 }
             }
             // #region debug-point B:ptp-data-response
-            AppLogger.report("B", "UsbCameraConnection.kt:sendCommandWithDataInternal", "PTP data response", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "responseCode" to String.format(Locale.US, "0x%04X", responseCode), "bytes" to result.size.toString()))
+            AppLogger.report("B", "UsbCameraConnection.kt:sendCommandWithDataInternal", "PTP data response", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "responseCode" to String.format(Locale.US, "0x%04X", responseCode), "bytes" to dataBytes.size.toString()))
             // #endregion
-            return result.toByteArray() to responseCode
+            return dataBytes to responseCode
         }
 
         val (data, responseCode) = transferOnce()
@@ -537,6 +543,16 @@ class UsbCameraConnection @Inject constructor(
             PtpCommand(PtpConstants.OPERATION_GET_DEVICE_INFO, nextTransactionId())
         )
         return PtpCommand.decodeDeviceInfoModel(data)
+    }
+
+    override suspend fun getDeviceInfoRaw(): ByteArray {
+        return runCatching {
+            sendCommandWithDataInternal(
+                PtpCommand(PtpConstants.OPERATION_GET_DEVICE_INFO, nextTransactionId())
+            )
+        }.onFailure {
+            AppLogger.report("B", "UsbCameraConnection.kt:getDeviceInfoRaw", "Failed", mapOf("error" to (it.message ?: "unknown")))
+        }.getOrDefault(ByteArray(0))
     }
 
     override suspend fun getDeviceProperty(code: Short): Int? {

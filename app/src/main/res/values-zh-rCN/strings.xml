@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">PhtonView</string>
-    <string name="developer_team">LCStudio</string>
+    <string name="developer_team">Lanche-Labs</string>
 
     <!-- 连接状态 -->
     <string name="status_connected">已连接：%1$s</string>
@@ -218,6 +218,10 @@
     <string name="ux_improvement_summary">自动提交匿名会话日志</string>
     <string name="ux_improvement_agree">同意</string>
     <string name="ux_improvement_decline">拒绝</string>
+    <string name="report_issue">功能异常上报</string>
+    <string name="report_issue_summary">手动上传当前日志到 GitHub Issue</string>
+    <string name="report_issue_submitted">日志已上报</string>
+    <string name="report_issue_failed">日志上报失败</string>
 
     <!-- 隐私政策 -->
     <string name="privacy_policy">隐私政策</string>

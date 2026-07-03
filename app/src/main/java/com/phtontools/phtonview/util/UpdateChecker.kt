@@ -22,7 +22,7 @@ import java.net.URL
 object UpdateChecker {
 
     private const val API_URL =
-        "https://api.github.com/repos/lanche-furry/PhtonView/releases/latest"
+        "https://api.github.com/repos/Lanche-Labs/PhtonView/releases/latest"
 
     data class ReleaseInfo(
         val version: String,

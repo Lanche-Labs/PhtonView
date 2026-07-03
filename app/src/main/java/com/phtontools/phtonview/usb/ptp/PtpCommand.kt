@@ -158,6 +158,18 @@ class PtpCommand(
             }
         }
 
+        /**
+         * 从 DeviceInfo 原始字节中读取 VendorExtensionID（偏移 8，4 字节）。
+         */
+        fun decodeVendorExtensionId(data: ByteArray): Int? {
+            val payload = decodeDataPayload(data)
+            if (payload.size < 12) return null
+            return ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN).let {
+                it.getShort() // StandardVersion
+                it.getInt()   // VendorExtensionID
+            }
+        }
+
         private fun readPtpString(buffer: ByteBuffer): String? {
             if (buffer.remaining() < 1) return ""
             val lengthByte = buffer.get().toInt() and 0xFF

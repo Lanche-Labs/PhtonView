@@ -104,6 +104,11 @@ interface CameraConnection {
     suspend fun getDeviceInfo(): String = ""
 
     /**
+     * Get raw DeviceInfo bytes for brand detection. Default returns empty array.
+     */
+    suspend fun getDeviceInfoRaw(): ByteArray = ByteArray(0)
+
+    /**
      * Get storage capacity and free space in bytes for the given storage ID.
      * Default returns null.
      */

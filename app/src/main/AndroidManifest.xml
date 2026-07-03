@@ -34,7 +34,7 @@
 
         <meta-data
             android:name="developer_team"
-            android:value="lanche-furry" />
+            android:value="Lanche-Labs" />
 
         <activity
             android:name=".MainActivity"
