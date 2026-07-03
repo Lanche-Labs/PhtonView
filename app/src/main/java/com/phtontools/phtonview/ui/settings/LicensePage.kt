@@ -28,12 +28,10 @@ fun LicensePage(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var licenseText by remember { mutableStateOf("") }
-    var copyingText by remember { mutableStateOf("") }
+    var sections by remember { mutableStateOf<List<LicenseSectionData>>(emptyList()) }
 
     LaunchedEffect(Unit) {
-        licenseText = loadAssetText(context, "LICENSE")
-        copyingText = loadAssetText(context, "COPYING")
+        sections = loadAllLicenseSections(context)
     }
 
     Column(
@@ -43,8 +41,17 @@ fun LicensePage(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        LicenseSection(title = "LICENSE", content = licenseText)
-        LicenseSection(title = "COPYING", content = copyingText)
+        if (sections.isEmpty()) {
+            Text(
+                text = "暂无许可证内容。",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+            )
+        } else {
+            sections.forEach { section ->
+                LicenseSection(title = section.title, content = section.content)
+            }
+        }
     }
 }
 
@@ -74,10 +81,54 @@ private fun LicenseSection(
     }
 }
 
-private fun loadAssetText(context: android.content.Context, path: String): String {
-    // build.gradle 会把根目录 LICENSE / COPYING 复制到 assets/licenses/
-    // 某些情况下资源可能被放到根目录，所以优先 licenses/，再回退根目录
-    val candidates = listOf("licenses/$path", path)
+private data class LicenseSectionData(
+    val title: String,
+    val content: String
+)
+
+private fun loadAllLicenseSections(context: android.content.Context): List<LicenseSectionData> {
+    val result = mutableListOf<LicenseSectionData>()
+
+    // 1. 根目录 LICENSE（如果存在）
+    loadAssetText(context, "LICENSE")?.takeIf { it.isNotBlank() }?.let {
+        result.add(LicenseSectionData("LICENSE", it))
+    }
+
+    // 2. 根目录 COPYING（如果存在）
+    loadAssetText(context, "COPYING")?.takeIf { it.isNotBlank() }?.let {
+        result.add(LicenseSectionData("COPYING", it))
+    }
+
+    // 3. LICENSES 目录下的所有文件
+    // assets 源目录指向 generated/assets/licenses，因此运行时路径直接是 "LICENSES/"
+    val licenseFiles = listAssetFiles(context, "LICENSES")
+    AppLogger.report("UI", "LicensePage.kt:loadAllLicenseSections", "License files", mapOf("count" to licenseFiles.size.toString(), "files" to licenseFiles.joinToString()))
+    licenseFiles.sorted().forEach { fileName ->
+        val content = loadAssetText(context, "LICENSES/$fileName")
+        if (!content.isNullOrBlank()) {
+            val title = fileName.substringBeforeLast(".", fileName)
+            result.add(LicenseSectionData(title, content))
+        }
+    }
+
+    return result
+}
+
+private fun listAssetFiles(context: android.content.Context, path: String): List<String> {
+    return runCatching {
+        context.assets.list(path)?.toList() ?: emptyList()
+    }.onFailure {
+        AppLogger.report("UI", "LicensePage.kt:listAssetFiles", "List failed", mapOf("path" to path, "error" to (it.message ?: "unknown")))
+    }.getOrDefault(emptyList())
+}
+
+private fun loadAssetText(context: android.content.Context, path: String): String? {
+    // 直接尝试传入路径；若不带 licenses/ 前缀，也尝试从 licenses/ 下读取（兼容旧打包方式）
+    val candidates = if (path.startsWith("licenses/")) {
+        listOf(path)
+    } else {
+        listOf(path, "licenses/$path")
+    }
     for (candidate in candidates) {
         val text = runCatching {
             context.assets.open(candidate).bufferedReader().use { it.readText() }
@@ -89,5 +140,5 @@ private fun loadAssetText(context: android.content.Context, path: String): Strin
             return text
         }
     }
-    return ""
+    return null
 }

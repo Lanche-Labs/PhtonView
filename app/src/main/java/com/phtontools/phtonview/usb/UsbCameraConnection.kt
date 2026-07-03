@@ -411,24 +411,36 @@ class UsbCameraConnection @Inject constructor(
         // #region debug-point B:ptp-command
         AppLogger.report("B", "UsbCameraConnection.kt:sendCommandInternal", "PTP command", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "tid" to command.transactionId.toString(), "params" to command.parameters.joinToString()))
         // #endregion
-        val written = conn.bulkTransfer(outEp, commandBytes, commandBytes.size, PtpConstants.DEFAULT_TIMEOUT_MS)
-        AppLogger.d("bulkTransfer OUT returned: $written")
 
-        val responseBuffer = ByteArray(512)
-        val length = conn.bulkTransfer(inEp, responseBuffer, responseBuffer.size, PtpConstants.DEFAULT_TIMEOUT_MS)
-        AppLogger.d("bulkTransfer IN returned: $length")
-        if (length <= 0) {
-            // #region debug-point B:ptp-response-empty
-            AppLogger.report("B", "UsbCameraConnection.kt:sendCommandInternal", "PTP response empty", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "length" to length.toString()))
-            // #endregion
-            throw IllegalStateException("Failed to read response")
+        suspend fun transferOnce(): Pair<Short, IntArray> {
+            val written = conn.bulkTransfer(outEp, commandBytes, commandBytes.size, PtpConstants.DEFAULT_TIMEOUT_MS)
+            AppLogger.d("bulkTransfer OUT returned: $written")
+            if (written != commandBytes.size) {
+                throw IllegalStateException("bulkTransfer OUT failed: $written")
+            }
+
+            val responseBuffer = ByteArray(512)
+            val length = conn.bulkTransfer(inEp, responseBuffer, responseBuffer.size, PtpConstants.DEFAULT_TIMEOUT_MS)
+            AppLogger.d("bulkTransfer IN returned: $length")
+            if (length <= 0) {
+                // #region debug-point B:ptp-response-empty
+                AppLogger.report("B", "UsbCameraConnection.kt:sendCommandInternal", "PTP response empty", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "length" to length.toString()))
+                // #endregion
+                throw IllegalStateException("Failed to read response")
+            }
+            AppLogger.logUsb("IN", responseBuffer, length)
+            return PtpCommand.decodeResponse(responseBuffer.copyOf(length))
         }
-        AppLogger.logUsb("IN", responseBuffer, length)
-        val (responseCode, responseParams) = PtpCommand.decodeResponse(responseBuffer.copyOf(length))
+
+        val result = runCatching { transferOnce() }.getOrElse { firstError ->
+            AppLogger.report("B", "UsbCameraConnection.kt:sendCommandInternal", "First attempt failed, retry", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "error" to (firstError.message ?: "unknown")))
+            delay(50)
+            runCatching { transferOnce() }.getOrElse { throw firstError }
+        }
         // #region debug-point B:ptp-response
-        AppLogger.report("B", "UsbCameraConnection.kt:sendCommandInternal", "PTP response", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "responseCode" to String.format(Locale.US, "0x%04X", responseCode), "responseParams" to responseParams.joinToString()))
+        AppLogger.report("B", "UsbCameraConnection.kt:sendCommandInternal", "PTP response", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "responseCode" to String.format(Locale.US, "0x%04X", result.first), "responseParams" to result.second.joinToString()))
         // #endregion
-        responseCode to responseParams
+        result
     }
 
     private suspend fun sendCommandWithDataInternal(command: PtpCommand, timeoutMs: Int = PtpConstants.DEFAULT_TIMEOUT_MS): ByteArray = withContext(Dispatchers.IO) {
@@ -441,46 +453,83 @@ class UsbCameraConnection @Inject constructor(
         // #region debug-point B:ptp-data-command
         AppLogger.report("B", "UsbCameraConnection.kt:sendCommandWithDataInternal", "PTP data command", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "tid" to command.transactionId.toString(), "params" to command.parameters.joinToString()))
         // #endregion
-        val written = conn.bulkTransfer(outEp, commandBytes, commandBytes.size, timeoutMs)
-        AppLogger.d("bulkTransfer OUT returned: $written")
 
-        val result = mutableListOf<Byte>()
-        var responseCode: Short = -1
-        while (true) {
-            val buffer = ByteArray(4096)
-            val length = conn.bulkTransfer(inEp, buffer, buffer.size, timeoutMs)
-            AppLogger.d("bulkTransfer IN chunk returned: $length")
-            if (length <= 0) break
-            AppLogger.logUsb("IN", buffer, length)
+        suspend fun transferOnce(): Pair<ByteArray, Short> {
+            val written = conn.bulkTransfer(outEp, commandBytes, commandBytes.size, timeoutMs)
+            AppLogger.d("bulkTransfer OUT returned: $written")
+            if (written != commandBytes.size) {
+                throw IllegalStateException("bulkTransfer OUT failed: $written")
+            }
 
-            val bb = ByteBuffer.wrap(buffer, 0, length)
-            bb.order(ByteOrder.LITTLE_ENDIAN)
-            if (length >= 12) {
-                val containerType = bb.getShort(4)
-                if (containerType == PtpConstants.CONTAINER_TYPE_RESPONSE) {
-                    // Response arrived as its own packet
-                    responseCode = bb.getShort(6)
-                    break
+            val result = mutableListOf<Byte>()
+            var responseCode: Short = -1
+            var dataLengthRemaining = -1
+
+            while (true) {
+                val buffer = ByteArray(4096)
+                val length = conn.bulkTransfer(inEp, buffer, buffer.size, timeoutMs)
+                AppLogger.d("bulkTransfer IN chunk returned: $length")
+                if (length <= 0) break
+                AppLogger.logUsb("IN", buffer, length)
+
+                val bb = ByteBuffer.wrap(buffer, 0, length)
+                bb.order(ByteOrder.LITTLE_ENDIAN)
+
+                if (length >= 12) {
+                    val containerLength = bb.getInt(0)
+                    val containerType = bb.getShort(4)
+                    if (containerType == PtpConstants.CONTAINER_TYPE_RESPONSE) {
+                        responseCode = bb.getShort(6)
+                        break
+                    }
+                    if (containerType == PtpConstants.CONTAINER_TYPE_DATA && dataLengthRemaining < 0) {
+                        // 首个数据容器包：保留完整头部，供上层 decodeDataPayload 自行剥离
+                        dataLengthRemaining = containerLength - length
+                        result.addAll(buffer.copyOf(length).toList())
+                        if (dataLengthRemaining <= 0) {
+                            // 数据已在单包内传完，继续读取响应容器
+                            continue
+                        }
+                        continue
+                    }
+                }
+
+                // 仍在接收数据容器后续字节（不含头部，直接追加）
+                if (dataLengthRemaining > 0) {
+                    val take = minOf(length, dataLengthRemaining)
+                    result.addAll(buffer.copyOfRange(0, take).toList())
+                    dataLengthRemaining -= take
+                    if (dataLengthRemaining <= 0) {
+                        // 数据传完，下一轮应该是响应容器
+                        continue
+                    }
+                } else {
+                    result.addAll(buffer.copyOf(length).toList())
                 }
             }
-            // Data container: accumulate and keep reading for the following response container
-            result.addAll(buffer.copyOf(length).toList())
-        }
-        // Response container may also be appended to the last data packet; extract it from the tail.
-        if (responseCode == (-1).toShort() && result.size >= 12) {
-            val tailOffset = result.size - 12
-            val bb = ByteBuffer.wrap(result.toByteArray(), tailOffset, 12)
-            bb.order(ByteOrder.LITTLE_ENDIAN)
-            val containerType = bb.getShort(4)
-            if (containerType == PtpConstants.CONTAINER_TYPE_RESPONSE) {
-                responseCode = bb.getShort(6)
-                repeat(12) { result.removeAt(result.size - 1) }
+
+            // 兼容：响应容器可能粘在最后一个数据包尾部
+            if (responseCode == (-1).toShort() && result.size >= 12) {
+                val tailOffset = result.size - 12
+                val bb = ByteBuffer.wrap(result.toByteArray(), tailOffset, 12)
+                bb.order(ByteOrder.LITTLE_ENDIAN)
+                val containerType = bb.getShort(4)
+                if (containerType == PtpConstants.CONTAINER_TYPE_RESPONSE) {
+                    responseCode = bb.getShort(6)
+                    repeat(12) { result.removeAt(result.size - 1) }
+                }
             }
+            // #region debug-point B:ptp-data-response
+            AppLogger.report("B", "UsbCameraConnection.kt:sendCommandWithDataInternal", "PTP data response", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "responseCode" to String.format(Locale.US, "0x%04X", responseCode), "bytes" to result.size.toString()))
+            // #endregion
+            return result.toByteArray() to responseCode
         }
-        // #region debug-point B:ptp-data-response
-        AppLogger.report("B", "UsbCameraConnection.kt:sendCommandWithDataInternal", "PTP data response", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "responseCode" to String.format(Locale.US, "0x%04X", responseCode), "bytes" to result.size.toString()))
-        // #endregion
-        result.toByteArray()
+
+        val (data, responseCode) = transferOnce()
+        if (responseCode != PtpConstants.RESPONSE_OK && responseCode.toInt() != -1) {
+            AppLogger.report("B", "UsbCameraConnection.kt:sendCommandWithDataInternal", "Non-OK response", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "responseCode" to String.format(Locale.US, "0x%04X", responseCode)))
+        }
+        data
     }
 
     override suspend fun getDeviceInfo(): String {
@@ -631,47 +680,75 @@ class UsbCameraConnection @Inject constructor(
             return emptyList()
         }
 
-        val storageIds = resolveStorageIds()
-        AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Storage IDs", mapOf("count" to storageIds.size.toString(), "ids" to storageIds.joinToString { "0x${it.toString(16)}" }))
-        if (storageIds.isEmpty()) return emptyList()
-
+        val allTriedStorageIds = mutableSetOf<Int>()
         val items = mutableListOf<PhotoItem>()
-        val triedStorageIds = storageIds.toMutableList()
-        for (storageId in storageIds) {
-            val handles = runCatching { enumeratePhotosWithFallback(storageId) }.getOrElse {
-                AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Enumerate failed", mapOf("storage" to String.format(Locale.US, "0x%08X", storageId), "error" to (it.message ?: "unknown")))
-                emptyList()
-            }
-            AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Handles", mapOf("storage" to String.format(Locale.US, "0x%08X", storageId), "count" to handles.size.toString()))
 
-            for (handle in handles) {
-                val info = runCatching { getObjectInfo(handle) }.getOrNull() ?: continue
-                // 跳过文件夹/关联对象和无名文件
-                if (info.objectFormat == PtpConstants.OBJECT_FORMAT_ASSOCIATION || info.filename.isBlank()) continue
-                // 只保留图片/视频格式
-                if (!isImageOrVideoFormat(info.objectFormat)) {
-                    AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Skip non-media", mapOf("file" to info.filename, "format" to String.format(Locale.US, "0x%04X", info.objectFormat)))
-                    continue
+        // 辅助：用给定 storage ID 列表枚举照片
+        suspend fun enumerateFromStorageIds(storageIds: IntArray): Boolean {
+            AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Storage IDs", mapOf("count" to storageIds.size.toString(), "ids" to storageIds.joinToString { "0x${it.toString(16)}" }))
+            if (storageIds.isEmpty()) return false
+
+            for (storageId in storageIds) {
+                allTriedStorageIds.add(storageId)
+                val handles = runCatching { enumeratePhotosWithFallback(storageId) }.getOrElse {
+                    AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Enumerate failed", mapOf("storage" to String.format(Locale.US, "0x%08X", storageId), "error" to (it.message ?: "unknown")))
+                    emptyList()
                 }
-                items.add(
-                    PhotoItem(
-                        id = handle.toString(),
-                        name = info.filename,
-                        path = "$folder/${info.filename}",
-                        sizeBytes = info.compressedSize,
-                        width = info.imagePixWidth,
-                        height = info.imagePixHeight,
-                        isInCamera = true
+                AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Handles", mapOf("storage" to String.format(Locale.US, "0x%08X", storageId), "count" to handles.size.toString()))
+
+                for (handle in handles) {
+                    val info = runCatching { getObjectInfo(handle) }.getOrNull() ?: continue
+                    if (info.objectFormat == PtpConstants.OBJECT_FORMAT_ASSOCIATION || info.filename.isBlank()) continue
+                    if (!isImageOrVideoFormat(info.objectFormat)) {
+                        AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Skip non-media", mapOf("file" to info.filename, "format" to String.format(Locale.US, "0x%04X", info.objectFormat)))
+                        continue
+                    }
+                    items.add(
+                        PhotoItem(
+                            id = handle.toString(),
+                            name = info.filename,
+                            path = "$folder/${info.filename}",
+                            sizeBytes = info.compressedSize,
+                            width = info.imagePixWidth,
+                            height = info.imagePixHeight,
+                            isInCamera = true
+                        )
                     )
-                )
+                }
+                if (items.isNotEmpty()) return true
+            }
+            return false
+        }
+
+        // 第 1 轮：正常枚举
+        val storageIds = runCatching { resolveStorageIds() }.getOrDefault(IntArray(0))
+        if (enumerateFromStorageIds(storageIds)) {
+            items.sortByDescending { unsignedInt(it.id.toIntOrNull() ?: 0) }
+            AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Result", mapOf("count" to items.size.toString(), "storagesTried" to allTriedStorageIds.size.toString()))
+            return items
+        }
+
+        // 第 2 轮：若正常枚举没结果，尝试重置会话后再枚举（部分相机在取景后需要重置才能访问存储）
+        if (items.isEmpty()) {
+            AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "First attempt empty, reset session", emptyMap())
+            resetPtpSession()
+            val resetStorageIds = runCatching { resolveStorageIds() }.getOrDefault(IntArray(0))
+            if (enumerateFromStorageIds(resetStorageIds)) {
+                items.sortByDescending { unsignedInt(it.id.toIntOrNull() ?: 0) }
+                AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Result after reset", mapOf("count" to items.size.toString(), "storagesTried" to allTriedStorageIds.size.toString()))
+                return items
             }
         }
 
-        // 若常规存储 ID 都没拿到照片，再尝试一组常见默认 storage ID
+        // 第 3 轮：尝试常见默认 storage ID
         if (items.isEmpty()) {
-            val fallbackIds = intArrayOf(0x00010001, 0x00020001, 0x00010002, 0x00000001, 0x00000002)
-                .filter { it !in triedStorageIds }
+            val fallbackIds = intArrayOf(
+                0x00010001, 0x00020001, 0x00010002,
+                0x00000001, 0x00000002, 0x00000003,
+                0xFFFFFFFF.toInt()
+            ).filter { it !in allTriedStorageIds }
             for (storageId in fallbackIds) {
+                allTriedStorageIds.add(storageId)
                 val handles = runCatching { enumeratePhotosWithFallback(storageId) }.getOrElse { emptyList() }
                 for (handle in handles) {
                     val info = runCatching { getObjectInfo(handle) }.getOrNull() ?: continue
@@ -698,7 +775,7 @@ class UsbCameraConnection @Inject constructor(
 
         // 新照片 handle 通常更大，按无符号长整型降序排在前面
         items.sortByDescending { unsignedInt(it.id.toIntOrNull() ?: 0) }
-        AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Result", mapOf("count" to items.size.toString()))
+        AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Result", mapOf("count" to items.size.toString(), "storagesTried" to allTriedStorageIds.size.toString()))
         return items
     }
 
@@ -783,6 +860,28 @@ class UsbCameraConnection @Inject constructor(
             }
             if (result.isNotEmpty()) {
                 AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Strategy 7 ok", mapOf("count" to result.size.toString()))
+                return result
+            }
+        }
+
+        // 策略 8：storageId=0xFFFFFFFF 表示所有存储，部分相机只接受这个值
+        if (storageId != 0xFFFFFFFF.toInt()) {
+            runCatchingWithRetry {
+                val handles = getObjectHandles(0xFFFFFFFF.toInt(), 0, 0xFFFFFFFF.toInt())
+                if (handles.isNotEmpty()) {
+                    AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Strategy 8 ok", mapOf("count" to handles.size.toString()))
+                    return handles.toList()
+                }
+            }
+        }
+
+        // 策略 9：尝试 storageId 忽略，直接按格式枚举 parent=0
+        runCatchingWithRetry {
+            val result = formats.flatMap { format ->
+                runCatching { getObjectHandles(0, format, 0xFFFFFFFF.toInt()).toList() }.getOrDefault(emptyList())
+            }
+            if (result.isNotEmpty()) {
+                AppLogger.report("C", "UsbCameraConnection.kt:listPhotos", "Strategy 9 ok", mapOf("count" to result.size.toString()))
                 return result
             }
         }
@@ -940,6 +1039,25 @@ class UsbCameraConnection @Inject constructor(
             delay(50)
         }
         return sessionOpen
+    }
+
+    /**
+     * 重置 PTP 会话：先尝试关闭再重新打开，用于兼容某些相机在长时间
+     * 通信或取景后拒绝存储访问的情况。
+     */
+    private suspend fun resetPtpSession() {
+        AppLogger.report("A", "UsbCameraConnection.kt:resetPtpSession", "Resetting PTP session", emptyMap())
+        val wasOpen = sessionOpen
+        sessionOpen = false
+        if (wasOpen) {
+            runCatching { closeSession() }
+            delay(100)
+        }
+        repeat(3) { attempt ->
+            if (openSession(PtpConstants.DEFAULT_SESSION_ID)) return
+            AppLogger.report("A", "UsbCameraConnection.kt:resetPtpSession", "Retry open", mapOf("attempt" to (attempt + 1).toString()))
+            delay(100)
+        }
     }
 
     override fun release() {

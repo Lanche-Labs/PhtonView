@@ -95,6 +95,9 @@ class CameraViewModel @Inject constructor(
     val photos: StateFlow<List<PhotoItem>> = repository.photos
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    private val _photosLoading = MutableStateFlow(false)
+    val photosLoading: StateFlow<Boolean> = _photosLoading.asStateFlow()
+
     private val _statusDialogText = MutableStateFlow<String?>(null)
     val statusDialogText: StateFlow<String?> = _statusDialogText.asStateFlow()
 
@@ -198,7 +201,14 @@ class CameraViewModel @Inject constructor(
     fun resetToDefaults() = viewModelScope.launch { repository.resetToDefaults() }
     fun executeGphoto2Command(command: String) = viewModelScope.launch { repository.executeGphoto2Command(command) }
 
-    fun listPhotos(folder: String = "/store_00010001") = viewModelScope.launch { repository.listPhotos(folder) }
+    fun listPhotos(folder: String = "/store_00010001") = viewModelScope.launch {
+        _photosLoading.value = true
+        try {
+            repository.listPhotos(folder)
+        } finally {
+            _photosLoading.value = false
+        }
+    }
     fun downloadPhoto(photo: PhotoItem, destinationPath: String, renamePattern: String? = null) =
         viewModelScope.launch { repository.downloadPhoto(photo, destinationPath, renamePattern) }
 

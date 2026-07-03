@@ -122,6 +122,7 @@ fun CameraScreen(
     val liveViewEnabled by viewModel.liveViewEnabled.collectAsStateWithLifecycle()
     val burstRunning by viewModel.burstRunning.collectAsStateWithLifecycle()
     val photos by viewModel.photos.collectAsStateWithLifecycle()
+    val photosLoading by viewModel.photosLoading.collectAsStateWithLifecycle()
 
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
@@ -287,7 +288,7 @@ fun CameraScreen(
             if (showGallery) {
                 PhotoGallerySheet(
                     photos = photos,
-                    loading = false,
+                    loading = photosLoading,
                     onDismiss = { showGallery = false },
                     onDownload = { photo, destination ->
                         viewModel.downloadPhotoAwait(photo, destination)

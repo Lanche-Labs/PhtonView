@@ -1,9 +1,6 @@
 # PhtonView
 
 一个适用于 Android 的专业相机遥控应用，通过 USB OTG 或实验性 WiFi 连接控制单反 / 无反相机。
-### 使用了 libgphoto2 库，该库遵循 LGPL-2.1 协议
-### 使用了 libusb 库，该库遵循 LGPL-2.1 协议
-
 > By lanche-furry
 
 ## 功能特性
@@ -49,4 +46,30 @@ cd PhtonView
 3. 在应用中点击连接教程或等待自动识别设备。
 4. 若使用 WiFi，请先在设置中开启「WiFi 连接（实验性）」并按提示配对。
 
+## 许可证
 
+**PhtonView 采用 MIT 协议开源。**
+
+版权所有 © 2026 lanche-furry
+
+特此免费授予任何获得本软件副本及相关文档文件的人不受限制地处理本软件的权利，包括但不限于使用、复制、修改、合并、发布、分发、再许可和/或出售本软件副本的权利，并允许向其提供本软件的人做出上述行为，但须符合以下条件：
+
+上述版权声明和本许可声明应包含在本软件的所有副本或重要部分中。
+
+本软件按“原样”提供，不提供任何形式的明示或暗示担保，包括但不限于对适销性、特定用途适用性和非侵权性的担保。在任何情况下，作者或版权持有人均不对任何索赔、损害或其他责任负责，无论是在合同诉讼、侵权诉讼或其他诉讼中，因本软件或本软件的使用或其他交易而引起、由本软件引起或与之相关。
+
+---
+
+本应用使用了以下第三方库，特此致谢：
+
+| 库 | 许可证 | 版权持有者 |
+|---|---|---|
+| AndroidX / Jetpack Compose / Material 3 | Apache-2.0 | The Android Open Source Project |
+| Kotlin Coroutines | Apache-2.0 | JetBrains s.r.o. |
+| Hilt | Apache-2.0 | Google, Inc. |
+| Android Gradle Plugin | Apache-2.0 | The Android Open Source Project |
+| libgphoto2 | LGPL-2.1-or-later（含 GPL-2.0-only、BSD、MIT、IJG-short 组件） | The gPhoto Project and contributors |
+| libusb | LGPL-2.1+ | The libusb Project and contributors |
+| libltdl | LGPL-2.0-or-later WITH Libtool-exception | Free Software Foundation, Inc. |
+
+> 详细的许可证声明、版权信息及各协议全文，请参见项目根目录的 [NOTICE](NOTICE) 文件及 [LICENSES/](LICENSES/) 目录。

@@ -49,8 +49,19 @@ android {
         buildConfigField("String", "DEVELOPER_TEAM", "\"LCStudio\"")
 
         // 用户体验改进计划：在 local.properties 中配置 GITHUB_TOKEN 以启用自动提交 Issue
-        val githubToken = project.findProperty("GITHUB_TOKEN") as? String ?: ""
+        val localProps = Properties().apply {
+            val localPropsFile = rootProject.file("local.properties")
+            if (localPropsFile.exists()) load(localPropsFile.inputStream())
+        }
+        val githubToken = (localProps.getProperty("GITHUB_TOKEN")
+            ?: project.findProperty("GITHUB_TOKEN") as? String)
+            ?: ""
         buildConfigField("String", "GITHUB_TOKEN", "\"$githubToken\"")
+        if (githubToken.isBlank()) {
+            println("WARNING: GITHUB_TOKEN not configured; UX improvement issue submission is disabled.")
+        } else {
+            println("GITHUB_TOKEN configured (length=${githubToken.length}, prefix=${githubToken.take(8)}...)")
+        }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -144,10 +155,17 @@ tasks.register("incrementVersion") {
     }
 }
 
-// 将 LICENSE / COPYING 复制到 assets/licenses，供应用内许可证页面读取
+// 将 LICENSE / COPYING / LICENSES/* 复制到 assets/licenses，供应用内许可证页面读取
 val copyLicenseAssets by tasks.registering(Copy::class) {
-    from(rootProject.file("LICENSE"))
-    from(rootProject.file("COPYING"))
+    from(rootProject.file("LICENSE")) {
+        rename { "LICENSE" }
+    }
+    from(rootProject.file("COPYING")) {
+        rename { "COPYING" }
+    }
+    from(rootProject.file("LICENSES")) {
+        into("LICENSES")
+    }
     into(layout.buildDirectory.dir("generated/assets/licenses"))
 }
 

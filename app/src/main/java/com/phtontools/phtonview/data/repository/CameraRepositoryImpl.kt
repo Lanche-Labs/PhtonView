@@ -25,6 +25,7 @@ import java.nio.ByteOrder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.Executors
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -39,6 +40,9 @@ class CameraRepositoryImpl @Inject constructor(
 ) : CameraRepository {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val liveViewDispatcher = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "PhtonView-LiveView")
+    }.asCoroutineDispatcher()
     private val connectionLock = Mutex()
     private var liveViewJob: Job? = null
     private var intervalometerJob: Job? = null
@@ -490,41 +494,55 @@ class CameraRepositoryImpl @Inject constructor(
 
     private fun startLiveViewLoop() {
         liveViewJob?.cancel()
-        liveViewJob = scope.launch {
+        liveViewJob = scope.launch(liveViewDispatcher) {
+            // 复用 Options 减少 GC 压力；RGB_565 比 ARGB_8888 解码更快，且实时取景预览够看
+            val decodeOptions = BitmapFactory.Options().apply {
+                inPreferredConfig = Bitmap.Config.RGB_565
+            }
             var frameCount = 0
+            var lastLogTime = System.currentTimeMillis()
+            var lastErrorTime = 0L
             while (isActive && _liveViewEnabled.value && _connectionState.value is ConnectionState.Connected) {
+                val loopStart = System.currentTimeMillis()
                 try {
                     val conn = currentConnection ?: break
                     if (conn.connectionType == ConnectionType.USB) {
-                        // Use a short timeout so cancellation can take effect quickly.
+                        // 进一步缩短超时，避免取消时卡死；相机通常几十毫秒内就能返回一帧
                         val data = if (conn is UsbCameraConnection) {
                             conn.sendCommandWithData(
                                 PtpConstants.NIKON_OPERATION_GET_LIVEVIEW_IMAGE,
-                                timeoutMs = 800,
+                                timeoutMs = 500,
                                 params = intArrayOf()
                             )
                         } else {
                             conn.sendCommandWithData(PtpConstants.NIKON_OPERATION_GET_LIVEVIEW_IMAGE)
                         }
-                        // #region debug-point F:liveview-frame
-                        frameCount++
-                        if (frameCount <= 5 || data.size <= 12) {
-                            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Live view frame", mapOf("bytes" to data.size.toString(), "frame" to frameCount.toString()))
-                        }
-                        // #endregion
                         if (data.size <= 12) continue
                         val jpegData = extractNikonLiveViewJpeg(data)
                         if (jpegData.isEmpty()) continue
-                        val bitmap = BitmapFactory.decodeByteArray(jpegData, 0, jpegData.size)
+                        val bitmap = BitmapFactory.decodeByteArray(jpegData, 0, jpegData.size, decodeOptions)
                         bitmap?.let { _liveViewFrame.value = it }
+
+                        frameCount++
+                        val now = System.currentTimeMillis()
+                        if (now - lastLogTime >= 5000) {
+                            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Live view frames", mapOf("frames" to frameCount.toString(), "avgIntervalMs" to (now - lastLogTime).div(frameCount.coerceAtLeast(1)).toString()))
+                            frameCount = 0
+                            lastLogTime = now
+                        }
                     }
                 } catch (e: Exception) {
-                    // #region debug-point F:liveview-frame-error
-                    AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Live view frame error", mapOf("error" to (e.message ?: "unknown")))
-                    // #endregion
+                    val now = System.currentTimeMillis()
+                    if (now - lastErrorTime >= 1000) {
+                        AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Live view frame error", mapOf("error" to (e.message ?: "unknown")))
+                        lastErrorTime = now
+                    }
                     if (settingsManager.debugMode) e.printStackTrace()
                 }
-                delay(33)
+                // 目标约 60fps；如果单帧采集+解码已经超过 16ms，则只给 1ms 让出线程
+                val elapsed = System.currentTimeMillis() - loopStart
+                val delayMs = (16L - elapsed).coerceAtLeast(1L)
+                delay(delayMs)
             }
             // Clear the frame when the loop exits so the UI doesn't stick on the last frame.
             _liveViewFrame.value = null

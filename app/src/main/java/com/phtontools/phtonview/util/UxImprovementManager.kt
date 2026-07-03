@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 object UxImprovementManager {
 
-    private const val GITHUB_REPO = "lanche-furry/PhtonView"
+    private const val GITHUB_REPO = "Lanche-Labs/PhtonView"
     private const val DEFAULT_LABEL = "telemetry"
 
     private var settingsManager: SettingsManager? = null
@@ -57,7 +57,8 @@ object UxImprovementManager {
 
     private fun onAppBackground() {
         AppLogger.i("UX improvement session ended")
-        submitSessionLogs()
+        val (submitted, message) = submitSessionLogs()
+        AppLogger.i("UX improvement submission: submitted=$submitted, message=$message")
         AppLogger.collectionEnabled = false
     }
 
@@ -77,17 +78,18 @@ object UxImprovementManager {
 
     /**
      * 手动触发日志提交（例如设置页点击“立即提交”）。
+     * 返回 (是否已发起提交, 提示信息)。
      */
-    fun submitSessionLogs() {
-        val settings = settingsManager ?: return
+    fun submitSessionLogs(): Pair<Boolean, String> {
+        val settings = settingsManager ?: return false to "设置管理器未初始化"
         if (!settings.uxImprovementEnabled) {
             AppLogger.w("UX improvement disabled, skip submission")
-            return
+            return false to "用户体验改进计划未开启"
         }
-        val token = BuildConfig.GITHUB_TOKEN?.takeIf { it.isNotBlank() }
+        val token = BuildConfig.GITHUB_TOKEN.takeIf { it.isNotBlank() }
         if (token.isNullOrBlank()) {
             AppLogger.w("GITHUB_TOKEN not configured, cannot submit UX improvement issue")
-            return
+            return false to "GITHUB_TOKEN 未配置，请在 local.properties 中填写后重新编译"
         }
         val title = buildTitle()
         AppLogger.submitToGitHubIssue(
@@ -96,6 +98,7 @@ object UxImprovementManager {
             title = title,
             labels = listOf(DEFAULT_LABEL)
         )
+        return true to "正在提交日志到 GitHub Issues"
     }
 
     private fun buildTitle(): String {
