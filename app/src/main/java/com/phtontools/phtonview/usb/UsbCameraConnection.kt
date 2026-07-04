@@ -24,6 +24,7 @@ import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -58,6 +59,9 @@ class UsbCameraConnection @Inject constructor(
 
     private var transactionId = 1
     private var sessionOpen = false
+
+    // 连续 USB bulk 传输失败计数，用于检测端点失效并自动恢复。
+    private val consecutiveBulkFailures = AtomicInteger(0)
 
     private val usbReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -339,20 +343,23 @@ class UsbCameraConnection @Inject constructor(
         val wasSessionOpen = sessionOpen
         val conn = connection
         val iface = cameraDevice?.getInterface(0)
+        val outEp = bulkOutEndpoint
+        val inEp = bulkInEndpoint
 
         connection = null
         cameraDevice = null
         bulkInEndpoint = null
         bulkOutEndpoint = null
         sessionOpen = false
+        consecutiveBulkFailures.set(0)
         _connectionState.value = CameraConnection.ConnectionState.Disconnected
         _permissionState.value = false
         _detectedDevice.value = null
 
         // 在独立协程中完成关闭会话与释放 USB，避免在主线程/BroadcastReceiver 中阻塞。
         scope.launch {
-            if (wasSessionOpen) {
-                runCatching { closeSession() }
+            if (wasSessionOpen && conn != null && outEp != null && inEp != null) {
+                runCatching { closeSessionOnConnection(conn, outEp, inEp) }
             }
             conn?.let {
                 try {
@@ -361,6 +368,47 @@ class UsbCameraConnection @Inject constructor(
                 } catch (_: Exception) { }
             }
         }
+    }
+
+    /**
+     * 尝试恢复 USB bulk 端点：释放并重新声明接口、重新打开 PTP 会话。
+     * 用于相机进入/退出 PC 模式后端点失效、连续 bulk 传输失败等场景。
+     */
+    private suspend fun recoverUsbEndpoint(): Boolean {
+        val conn = connection ?: return false
+        val device = cameraDevice ?: return false
+        val iface = device.getInterface(0)
+        AppLogger.d("recoverUsbEndpoint: releasing and reclaiming interface")
+        return try {
+            conn.releaseInterface(iface)
+            if (!conn.claimInterface(iface, true)) {
+                AppLogger.e("recoverUsbEndpoint: failed to reclaim interface")
+                return false
+            }
+            consecutiveBulkFailures.set(0)
+            // 重新打开会话；旧会话可能仍在相机端保持，直接复用即可。
+            val sessionOk = openSession(PtpConstants.DEFAULT_SESSION_ID)
+            AppLogger.d("recoverUsbEndpoint: session re-opened=$sessionOk")
+            sessionOk
+        } catch (e: Exception) {
+            AppLogger.e("recoverUsbEndpoint failed", e)
+            false
+        }
+    }
+
+    /**
+     * 在指定连接/端点上发送 CloseSession，不依赖当前 connection 字段。
+     */
+    private fun closeSessionOnConnection(conn: UsbDeviceConnection, outEp: UsbEndpoint, inEp: UsbEndpoint) {
+        try {
+            val command = PtpCommand(PtpConstants.OPERATION_CLOSE_SESSION, nextTransactionId())
+            val commandBytes = command.encode()
+            val written = conn.bulkTransfer(outEp, commandBytes, commandBytes.size, PtpConstants.DEFAULT_TIMEOUT_MS)
+            if (written == commandBytes.size) {
+                val buffer = ByteArray(512)
+                conn.bulkTransfer(inEp, buffer, buffer.size, PtpConstants.DEFAULT_TIMEOUT_MS)
+            }
+        } catch (_: Exception) { }
     }
 
     override suspend fun openSession(sessionId: Int): Boolean {
@@ -435,9 +483,18 @@ class UsbCameraConnection @Inject constructor(
 
         val result = runCatching { transferOnce() }.getOrElse { firstError ->
             AppLogger.report("B", "UsbCameraConnection.kt:sendCommandInternal", "First attempt failed, retry", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "error" to (firstError.message ?: "unknown")))
+            val failures = consecutiveBulkFailures.incrementAndGet()
+            if (failures >= 3) {
+                AppLogger.w("sendCommandInternal: consecutive failures=$failures, attempting USB endpoint recovery")
+                if (recoverUsbEndpoint()) {
+                    consecutiveBulkFailures.set(0)
+                    return@getOrElse transferOnce()
+                }
+            }
             delay(50)
             runCatching { transferOnce() }.getOrElse { throw firstError }
         }
+        consecutiveBulkFailures.set(0)
         // #region debug-point B:ptp-response
         AppLogger.report("B", "UsbCameraConnection.kt:sendCommandInternal", "PTP response", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "responseCode" to String.format(Locale.US, "0x%04X", result.first), "responseParams" to result.second.joinToString()))
         // #endregion
@@ -531,7 +588,19 @@ class UsbCameraConnection @Inject constructor(
             return dataBytes to responseCode
         }
 
-        val (data, responseCode) = transferOnce()
+        val (data, responseCode) = runCatching { transferOnce() }.getOrElse { firstError ->
+            val failures = consecutiveBulkFailures.incrementAndGet()
+            if (failures >= 3) {
+                AppLogger.w("sendCommandWithDataInternal: consecutive failures=$failures, attempting USB endpoint recovery")
+                if (recoverUsbEndpoint()) {
+                    consecutiveBulkFailures.set(0)
+                    return@getOrElse transferOnce()
+                }
+            }
+            delay(50)
+            runCatching { transferOnce() }.getOrElse { throw firstError }
+        }
+        consecutiveBulkFailures.set(0)
         if (responseCode != PtpConstants.RESPONSE_OK && responseCode.toInt() != -1) {
             AppLogger.report("B", "UsbCameraConnection.kt:sendCommandWithDataInternal", "Non-OK response", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "responseCode" to String.format(Locale.US, "0x%04X", responseCode)))
         }
