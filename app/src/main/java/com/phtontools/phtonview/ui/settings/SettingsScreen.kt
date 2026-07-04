@@ -209,15 +209,17 @@ fun SettingsScreen(
                     onCheckUpdate = checkUpdate,
                     onConnectionTypeChange = {
                         viewModel.setConnectionType(it)
+                        // WiFi 模式下若已保存地址，先自动配对再连接，避免用户忘记点击配对按钮。
+                        if (it == ConnectionType.WiFi && !settingsManager.wifiPairedAddress.isNullOrBlank()) {
+                            viewModel.pairWifi(settingsManager.wifiPairedAddress!!)
+                        }
                         viewModel.connect()
                     },
                     onConnect = { viewModel.connect() },
                     onDisconnect = { viewModel.disconnect() },
                     onPairWifi = { address ->
                         settingsManager.wifiPairedAddress = address
-                        viewModel.setConnectionType(ConnectionType.WiFi)
                         viewModel.pairWifi(address)
-                        viewModel.connect()
                     },
                     onDebugModeChange = {
                         debugMode = it
@@ -728,12 +730,12 @@ private fun ConnectionSection(
     var selectedPreset by remember {
         mutableStateOf(
             savedWifiAddress?.let { addr ->
-                WifiBrandPreset.entries.find { it.defaultAddress == addr }
+                WifiBrandPreset.entries.find { it.defaultIp == addr }
             } ?: WifiBrandPreset.Nikon
         )
     }
     var wifiAddress by remember {
-        mutableStateOf(savedWifiAddress ?: selectedPreset.defaultAddress)
+        mutableStateOf(savedWifiAddress ?: selectedPreset.defaultIp)
     }
     val isConnected = connectionState is ConnectionState.Connected
     val isConnecting = connectionState is ConnectionState.Connecting
@@ -773,7 +775,13 @@ private fun ConnectionSection(
                 }
             } else {
                 TextButton(
-                    onClick = onConnect,
+                    onClick = {
+                        // WiFi 模式下先把当前输入框的地址写入配对，再连接，避免用户忘记点配对。
+                        if (connectionType == ConnectionType.WiFi && wifiAddress.isNotBlank()) {
+                            onPairWifi(wifiAddress)
+                        }
+                        onConnect()
+                    },
                     enabled = !isConnecting
                 ) {
                     Text(
@@ -823,8 +831,8 @@ private fun ConnectionSection(
                         selected = selectedPreset == preset,
                         onClick = {
                             selectedPreset = preset
-                            if (preset.defaultAddress.isNotBlank()) {
-                                wifiAddress = preset.defaultAddress
+                            if (preset.defaultIp.isNotBlank()) {
+                                wifiAddress = preset.defaultIp
                             }
                         }
                     )

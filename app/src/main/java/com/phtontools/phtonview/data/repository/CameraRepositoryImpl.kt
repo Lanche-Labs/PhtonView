@@ -149,7 +149,7 @@ class CameraRepositoryImpl @Inject constructor(
             // 若上次使用 Wi-Fi 且保存过配对地址，启动时自动恢复配对
             if (settingsManager.connectionType == ConnectionType.WiFi) {
                 settingsManager.wifiPairedAddress?.takeIf { it.isNotBlank() }?.let { address ->
-                    pairWifi(address)
+                    pairWifi(address, WifiBrandPreset.forAddress(address, settingsManager.cameraBrand))
                 }
             }
         }
@@ -462,6 +462,13 @@ class CameraRepositoryImpl @Inject constructor(
         // #endregion
         try {
             val type = _cameraSettings.value.connectionType
+            // WiFi 模式下若尚未配对，优先从设置中恢复已保存地址，避免用户忘记点击配对按钮。
+            if (type == ConnectionType.WiFi) {
+                settingsManager.wifiPairedAddress?.takeIf { it.isNotBlank() }?.let { address ->
+                    AppLogger.d("connect: auto-pairing saved WiFi address $address")
+                    pairWifi(address, WifiBrandPreset.forAddress(address, settingsManager.cameraBrand))
+                }
+            }
             val target = resolveConnection(type)
             if (target == null) {
                 _connectionState.value = ConnectionState.Error("No connection implementation available")
@@ -580,10 +587,10 @@ class CameraRepositoryImpl @Inject constructor(
         }
     }
 
-    override fun pairWifi(address: String) {
+    override fun pairWifi(address: String, brandPreset: WifiBrandPreset) {
         connections.filterIsInstance<com.phtontools.phtonview.connection.WifiCameraConnection>()
             .firstOrNull()
-            ?.pair(address)
+            ?.pair(address, brandPreset)
     }
 
     private fun startLiveViewLoop() {

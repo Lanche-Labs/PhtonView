@@ -135,7 +135,9 @@ class CameraViewModel @Inject constructor(
     fun applyPreset(preset: ShootingPreset) = viewModelScope.launch { repository.applyPreset(preset) }
 
     fun setConnectionType(type: ConnectionType) { repository.setConnectionType(type) }
-    fun pairWifi(address: String) { repository.pairWifi(address) }
+    fun pairWifi(address: String, brandPreset: com.phtontools.phtonview.data.model.WifiBrandPreset = com.phtontools.phtonview.data.model.WifiBrandPreset.Custom) {
+        repository.pairWifi(address, brandPreset)
+    }
 
     fun captureImage(delayMs: Long = 0) = viewModelScope.launch { repository.captureImage(delayMs) }
     fun startBurstCapture(count: Int) = viewModelScope.launch { repository.captureBurst(count) }

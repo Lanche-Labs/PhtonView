@@ -1,9 +1,11 @@
 package com.phtontools.phtonview.connection
 
+import com.phtontools.phtonview.data.local.SettingsManager
 import com.phtontools.phtonview.data.model.CameraBrand
 import com.phtontools.phtonview.data.model.ConnectionType
 import com.phtontools.phtonview.data.model.PhotoItem
 import com.phtontools.phtonview.data.model.StorageTarget
+import com.phtontools.phtonview.data.model.WifiBrandPreset
 import com.phtontools.phtonview.util.AppLogger
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,7 +26,9 @@ import javax.inject.Singleton
  * and 15741 (event). Data port is negotiated during handshake.
  */
 @Singleton
-class WifiCameraConnection @Inject constructor() : CameraConnection {
+class WifiCameraConnection @Inject constructor(
+    private val settingsManager: SettingsManager
+) : CameraConnection {
 
     override val brand: CameraBrand = CameraBrand.Generic
     override val connectionType: ConnectionType = ConnectionType.WiFi
@@ -33,6 +37,9 @@ class WifiCameraConnection @Inject constructor() : CameraConnection {
     override val connectionState: StateFlow<CameraConnection.ConnectionState> = _connectionState
 
     private var pairedAddress: String? = null
+    private var pairedBrand: WifiBrandPreset = WifiBrandPreset.Custom
+    private var pairedCommandPort: Int? = null
+    private var pairedEventPort: Int? = null
     private var commandSocket: Socket? = null
     private var dataSocket: Socket? = null
     private var eventSocket: Socket? = null
@@ -47,9 +54,12 @@ class WifiCameraConnection @Inject constructor() : CameraConnection {
         private const val SOCKET_TIMEOUT_MS = 5000
     }
 
-    fun pair(address: String) {
+    fun pair(address: String, brandPreset: WifiBrandPreset = WifiBrandPreset.Custom) {
         pairedAddress = address
-        AppLogger.d("WiFi paired with $address")
+        pairedBrand = brandPreset
+        pairedCommandPort = settingsManager.wifiPairedPort
+        pairedEventPort = settingsManager.wifiPairedEventPort
+        AppLogger.d("WiFi paired with $address (brand=${brandPreset.name}, savedCmdPort=$pairedCommandPort, savedEventPort=$pairedEventPort)")
     }
 
     override suspend fun connect() {
@@ -60,32 +70,68 @@ class WifiCameraConnection @Inject constructor() : CameraConnection {
             return
         }
 
-        val address = pairedAddress!!
-        val host = address.substringBeforeLast(":", address)
-        val userPort = address.substringAfterLast(":", "15740").toIntOrNull()
-        val portsToTry = if (userPort != null) listOf(userPort) else DEFAULT_COMMAND_PORTS
+        val rawAddress = pairedAddress!!
+        // 兼容旧版保存的 "ip:port" 格式，优先拆出 IP 和旧端口。
+        val host = rawAddress.substringBeforeLast(":", rawAddress)
+        val legacyPort = rawAddress.substringAfterLast(":", "").toIntOrNull()
+
+        // 端口候选列表：上次成功端口 > 旧地址中的端口 > 品牌候选端口。
+        val candidatePorts = buildSet {
+            settingsManager.wifiPairedPort?.let { add(it) }
+            legacyPort?.let { add(it) }
+            addAll(pairedBrand.candidatePorts)
+            addAll(DEFAULT_COMMAND_PORTS)
+        }.toList()
 
         var lastError: Throwable? = null
+        var connectedPort: Int? = null
+        val triedPorts = mutableListOf<Int>()
         for (attempt in 1..CONNECTION_RETRIES) {
             val delayMs = (200L * (attempt - 1)).coerceAtMost(1500L)
             if (delayMs > 0) delay(delayMs)
-            for (port in portsToTry) {
+            for (port in candidatePorts) {
+                if (port in triedPorts) continue
+                triedPorts.add(port)
                 try {
                     AppLogger.d("WiFi connection attempt $attempt/$CONNECTION_RETRIES to $host:$port")
                     doConnect(host, port)
+                    connectedPort = port
                     _connectionState.value = CameraConnection.ConnectionState.Connected("WiFi Camera")
-                    return
+                    break
                 } catch (e: Exception) {
                     lastError = e
                     AppLogger.w("WiFi connection failed to $host:$port on attempt $attempt: ${e.message}")
                     releaseSockets()
                 }
             }
+            if (connectedPort != null) break
+        }
+
+        if (connectedPort != null) {
+            pairedCommandPort = connectedPort
+            // 保存本次成功连接的命令端口，下次优先使用。
+            if (settingsManager.wifiPairedPort != connectedPort) {
+                settingsManager.wifiPairedPort = connectedPort
+                AppLogger.d("WiFi connected on command port $connectedPort, port saved")
+            }
+            // 若旧地址包含端口，迁移为纯 IP 格式。
+            if (rawAddress.contains(':')) {
+                pairedAddress = host
+                settingsManager.wifiPairedAddress = host
+            }
+            AppLogger.report("W", "WifiCameraConnection.kt:connect", "WiFi connected", mapOf(
+                "host" to host,
+                "commandPort" to connectedPort.toString(),
+                "eventPort" to (pairedEventPort?.toString() ?: "none"),
+                "triedPorts" to triedPorts.joinToString(",")
+            ))
+            return
         }
 
         AppLogger.e("WiFi connection failed after $CONNECTION_RETRIES retries", lastError)
+        val errorDetail = lastError?.toString() ?: "unknown error"
         _connectionState.value = CameraConnection.ConnectionState.Error(
-            "WiFi connection failed: ${lastError?.message ?: "unknown error"}"
+            "WiFi connection failed (tried ports: ${triedPorts.joinToString(", ")}): $errorDetail"
         )
     }
 
@@ -118,9 +164,17 @@ class WifiCameraConnection @Inject constructor() : CameraConnection {
         sessionId = bytesToInt(ackPayload, 0)
         AppLogger.d("PTP-IP session ID: $sessionId")
 
-        // Open event connection, try common event ports
-        val eventPortsToTry = listOf(15741, 15740, port + 1)
+        // Open event connection, try common event ports. Prefer the previously
+        // saved event port, then commandPort+1, then the common fallback list.
+        val savedEventPort = pairedEventPort ?: settingsManager.wifiPairedEventPort
+        val eventPortsToTry = buildSet {
+            savedEventPort?.let { add(it) }
+            add(port + 1)
+            add(15741)
+            add(15740)
+        }.toList()
         var eventConnected = false
+        var connectedEventPort: Int? = null
         for (eventPort in eventPortsToTry) {
             try {
                 eventSocket = Socket().apply { connect(InetSocketAddress(host, eventPort), SOCKET_TIMEOUT_MS) }
@@ -136,12 +190,19 @@ class WifiCameraConnection @Inject constructor() : CameraConnection {
                 eventSocket!!.getOutputStream().flush()
                 AppLogger.d("PTP-IP event connection established on port $eventPort")
                 eventConnected = true
+                connectedEventPort = eventPort
                 break
             } catch (e: Exception) {
                 AppLogger.w("PTP-IP event port $eventPort failed: ${e.message}")
             }
         }
-        if (!eventConnected) {
+        if (eventConnected && connectedEventPort != null) {
+            pairedEventPort = connectedEventPort
+            if (settingsManager.wifiPairedEventPort != connectedEventPort) {
+                settingsManager.wifiPairedEventPort = connectedEventPort
+                AppLogger.d("WiFi event port $connectedEventPort saved")
+            }
+        } else {
             AppLogger.w("PTP-IP event connection could not be established, continuing without events")
         }
     }

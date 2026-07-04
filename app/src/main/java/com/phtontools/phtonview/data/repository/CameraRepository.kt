@@ -35,7 +35,7 @@ interface CameraRepository {
     fun disconnect()
     suspend fun startLiveView()
     suspend fun stopLiveView()
-    fun pairWifi(address: String)
+    fun pairWifi(address: String, brandPreset: com.phtontools.phtonview.data.model.WifiBrandPreset = com.phtontools.phtonview.data.model.WifiBrandPreset.Custom)
     suspend fun triggerAf()
     suspend fun setAfArea(x: Float, y: Float)
     fun setFocusMode(mode: FocusMode)

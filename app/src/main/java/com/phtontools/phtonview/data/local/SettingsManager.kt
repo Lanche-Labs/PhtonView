@@ -98,6 +98,32 @@ class SettingsManager @Inject constructor(
             prefs.edit().putString(KEY_WIFI_PAIRED_ADDRESS, value).apply()
         }
 
+    var wifiPairedPort: Int?
+        get() {
+            val port = prefs.getInt(KEY_WIFI_PAIRED_PORT, -1)
+            return if (port > 0) port else null
+        }
+        set(value) {
+            if (value != null && value > 0) {
+                prefs.edit().putInt(KEY_WIFI_PAIRED_PORT, value).apply()
+            } else {
+                prefs.edit().remove(KEY_WIFI_PAIRED_PORT).apply()
+            }
+        }
+
+    var wifiPairedEventPort: Int?
+        get() {
+            val port = prefs.getInt(KEY_WIFI_PAIRED_EVENT_PORT, -1)
+            return if (port > 0) port else null
+        }
+        set(value) {
+            if (value != null && value > 0) {
+                prefs.edit().putInt(KEY_WIFI_PAIRED_EVENT_PORT, value).apply()
+            } else {
+                prefs.edit().remove(KEY_WIFI_PAIRED_EVENT_PORT).apply()
+            }
+        }
+
     var uiMode: UiMode
         get() = UiMode.fromOrdinal(prefs.getInt(KEY_UI_MODE, UiMode.PRO.ordinal))
         set(value) {
@@ -115,6 +141,8 @@ class SettingsManager @Inject constructor(
         internal const val KEY_CONNECTION_TYPE = "connection_type"
         internal const val KEY_WIFI_EXPERIMENTAL = "wifi_experimental"
         internal const val KEY_WIFI_PAIRED_ADDRESS = "wifi_paired_address"
+        internal const val KEY_WIFI_PAIRED_PORT = "wifi_paired_port"
+        internal const val KEY_WIFI_PAIRED_EVENT_PORT = "wifi_paired_event_port"
         internal const val KEY_UI_MODE = "ui_mode"
         internal const val KEY_UX_IMPROVEMENT_ENABLED = "ux_improvement_enabled"
         internal const val KEY_UX_IMPROVEMENT_CONSENT_SHOWN = "ux_improvement_consent_shown"
