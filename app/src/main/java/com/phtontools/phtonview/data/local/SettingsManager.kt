@@ -86,10 +86,16 @@ class SettingsManager @Inject constructor(
         }
 
     var wifiExperimental: Boolean
-        get() = prefs.getBoolean(KEY_WIFI_EXPERIMENTAL, false)
+        get() = prefs.getBoolean(KEY_WIFI_EXPERIMENTAL, true)
         set(value) {
             prefs.edit().putBoolean(KEY_WIFI_EXPERIMENTAL, value).apply()
             _wifiExperimentalFlow.value = value
+        }
+
+    var wifiPairedAddress: String?
+        get() = prefs.getString(KEY_WIFI_PAIRED_ADDRESS, null)
+        set(value) {
+            prefs.edit().putString(KEY_WIFI_PAIRED_ADDRESS, value).apply()
         }
 
     var uiMode: UiMode
@@ -108,6 +114,7 @@ class SettingsManager @Inject constructor(
         internal const val KEY_CAMERA_BRAND = "camera_brand"
         internal const val KEY_CONNECTION_TYPE = "connection_type"
         internal const val KEY_WIFI_EXPERIMENTAL = "wifi_experimental"
+        internal const val KEY_WIFI_PAIRED_ADDRESS = "wifi_paired_address"
         internal const val KEY_UI_MODE = "ui_mode"
         internal const val KEY_UX_IMPROVEMENT_ENABLED = "ux_improvement_enabled"
         internal const val KEY_UX_IMPROVEMENT_CONSENT_SHOWN = "ux_improvement_consent_shown"

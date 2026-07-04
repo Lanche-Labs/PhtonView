@@ -146,6 +146,12 @@ class CameraRepositoryImpl @Inject constructor(
         )
         scope.launch {
             switchConnection(resolveConnection(settingsManager.connectionType), autoConnect = false)
+            // 若上次使用 Wi-Fi 且保存过配对地址，启动时自动恢复配对
+            if (settingsManager.connectionType == ConnectionType.WiFi) {
+                settingsManager.wifiPairedAddress?.takeIf { it.isNotBlank() }?.let { address ->
+                    pairWifi(address)
+                }
+            }
         }
 
         scope.launch {

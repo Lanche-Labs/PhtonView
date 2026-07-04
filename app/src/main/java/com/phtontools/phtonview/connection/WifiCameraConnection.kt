@@ -41,6 +41,12 @@ class WifiCameraConnection @Inject constructor() : CameraConnection {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    companion object {
+        private val DEFAULT_COMMAND_PORTS = listOf(15740, 15739, 15741)
+        private const val CONNECTION_RETRIES = 3
+        private const val SOCKET_TIMEOUT_MS = 5000
+    }
+
     fun pair(address: String) {
         pairedAddress = address
         AppLogger.d("WiFi paired with $address")
@@ -54,57 +60,89 @@ class WifiCameraConnection @Inject constructor() : CameraConnection {
             return
         }
 
-        try {
-            val address = pairedAddress!!
-            val host = address.substringBeforeLast(":", address)
-            val port = address.substringAfterLast(":", "15740").toIntOrNull() ?: 15740
+        val address = pairedAddress!!
+        val host = address.substringBeforeLast(":", address)
+        val userPort = address.substringAfterLast(":", "15740").toIntOrNull()
+        val portsToTry = if (userPort != null) listOf(userPort) else DEFAULT_COMMAND_PORTS
 
-            commandSocket = Socket().apply { connect(InetSocketAddress(host, port), 5000) }
-
-            val guidBytes = uuidToBytes(UUID.randomUUID())
-            val nameBytes = "PhtonView".toByteArray(Charsets.UTF_16LE)
-            val version = byteArrayOf(1, 0) // PTP-IP version 1.0
-
-            val request = ByteArrayOutputStream()
-            val payloadLength = 4 + guidBytes.size + 4 + nameBytes.size + version.size
-            request.write(intToBytes(payloadLength + 4)) // total length
-            request.write(intToBytes(1)) // InitCommandRequest packet type
-            request.write(guidBytes)
-            request.write(intToBytes(nameBytes.size))
-            request.write(nameBytes)
-            request.write(version)
-
-            commandSocket!!.getOutputStream().write(request.toByteArray())
-            commandSocket!!.getOutputStream().flush()
-
-            val ackHeader = readAtLeast(commandSocket!!.getInputStream(), 8)
-            val ackLength = bytesToInt(ackHeader, 0)
-            val ackType = bytesToInt(ackHeader, 4)
-            if (ackType != 2) { // InitCommandAck
-                throw IllegalStateException("Unexpected PTP-IP handshake response type: $ackType")
+        var lastError: Throwable? = null
+        for (attempt in 1..CONNECTION_RETRIES) {
+            val delayMs = (200L * (attempt - 1)).coerceAtMost(1500L)
+            if (delayMs > 0) delay(delayMs)
+            for (port in portsToTry) {
+                try {
+                    AppLogger.d("WiFi connection attempt $attempt/$CONNECTION_RETRIES to $host:$port")
+                    doConnect(host, port)
+                    _connectionState.value = CameraConnection.ConnectionState.Connected("WiFi Camera")
+                    return
+                } catch (e: Exception) {
+                    lastError = e
+                    AppLogger.w("WiFi connection failed to $host:$port on attempt $attempt: ${e.message}")
+                    releaseSockets()
+                }
             }
-            val ackPayload = readAtLeast(commandSocket!!.getInputStream(), ackLength - 8)
-            sessionId = bytesToInt(ackPayload, 0)
-            AppLogger.d("PTP-IP session ID: $sessionId")
+        }
 
-            // Open event connection
-            eventSocket = Socket().apply { connect(InetSocketAddress(host, 15741), 5000) }
-            val eventRequest = ByteArrayOutputStream()
-            val eventPayload = 4 + guidBytes.size + 4 + nameBytes.size + 4
-            eventRequest.write(intToBytes(eventPayload + 4))
-            eventRequest.write(intToBytes(3)) // InitEventRequest
-            eventRequest.write(guidBytes)
-            eventRequest.write(intToBytes(nameBytes.size))
-            eventRequest.write(nameBytes)
-            eventRequest.write(intToBytes(sessionId))
-            eventSocket!!.getOutputStream().write(eventRequest.toByteArray())
-            eventSocket!!.getOutputStream().flush()
+        AppLogger.e("WiFi connection failed after $CONNECTION_RETRIES retries", lastError)
+        _connectionState.value = CameraConnection.ConnectionState.Error(
+            "WiFi connection failed: ${lastError?.message ?: "unknown error"}"
+        )
+    }
 
-            _connectionState.value = CameraConnection.ConnectionState.Connected("WiFi Camera")
-        } catch (e: Exception) {
-            AppLogger.e("WiFi connection failed", e)
-            releaseSockets()
-            _connectionState.value = CameraConnection.ConnectionState.Error("WiFi connection failed: ${e.message}")
+    private suspend fun doConnect(host: String, port: Int) {
+        commandSocket = Socket().apply { connect(InetSocketAddress(host, port), SOCKET_TIMEOUT_MS) }
+
+        val guidBytes = uuidToBytes(UUID.randomUUID())
+        val nameBytes = "PhtonView".toByteArray(Charsets.UTF_16LE)
+        val version = byteArrayOf(1, 0) // PTP-IP version 1.0
+
+        val request = ByteArrayOutputStream()
+        val payloadLength = 4 + guidBytes.size + 4 + nameBytes.size + version.size
+        request.write(intToBytes(payloadLength + 4)) // total length
+        request.write(intToBytes(1)) // InitCommandRequest packet type
+        request.write(guidBytes)
+        request.write(intToBytes(nameBytes.size))
+        request.write(nameBytes)
+        request.write(version)
+
+        commandSocket!!.getOutputStream().write(request.toByteArray())
+        commandSocket!!.getOutputStream().flush()
+
+        val ackHeader = readAtLeast(commandSocket!!.getInputStream(), 8)
+        val ackLength = bytesToInt(ackHeader, 0)
+        val ackType = bytesToInt(ackHeader, 4)
+        if (ackType != 2) { // InitCommandAck
+            throw IllegalStateException("Unexpected PTP-IP handshake response type: $ackType")
+        }
+        val ackPayload = readAtLeast(commandSocket!!.getInputStream(), ackLength - 8)
+        sessionId = bytesToInt(ackPayload, 0)
+        AppLogger.d("PTP-IP session ID: $sessionId")
+
+        // Open event connection, try common event ports
+        val eventPortsToTry = listOf(15741, 15740, port + 1)
+        var eventConnected = false
+        for (eventPort in eventPortsToTry) {
+            try {
+                eventSocket = Socket().apply { connect(InetSocketAddress(host, eventPort), SOCKET_TIMEOUT_MS) }
+                val eventRequest = ByteArrayOutputStream()
+                val eventPayload = 4 + guidBytes.size + 4 + nameBytes.size + 4
+                eventRequest.write(intToBytes(eventPayload + 4))
+                eventRequest.write(intToBytes(3)) // InitEventRequest
+                eventRequest.write(guidBytes)
+                eventRequest.write(intToBytes(nameBytes.size))
+                eventRequest.write(nameBytes)
+                eventRequest.write(intToBytes(sessionId))
+                eventSocket!!.getOutputStream().write(eventRequest.toByteArray())
+                eventSocket!!.getOutputStream().flush()
+                AppLogger.d("PTP-IP event connection established on port $eventPort")
+                eventConnected = true
+                break
+            } catch (e: Exception) {
+                AppLogger.w("PTP-IP event port $eventPort failed: ${e.message}")
+            }
+        }
+        if (!eventConnected) {
+            AppLogger.w("PTP-IP event connection could not be established, continuing without events")
         }
     }
 

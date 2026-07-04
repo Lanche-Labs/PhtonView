@@ -44,7 +44,6 @@ import com.phtontools.phtonview.data.model.ConnectionType
 fun ConnectionHintBanner(
     connectionState: ConnectionState,
     detectedUsbDevice: String?,
-    wifiExperimental: Boolean,
     onPairWifi: (String) -> Unit,
     onSwitchToUsb: () -> Unit,
     modifier: Modifier = Modifier
@@ -124,22 +123,20 @@ fun ConnectionHintBanner(
                 )
             }
 
-            if (wifiExperimental) {
-                Button(
-                    onClick = { showWifiDialog = true }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.NetworkWifi,
-                        contentDescription = null,
-                        modifier = Modifier.padding(end = 4.dp)
-                    )
-                    Text(
-                        text = stringResource(id = R.string.wifi_pair),
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+            Button(
+                onClick = { showWifiDialog = true }
+            ) {
+                Icon(
+                    imageVector = Icons.Default.NetworkWifi,
+                    contentDescription = null,
+                    modifier = Modifier.padding(end = 4.dp)
+                )
+                Text(
+                    text = stringResource(id = R.string.wifi_pair),
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }

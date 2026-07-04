@@ -107,7 +107,6 @@ fun CameraScreen(
     val timerSettings by viewModel.timerSettings.collectAsStateWithLifecycle()
     val aebSettings by viewModel.aebSettings.collectAsStateWithLifecycle()
     val detectedUsb by viewModel.detectedUsbDevice.collectAsStateWithLifecycle()
-    val wifiEnabled by viewModel.wifiExperimental.collectAsStateWithLifecycle()
     val liveViewEnabled by viewModel.liveViewEnabled.collectAsStateWithLifecycle()
     val burstRunning by viewModel.burstRunning.collectAsStateWithLifecycle()
     val photos by viewModel.photos.collectAsStateWithLifecycle()
@@ -206,7 +205,6 @@ fun CameraScreen(
                         aebSettings = aebSettings,
                         liveViewEnabled = liveViewEnabled,
                         detectedUsb = detectedUsb,
-                        wifiEnabled = wifiEnabled,
                         scale = scale,
                         offset = offset,
                         onScaleChange = { scale = it },
@@ -236,7 +234,6 @@ fun CameraScreen(
                 aebSettings = aebSettings,
                 liveViewEnabled = liveViewEnabled,
                 detectedUsb = detectedUsb,
-                wifiEnabled = wifiEnabled,
                 scale = scale,
                 offset = offset,
                 onScaleChange = { scale = it },
@@ -326,7 +323,6 @@ private fun PortraitLayout(
     aebSettings: AebSettings,
     liveViewEnabled: Boolean,
     detectedUsb: String?,
-    wifiEnabled: Boolean,
     scale: Float,
     offset: Offset,
     onScaleChange: (Float) -> Unit,
@@ -428,7 +424,6 @@ private fun LandscapeLayout(
     aebSettings: AebSettings,
     liveViewEnabled: Boolean,
     detectedUsb: String?,
-    wifiEnabled: Boolean,
     scale: Float,
     offset: Offset,
     onScaleChange: (Float) -> Unit,

@@ -48,8 +48,24 @@ object NativeLibraryLoader {
             // 2. 通过 bootstrap 以 RTLD_GLOBAL 预加载所有依赖，
             //    让 ltdl_preload 的符号在 libltdl.so 加载前进入全局命名空间。
             val depPaths = DEPENDENCIES.map { File(libDir, "lib$it.so").absolutePath }.toTypedArray()
-            if (!loadLibrariesGlobally(depPaths)) {
-                throw UnsatisfiedLinkError("loadLibrariesGlobally returned false")
+            depPaths.forEach { AppLogger.d("NativeLibraryLoader dependency path: $it") }
+            val globalLoaded = try {
+                loadLibrariesGlobally(depPaths)
+            } catch (e: Throwable) {
+                AppLogger.e("NativeLibraryLoader: loadLibrariesGlobally threw", e)
+                false
+            }
+            if (!globalLoaded) {
+                AppLogger.w("NativeLibraryLoader: RTLD_GLOBAL preload failed, falling back to individual System.load")
+                DEPENDENCIES.forEach {
+                    val file = File(libDir, "lib$it.so")
+                    try {
+                        System.load(file.absolutePath)
+                        AppLogger.d("Fallback loaded: ${file.absolutePath}")
+                    } catch (e: Throwable) {
+                        AppLogger.e("Fallback load failed: ${file.absolutePath}", e)
+                    }
+                }
             }
 
             // 3. 最后由 JVM 加载 phtonview，触发 JNI 方法注册，同时让其链接的

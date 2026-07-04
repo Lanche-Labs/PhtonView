@@ -53,9 +53,6 @@ class CameraViewModel @Inject constructor(
     val detectedUsbDevice: StateFlow<String?> = repository.detectedUsbDevice
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    val wifiExperimental: StateFlow<Boolean> = settingsManager.wifiExperimentalFlow
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-
     val uiMode: StateFlow<UiMode> = settingsManager.uiModeFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UiMode.PRO)
 

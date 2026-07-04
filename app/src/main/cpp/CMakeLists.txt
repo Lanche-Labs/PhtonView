@@ -47,6 +47,8 @@ else()
     message(STATUS "libgphoto2 prebuilt NOT found at ${GPHOTO2_ROOT}; building stub bridge only")
 endif()
 
+find_library(log-lib log)
+
 add_library(
     phtonview
     SHARED
@@ -59,8 +61,6 @@ add_library(
     SHARED
     native_bootstrap.cpp)
 target_link_libraries(bootstrap ${log-lib})
-
-find_library(log-lib log)
 
 if(EXISTS ${GPHOTO2_ROOT}/include/gphoto2/gphoto2.h)
     # 单独编译一个仅导出 libltdl 预加载符号表的 helper so，

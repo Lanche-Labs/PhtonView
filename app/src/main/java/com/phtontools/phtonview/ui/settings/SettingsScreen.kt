@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -67,9 +69,11 @@ import com.phtontools.phtonview.data.local.AppLanguage
 import com.phtontools.phtonview.data.local.SettingsManager
 import com.phtontools.phtonview.data.local.ThemeMode
 import com.phtontools.phtonview.data.local.UiMode
+import com.phtontools.phtonview.data.model.CameraBrand
 import com.phtontools.phtonview.data.model.CameraSettings
 import com.phtontools.phtonview.data.model.ConnectionState
 import com.phtontools.phtonview.data.model.ConnectionType
+import com.phtontools.phtonview.data.model.WifiBrandPreset
 import com.phtontools.phtonview.ui.CameraViewModel
 import com.phtontools.phtonview.ui.components.UnifiedChip
 import com.phtontools.phtonview.ui.components.UnifiedSettingsHeader
@@ -103,7 +107,6 @@ fun SettingsScreen(
     var currentLanguage by remember { mutableStateOf(settingsManager.language) }
     var currentUiMode by remember { mutableStateOf(settingsManager.uiMode) }
     var debugMode by remember { mutableStateOf(settingsManager.debugMode) }
-    var wifiExperimental by remember { mutableStateOf(settingsManager.wifiExperimental) }
     var uxImprovement by remember { mutableStateOf(settingsManager.uxImprovementEnabled) }
     var pendingRelease by remember { mutableStateOf<UpdateChecker.ReleaseInfo?>(null) }
 
@@ -191,12 +194,12 @@ fun SettingsScreen(
                     currentTheme = currentTheme,
                     currentLanguage = currentLanguage,
                     currentUiMode = currentUiMode,
-                    wifiExperimental = wifiExperimental,
                     debugMode = debugMode,
                     uxImprovement = uxImprovement,
                     connectionState = connectionState,
                     cameraSettings = cameraSettings,
                     detectedUsb = detectedUsb,
+                    savedWifiAddress = settingsManager.wifiPairedAddress,
                     onThemeClick = { currentPage = SettingsPage.Theme },
                     onLanguageClick = { currentPage = SettingsPage.Language },
                     onUiModeClick = { currentPage = SettingsPage.UiMode },
@@ -211,13 +214,10 @@ fun SettingsScreen(
                     onConnect = { viewModel.connect() },
                     onDisconnect = { viewModel.disconnect() },
                     onPairWifi = { address ->
+                        settingsManager.wifiPairedAddress = address
                         viewModel.setConnectionType(ConnectionType.WiFi)
                         viewModel.pairWifi(address)
                         viewModel.connect()
-                    },
-                    onWifiExperimentalChange = {
-                        wifiExperimental = it
-                        settingsManager.wifiExperimental = it
                     },
                     onDebugModeChange = {
                         debugMode = it
@@ -313,12 +313,12 @@ private fun MainSettingsContent(
     currentTheme: ThemeMode,
     currentLanguage: AppLanguage,
     currentUiMode: UiMode,
-    wifiExperimental: Boolean,
     debugMode: Boolean,
     uxImprovement: Boolean,
     connectionState: ConnectionState,
     cameraSettings: CameraSettings,
     detectedUsb: String?,
+    savedWifiAddress: String?,
     onThemeClick: () -> Unit,
     onLanguageClick: () -> Unit,
     onUiModeClick: () -> Unit,
@@ -330,7 +330,6 @@ private fun MainSettingsContent(
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
     onPairWifi: (String) -> Unit,
-    onWifiExperimentalChange: (Boolean) -> Unit,
     onDebugModeChange: (Boolean) -> Unit,
     onUxImprovementChange: (Boolean) -> Unit,
     onReportIssue: () -> Unit
@@ -365,8 +364,8 @@ private fun MainSettingsContent(
         ConnectionSection(
             connectionState = connectionState,
             connectionType = cameraSettings.connectionType,
-            wifiExperimental = wifiExperimental,
             detectedUsb = detectedUsb,
+            savedWifiAddress = savedWifiAddress,
             onConnectionTypeChange = onConnectionTypeChange,
             onConnect = onConnect,
             onDisconnect = onDisconnect,
@@ -374,13 +373,6 @@ private fun MainSettingsContent(
         )
 
         SettingsHeader(title = stringResource(id = R.string.general))
-        SettingsSwitchItem(
-            icon = Icons.Default.Wifi,
-            title = stringResource(id = R.string.wifi_experimental),
-            summary = stringResource(id = R.string.wifi_experimental_summary),
-            checked = wifiExperimental,
-            onCheckedChange = onWifiExperimentalChange
-        )
         SettingsSwitchItem(
             icon = Icons.Default.BugReport,
             title = stringResource(id = R.string.debug_mode),
@@ -726,14 +718,23 @@ private fun languageLabel(language: AppLanguage): String {
 private fun ConnectionSection(
     connectionState: ConnectionState,
     connectionType: ConnectionType,
-    wifiExperimental: Boolean,
     detectedUsb: String?,
+    savedWifiAddress: String?,
     onConnectionTypeChange: (ConnectionType) -> Unit,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
     onPairWifi: (String) -> Unit
 ) {
-    var wifiAddress by remember { mutableStateOf("") }
+    var selectedPreset by remember {
+        mutableStateOf(
+            savedWifiAddress?.let { addr ->
+                WifiBrandPreset.entries.find { it.defaultAddress == addr }
+            } ?: WifiBrandPreset.Nikon
+        )
+    }
+    var wifiAddress by remember {
+        mutableStateOf(savedWifiAddress ?: selectedPreset.defaultAddress)
+    }
     val isConnected = connectionState is ConnectionState.Connected
     val isConnecting = connectionState is ConnectionState.Connecting
 
@@ -783,29 +784,60 @@ private fun ConnectionSection(
             }
         }
 
-        if (wifiExperimental) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                ConnectionChip(
-                    label = stringResource(id = R.string.usb),
-                    selected = connectionType == ConnectionType.USB,
-                    onClick = { onConnectionTypeChange(ConnectionType.USB) },
-                    modifier = Modifier.weight(1f)
-                )
-                ConnectionChip(
-                    label = stringResource(id = R.string.wifi),
-                    selected = connectionType == ConnectionType.WiFi,
-                    onClick = { onConnectionTypeChange(ConnectionType.WiFi) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ConnectionChip(
+                label = stringResource(id = R.string.usb),
+                selected = connectionType == ConnectionType.USB,
+                onClick = { onConnectionTypeChange(ConnectionType.USB) },
+                modifier = Modifier.weight(1f)
+            )
+            ConnectionChip(
+                label = stringResource(id = R.string.wifi),
+                selected = connectionType == ConnectionType.WiFi,
+                onClick = { onConnectionTypeChange(ConnectionType.WiFi) },
+                modifier = Modifier.weight(1f)
+            )
         }
 
-        if (wifiExperimental && connectionType == ConnectionType.WiFi) {
+        if (connectionType == ConnectionType.WiFi) {
+            Text(
+                text = stringResource(id = R.string.wifi_select_brand),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(top = 12.dp)
+            )
+
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(top = 6.dp)
+            ) {
+                items(WifiBrandPreset.entries.size) { index ->
+                    val preset = WifiBrandPreset.entries[index]
+                    ConnectionChip(
+                        label = stringResource(id = preset.labelRes),
+                        selected = selectedPreset == preset,
+                        onClick = {
+                            selectedPreset = preset
+                            if (preset.defaultAddress.isNotBlank()) {
+                                wifiAddress = preset.defaultAddress
+                            }
+                        }
+                    )
+                }
+            }
+
+            Text(
+                text = stringResource(id = selectedPreset.hintRes),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                modifier = Modifier.padding(top = 8.dp)
+            )
+
             androidx.compose.material3.OutlinedTextField(
                 value = wifiAddress,
                 onValueChange = { wifiAddress = it },
@@ -823,9 +855,18 @@ private fun ConnectionSection(
                     }
                 }
             )
+
+            if (!savedWifiAddress.isNullOrBlank()) {
+                Text(
+                    text = stringResource(id = R.string.wifi_saved_address, savedWifiAddress),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
         }
 
-        if (!wifiExperimental && connectionType == ConnectionType.USB && detectedUsb != null) {
+        if (connectionType == ConnectionType.USB && detectedUsb != null) {
             Text(
                 text = stringResource(id = R.string.usb_device_detected, detectedUsb),
                 style = MaterialTheme.typography.bodySmall,
