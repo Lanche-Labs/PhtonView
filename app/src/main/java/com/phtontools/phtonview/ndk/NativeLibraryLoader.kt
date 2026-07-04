@@ -11,41 +11,52 @@ import java.util.zip.ZipFile
  * 加载 libgphoto2 相关原生库。
  *
  * 所有 .so 均打包在 APK 的 lib/<abi> 目录下；应用首次启动时将其解压到
- * 应用私有目录，然后通过 JNI 以 dlopen(RTLD_GLOBAL) 统一加载，确保
- * ltdl_preload 导出的符号对 libltdl.so 可见。
+ * 应用私有目录，然后通过无依赖的 bootstrap 库以 dlopen(RTLD_GLOBAL) 预加载
+ * 所有依赖，确保 ltdl_preload 导出的 lt_libltdl_LTX_preloaded_symbols 符号在
+ * libltdl.so 加载前进入全局命名空间。
  */
 object NativeLibraryLoader {
 
     private const val INTERNAL_DIR = "nativeLibs"
     private const val VERSION_FILE = "native_lib_version.txt"
 
-    // 加载顺序：ltdl_preload 必须先加载，为 libltdl.so 提供缺失的
-    // lt_libltdl_LTX_preloaded_symbols 符号。
-    private val LIBRARIES = listOf(
+    // bootstrap 本身无依赖，先被 System.load，随后负责 RTLD_GLOBAL 加载其余库。
+    private const val BOOTSTRAP_LIB = "bootstrap"
+
+    // 依赖库加载顺序：ltdl_preload 必须先加载，为 libltdl.so 提供缺失符号。
+    private val DEPENDENCIES = listOf(
         "ltdl_preload",
         "ltdl",
         "gphoto2",
         "gphoto2_port",
         "usb-1.0",
-        "usb-0.1",
-        "phtonview"
+        "usb-0.1"
     )
+
+    // 需要解压/校验的全部原生库（包含引导库与最终由 JVM 加载的 phtonview）。
+    private val LIBRARIES = listOf(BOOTSTRAP_LIB) + DEPENDENCIES + "phtonview"
 
     fun load(context: Context): Boolean {
         val libDir = prepareInternalLibs(context) ?: return false
 
         return try {
-            // 先 System.load ltdl_preload，使其 JNI 方法可用。
-            val preloadFile = File(libDir, "libltdl_preload.so")
-            System.load(preloadFile.absolutePath)
-            AppLogger.d("Loaded native library: ${preloadFile.absolutePath}")
+            // 1. 加载无依赖引导库，使 JNI 方法可用。
+            val bootstrapFile = File(libDir, "lib$BOOTSTRAP_LIB.so")
+            System.load(bootstrapFile.absolutePath)
+            AppLogger.d("Loaded bootstrap library: ${bootstrapFile.absolutePath}")
 
-            // 通过 JNI 一次性用 dlopen(RTLD_GLOBAL) 加载全部库，
-            // 使 ltdl_preload 的符号对 libltdl.so 可见。
-            val paths = LIBRARIES.map { File(libDir, "lib$it.so").absolutePath }.toTypedArray()
-            if (!loadLibrariesGlobally(paths)) {
+            // 2. 通过 bootstrap 以 RTLD_GLOBAL 预加载所有依赖，
+            //    让 ltdl_preload 的符号在 libltdl.so 加载前进入全局命名空间。
+            val depPaths = DEPENDENCIES.map { File(libDir, "lib$it.so").absolutePath }.toTypedArray()
+            if (!loadLibrariesGlobally(depPaths)) {
                 throw UnsatisfiedLinkError("loadLibrariesGlobally returned false")
             }
+
+            // 3. 最后由 JVM 加载 phtonview，触发 JNI 方法注册，同时让其链接的
+            //    依赖（已全局加载）正常解析。
+            val phtonviewFile = File(libDir, "libphtonview.so")
+            System.load(phtonviewFile.absolutePath)
+            AppLogger.d("Loaded phtonview library: ${phtonviewFile.absolutePath}")
             true
         } catch (e: Throwable) {
             AppLogger.e("NativeLibraryLoader: load failed", e)

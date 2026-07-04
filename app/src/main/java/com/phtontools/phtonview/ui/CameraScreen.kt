@@ -1,9 +1,6 @@
 package com.phtontools.phtonview.ui
 
 import android.graphics.Bitmap
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -22,7 +19,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -71,18 +67,14 @@ import com.phtontools.phtonview.data.model.ConnectionState
 import com.phtontools.phtonview.data.model.ConnectionType
 import com.phtontools.phtonview.data.model.ExposureSettings
 import com.phtontools.phtonview.data.model.FocusMode
-import com.phtontools.phtonview.data.model.GridType
-import com.phtontools.phtonview.data.model.HistogramType
 import com.phtontools.phtonview.data.model.IntervalometerSettings
 import com.phtontools.phtonview.data.model.MeteringMode
 import com.phtontools.phtonview.data.model.MeteringResult
 import com.phtontools.phtonview.data.model.TimerSettings
 import com.phtontools.phtonview.data.model.WhiteBalance
-import com.phtontools.phtonview.data.model.ZebraPattern
 import com.phtontools.phtonview.ui.components.CameraSettingsPanel
 import com.phtontools.phtonview.ui.components.ErrorBanner
 import com.phtontools.phtonview.ui.components.FocusPeakingProcessor
-import com.phtontools.phtonview.ui.components.HistogramView
 import com.phtontools.phtonview.ui.components.MeteringOverlay
 import com.phtontools.phtonview.ui.components.ParamKind
 import com.phtontools.phtonview.ui.components.ParamSelectorSheet
@@ -110,9 +102,6 @@ fun CameraScreen(
     val afMode by viewModel.afMode.collectAsStateWithLifecycle()
     val magnification by viewModel.focusMagnification.collectAsStateWithLifecycle()
     val peakingEnabled by viewModel.focusPeakingEnabled.collectAsStateWithLifecycle()
-    val histogramType by viewModel.histogramType.collectAsStateWithLifecycle()
-    val gridType by viewModel.gridType.collectAsStateWithLifecycle()
-    val zebraPattern by viewModel.zebraPattern.collectAsStateWithLifecycle()
     val intervalometer by viewModel.intervalometer.collectAsStateWithLifecycle()
     val bulbSettings by viewModel.bulbSettings.collectAsStateWithLifecycle()
     val timerSettings by viewModel.timerSettings.collectAsStateWithLifecycle()
@@ -156,9 +145,6 @@ fun CameraScreen(
                     bulbSettings = bulbSettings,
                     timerSettings = timerSettings,
                     aebSettings = aebSettings,
-                    histogramType = histogramType,
-                    gridType = gridType,
-                    zebraPattern = zebraPattern,
                     liveViewEnabled = liveViewEnabled,
                     onFocusModeChange = viewModel::setFocusMode,
                     onAfModeChange = viewModel::setAfMode,
@@ -173,9 +159,6 @@ fun CameraScreen(
                     onFlashModeChange = viewModel::setFlashMode,
                     onFlashCompensationChange = viewModel::setFlashCompensation,
                     onStorageTargetChange = viewModel::setStorageTarget,
-                    onHistogramTypeChange = viewModel::setHistogramType,
-                    onGridTypeChange = viewModel::setGridType,
-                    onZebraPatternChange = viewModel::setZebraPattern,
                     onLiveViewEnabledChange = viewModel::setLiveViewEnabled,
                     onBurst = { viewModel.startBurstCapture(cameraSettings.burstCount) },
                     onBulb = { viewModel.startBulb(bulbSettings.durationSeconds) },
@@ -217,9 +200,6 @@ fun CameraScreen(
                         afMode = afMode,
                         magnification = magnification,
                         peakingEnabled = peakingEnabled,
-                        histogramType = histogramType,
-                        gridType = gridType,
-                        zebraPattern = zebraPattern,
                         intervalometer = intervalometer,
                         bulbSettings = bulbSettings,
                         timerSettings = timerSettings,
@@ -250,9 +230,6 @@ fun CameraScreen(
                 afMode = afMode,
                 magnification = magnification,
                 peakingEnabled = peakingEnabled,
-                histogramType = histogramType,
-                gridType = gridType,
-                zebraPattern = zebraPattern,
                 intervalometer = intervalometer,
                 bulbSettings = bulbSettings,
                 timerSettings = timerSettings,
@@ -343,9 +320,6 @@ private fun PortraitLayout(
     afMode: AfMode,
     magnification: Float,
     peakingEnabled: Boolean,
-    histogramType: HistogramType,
-    gridType: GridType,
-    zebraPattern: ZebraPattern,
     intervalometer: IntervalometerSettings,
     bulbSettings: BulbSettings,
     timerSettings: TimerSettings,
@@ -385,7 +359,6 @@ private fun PortraitLayout(
                     frame = liveViewFrame,
                     peakingEnabled = peakingEnabled,
                     metering = metering,
-                    histogramType = histogramType,
                     connectionState = connectionState,
                     detectedUsb = detectedUsb,
                     scale = scale,
@@ -410,9 +383,6 @@ private fun PortraitLayout(
                 metering = metering,
                 isLandscape = false,
                 peakingEnabled = peakingEnabled,
-                gridType = gridType,
-                histogramType = histogramType,
-                zebraPattern = zebraPattern,
                 liveViewEnabled = liveViewEnabled,
                 burstRunning = burstRunning,
                 bulbEnabled = bulbSettings.enabled,
@@ -421,9 +391,6 @@ private fun PortraitLayout(
                 onOpenGallery = onOpenGallery,
                 onMeteringModeChange = viewModel::setMeteringMode,
                 onTogglePeaking = { viewModel.setFocusPeakingEnabled(!peakingEnabled) },
-                onToggleGrid = { viewModel.setGridType(if (gridType == GridType.None) GridType.RuleOfThirds else GridType.None) },
-                onToggleHistogram = { viewModel.setHistogramType(if (histogramType == HistogramType.None) HistogramType.Luminance else HistogramType.None) },
-                onToggleZebra = { viewModel.setZebraPattern(if (zebraPattern == ZebraPattern.None) ZebraPattern.Over else ZebraPattern.None) },
                 onToggleLiveView = { viewModel.setLiveViewEnabled(!liveViewEnabled) },
                 onBurst = { if (!burstRunning) viewModel.startBurstCapture(cameraSettings.burstCount) },
                 onBulb = { if (bulbSettings.enabled) viewModel.stopBulb() else viewModel.startBulb(bulbSettings.durationSeconds) }
@@ -455,9 +422,6 @@ private fun LandscapeLayout(
     afMode: AfMode,
     magnification: Float,
     peakingEnabled: Boolean,
-    histogramType: HistogramType,
-    gridType: GridType,
-    zebraPattern: ZebraPattern,
     intervalometer: IntervalometerSettings,
     bulbSettings: BulbSettings,
     timerSettings: TimerSettings,
@@ -498,7 +462,6 @@ private fun LandscapeLayout(
                     frame = liveViewFrame,
                     peakingEnabled = peakingEnabled,
                     metering = metering,
-                    histogramType = histogramType,
                     connectionState = connectionState,
                     detectedUsb = detectedUsb,
                     scale = scale,
@@ -524,9 +487,6 @@ private fun LandscapeLayout(
                 metering = metering,
                 isLandscape = true,
                 peakingEnabled = peakingEnabled,
-                gridType = gridType,
-                histogramType = histogramType,
-                zebraPattern = zebraPattern,
                 liveViewEnabled = liveViewEnabled,
                 burstRunning = burstRunning,
                 bulbEnabled = bulbSettings.enabled,
@@ -535,9 +495,6 @@ private fun LandscapeLayout(
                 onOpenGallery = onOpenGallery,
                 onMeteringModeChange = viewModel::setMeteringMode,
                 onTogglePeaking = { viewModel.setFocusPeakingEnabled(!peakingEnabled) },
-                onToggleGrid = { viewModel.setGridType(if (gridType == GridType.None) GridType.RuleOfThirds else GridType.None) },
-                onToggleHistogram = { viewModel.setHistogramType(if (histogramType == HistogramType.None) HistogramType.Luminance else HistogramType.None) },
-                onToggleZebra = { viewModel.setZebraPattern(if (zebraPattern == ZebraPattern.None) ZebraPattern.Over else ZebraPattern.None) },
                 onToggleLiveView = { viewModel.setLiveViewEnabled(!liveViewEnabled) },
                 onBurst = { if (!burstRunning) viewModel.startBurstCapture(cameraSettings.burstCount) },
                 onBulb = { if (bulbSettings.enabled) viewModel.stopBulb() else viewModel.startBulb(bulbSettings.durationSeconds) }
@@ -561,7 +518,6 @@ private fun LiveViewLayer(
     frame: Bitmap?,
     peakingEnabled: Boolean,
     metering: MeteringResult,
-    histogramType: HistogramType,
     connectionState: ConnectionState,
     detectedUsb: String?,
     scale: Float,
@@ -628,23 +584,6 @@ private fun LiveViewLayer(
         )
 
         MeteringOverlay(metering = metering)
-
-        AnimatedVisibility(
-            visible = histogramType != HistogramType.None,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(12.dp)
-                .size(120.dp, 80.dp)
-                .background(
-                    MaterialTheme.colorScheme.background.copy(alpha = 0.5f),
-                    CircleShape
-                )
-        ) {
-            // HistogramView is placeholder until data is wired
-            Box(modifier = Modifier.fillMaxSize())
-        }
     }
 }
 

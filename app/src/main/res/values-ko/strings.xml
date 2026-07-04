@@ -49,7 +49,6 @@
     <string name="flash_mode">플래시 모드</string>
     <string name="flash_compensation">플래시 보정</string>
     <string name="storage_target">저장 위치</string>
-    <string name="live_view_assist">라이브 뷰 보조</string>
     <string name="advanced_capture">고급 촬영</string>
     <string name="bulb_duration">B(벌브)：%d 초</string>
     <string name="timer_delay">셀프 타이머：%d 초</string>

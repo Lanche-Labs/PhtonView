@@ -53,6 +53,13 @@ add_library(
     native-lib.cpp
     gphoto2_bridge.cpp)
 
+# 无依赖引导库：先被 System.load，再通过 JNI 以 RTLD_GLOBAL 加载其余原生库。
+add_library(
+    bootstrap
+    SHARED
+    native_bootstrap.cpp)
+target_link_libraries(bootstrap ${log-lib})
+
 find_library(log-lib log)
 
 if(EXISTS ${GPHOTO2_ROOT}/include/gphoto2/gphoto2.h)

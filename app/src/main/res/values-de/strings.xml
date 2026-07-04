@@ -49,7 +49,6 @@
     <string name="flash_mode">Blitzmodus</string>
     <string name="flash_compensation">Blitzkorrektur</string>
     <string name="storage_target">Speicherziel</string>
-    <string name="live_view_assist">Live-Bild-Hilfen</string>
     <string name="advanced_capture">Erweiterte Aufnahme</string>
     <string name="bulb_duration">Bulb：%d s</string>
     <string name="timer_delay">Selbstauslöser：%d s</string>

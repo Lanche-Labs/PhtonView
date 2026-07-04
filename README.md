@@ -30,7 +30,7 @@
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/lanche-furry/PhtonView.git
+git clone https://github.com/Lanche-Labs/PhtonView.git
 cd PhtonView
 
 # 2. 使用 Android Studio 打开项目，或执行 Gradle 构建
@@ -50,7 +50,7 @@ cd PhtonView
 
 **PhtonView 采用 MIT 协议开源。**
 
-版权所有 © 2026 lanche-furry
+版权所有 © 2026 Lanche-Labs
 
 特此免费授予任何获得本软件副本及相关文档文件的人不受限制地处理本软件的权利，包括但不限于使用、复制、修改、合并、发布、分发、再许可和/或出售本软件副本的权利，并允许向其提供本软件的人做出上述行为，但须符合以下条件：
 

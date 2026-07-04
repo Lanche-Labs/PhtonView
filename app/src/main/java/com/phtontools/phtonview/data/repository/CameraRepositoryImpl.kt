@@ -78,9 +78,6 @@ class CameraRepositoryImpl @Inject constructor(
     private val _meteringResult = MutableStateFlow(MeteringResult())
     override val meteringResult: StateFlow<MeteringResult> = _meteringResult
 
-    private val _histogramData = MutableStateFlow(HistogramData())
-    override val histogramData: StateFlow<HistogramData> = _histogramData
-
     private val _focusMode = MutableStateFlow(FocusMode.AF)
     override val focusMode: StateFlow<FocusMode> = _focusMode
 
@@ -110,15 +107,6 @@ class CameraRepositoryImpl @Inject constructor(
 
     private val _aebSettings = MutableStateFlow(AebSettings())
     override val aebSettings: StateFlow<AebSettings> = _aebSettings
-
-    private val _histogramType = MutableStateFlow(HistogramType.None)
-    override val histogramType: StateFlow<HistogramType> = _histogramType
-
-    private val _gridType = MutableStateFlow(GridType.None)
-    override val gridType: StateFlow<GridType> = _gridType
-
-    private val _zebraPattern = MutableStateFlow(ZebraPattern.None)
-    override val zebraPattern: StateFlow<ZebraPattern> = _zebraPattern
 
     private val _photos = MutableStateFlow<List<PhotoItem>>(emptyList())
     override val photos: StateFlow<List<PhotoItem>> = _photos
@@ -494,7 +482,12 @@ class CameraRepositoryImpl @Inject constructor(
         currentConnection = null
         connectionStateTarget = null
         _connectionState.value = ConnectionState.Disconnected
-        scope.launch { conn?.disconnect() }
+        scope.launch {
+            // 关闭 USB 前必须让相机退出 PC 控制模式，否则相机会一直显示“正在连接 PC”，
+            // 只能插拔数据线恢复。
+            runCatching { exitPcControlMode(conn) }
+            conn?.disconnect()
+        }
     }
 
     override suspend fun startLiveView() {
@@ -560,13 +553,19 @@ class CameraRepositoryImpl @Inject constructor(
             val conn = currentConnection ?: return
             if (conn.connectionType == ConnectionType.USB) {
                 runCatching {
-                    brandStrategy.liveViewStopOperation?.let { conn.sendCommand(it) }
+                    brandStrategy.liveViewStopOperation?.let {
+                        val (stopCode, _) = conn.sendCommand(it)
+                        AppLogger.d("stopLiveView: live view stop response 0x${String.format(Locale.US, "%04X", stopCode)}")
+                    }
                     if (brandStrategy.brand == CameraBrand.Nikon) {
-                        waitForDeviceReady()
+                        waitForDeviceReady(conn)
                         // Return the camera to normal mode so it no longer shows
                         // "Connecting to PC" on its screen.
-                        brandStrategy.changeCameraModeOperation?.let { conn.sendCommand(it, 0) }
-                        waitForDeviceReady()
+                        brandStrategy.changeCameraModeOperation?.let { op ->
+                            val (code, _) = conn.sendCommand(op, 0)
+                            AppLogger.d("stopLiveView: PC mode exit response 0x${String.format(Locale.US, "%04X", code)}")
+                        }
+                        waitForDeviceReady(conn)
                     }
                 }.onFailure {
                     AppLogger.report("F", "CameraRepositoryImpl.kt:stopLiveView", "Stop live view error", mapOf("error" to (it.message ?: "unknown")))
@@ -911,9 +910,6 @@ class CameraRepositoryImpl @Inject constructor(
         _bulbSettings.value = BulbSettings()
         _timerSettings.value = TimerSettings()
         _aebSettings.value = AebSettings()
-        _histogramType.value = HistogramType.None
-        _gridType.value = GridType.None
-        _zebraPattern.value = ZebraPattern.None
         _liveViewEnabled.value = false
     }
 
@@ -946,13 +942,28 @@ class CameraRepositoryImpl @Inject constructor(
     /**
      * 退出 PC 控制模式，让相机回到正常待机状态。
      */
-    private suspend fun exitPcControlMode() {
-        if (!ensureConnected()) return
+    private suspend fun exitPcControlMode(conn: CameraConnection? = currentConnection) {
+        conn ?: run {
+            AppLogger.d("exitPcControlMode: no connection, skip")
+            return
+        }
+        val op = brandStrategy.changeCameraModeOperation
+        if (op == null) {
+            AppLogger.d("exitPcControlMode: brand ${brandStrategy.brand} has no PC mode operation")
+            return
+        }
         runCatching {
-            brandStrategy.changeCameraModeOperation?.let {
-                currentConnection?.sendCommand(it, 0)
-                waitForDeviceReady()
+            AppLogger.d("exitPcControlMode: sending 0x${String.format(Locale.US, "%04X", op)} param=0 to ${brandStrategy.brand}")
+            val (code, _) = conn.sendCommand(op, 0)
+            AppLogger.d("exitPcControlMode: response 0x${String.format(Locale.US, "%04X", code)}")
+            if (code == PtpConstants.RESPONSE_OK) {
+                waitForDeviceReady(conn)
+                AppLogger.d("exitPcControlMode: device ready after exit")
+            } else {
+                AppLogger.w("exitPcControlMode: camera did not accept PC mode exit, code=0x${String.format(Locale.US, "%04X", code)}")
             }
+        }.onFailure {
+            AppLogger.e("exitPcControlMode: failed", it)
         }
     }
 
@@ -1180,18 +1191,6 @@ class CameraRepositoryImpl @Inject constructor(
 
     override fun setFocusPeakingEnabled(enabled: Boolean) {
         _focusPeakingEnabled.value = enabled
-    }
-
-    override fun setHistogramType(type: HistogramType) {
-        _histogramType.value = type
-    }
-
-    override fun setGridType(type: GridType) {
-        _gridType.value = type
-    }
-
-    override fun setZebraPattern(pattern: ZebraPattern) {
-        _zebraPattern.value = pattern
     }
 
     override suspend fun fetchCameraStatus(): Map<String, String> {
@@ -1505,9 +1504,13 @@ class CameraRepositoryImpl @Inject constructor(
         val wasLiveView = _liveViewEnabled.value
         if (wasLiveView) {
             stopLiveView()
-            // 停止取景后等待相机释放存储访问，否则可能拿到空列表
-            delay(500)
+            // 停止取景后等待相机释放存储访问并退出 PC 模式，否则可能拿到空列表
+            delay(800)
         }
+        // 再次显式退出 PC 模式（即使 stopLiveView 已尝试退出），确保图库能访问存储。
+        // 若相机已退出 PC 模式，此命令会被记录但忽略错误。
+        exitPcControlMode(conn)
+        delay(300)
         val items = runCatching { conn.listPhotos(folder) }.getOrDefault(emptyList())
         _photos.value = items
         if (wasLiveView) runCatching { startLiveView() }
@@ -1642,8 +1645,12 @@ class CameraRepositoryImpl @Inject constructor(
      * starting live view, changing modes, or triggering capture on cameras like
      * the D5200.
      */
-    private suspend fun waitForDeviceReady(waitMs: Long = 50, timeoutMs: Long = 2000) {
-        val conn = currentConnection ?: return
+    private suspend fun waitForDeviceReady(
+        conn: CameraConnection? = currentConnection,
+        waitMs: Long = 50,
+        timeoutMs: Long = 2000
+    ) {
+        conn ?: return
         val end = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < end) {
             val (code, _) = runCatching {

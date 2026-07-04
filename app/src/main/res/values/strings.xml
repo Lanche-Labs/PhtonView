@@ -25,9 +25,6 @@
     <string name="af_continuous">AF-F</string>
     <string name="magnification_format">Mag %1$.0fx</string>
     <string name="focus_peaking">Peaking</string>
-    <string name="grid">Grid</string>
-    <string name="histogram">Histogram</string>
-    <string name="zebra">Zebra</string>
     <string name="gallery">Gallery</string>
     <string name="no_photos">No photos found on camera</string>
     <string name="download_preview">Download &amp; Preview</string>
@@ -64,7 +61,6 @@
     <string name="flash_mode">Flash Mode</string>
     <string name="flash_compensation">Flash Compensation</string>
     <string name="storage_target">Storage Target</string>
-    <string name="live_view_assist">Live View Assist</string>
     <string name="advanced_capture">Advanced Capture</string>
     <string name="bulb_duration">Bulb Duration: %d s</string>
     <string name="timer_delay">Self-Timer: %d s</string>
@@ -104,13 +100,6 @@
 
     <!-- Assist -->
     <string name="off">Off</string>
-    <string name="histogram_luminance">Luminance</string>
-    <string name="histogram_rgb">RGB</string>
-    <string name="grid_rule_of_thirds">Rule of Thirds</string>
-    <string name="grid_center">Center</string>
-    <string name="grid_diagonal">Diagonal</string>
-    <string name="zebra_over">Over</string>
-    <string name="zebra_under">Under</string>
 
     <!-- Presets -->
     <string name="preset_portrait">Portrait</string>
@@ -125,8 +114,6 @@
     <string name="wb_custom">Custom</string>
     <string name="flash_red_eye">Red-Eye</string>
     <string name="flash_rear_sync">Rear Sync</string>
-    <string name="grid_golden_ratio">Golden Ratio</string>
-    <string name="zebra_both">Both</string>
 
     <!-- Advanced capture summaries -->
     <string name="burst_summary">Capture multiple frames</string>

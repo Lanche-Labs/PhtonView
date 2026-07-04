@@ -49,7 +49,6 @@
     <string name="flash_mode">Режим вспышки</string>
     <string name="flash_compensation">Компенсация вспышки</string>
     <string name="storage_target">Место хранения</string>
-    <string name="live_view_assist">Вспомогательные инструменты</string>
     <string name="advanced_capture">Расширенная съемка</string>
     <string name="bulb_duration">Bulb：%d с</string>
     <string name="timer_delay">Самоспуск：%d с</string>

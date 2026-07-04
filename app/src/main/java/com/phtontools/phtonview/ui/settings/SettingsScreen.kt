@@ -229,8 +229,21 @@ fun SettingsScreen(
                         UxImprovementManager.setEnabled(it)
                     },
                     onReportIssue = {
-                        UxImprovementManager.forceSubmitLogs { success, message ->
-                            android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
+                        try {
+                            UxImprovementManager.forceSubmitLogs { _, message ->
+                                // 使用 ApplicationContext 显示 Toast，避免设置页关闭后 Activity 上下文失效导致崩溃
+                                android.widget.Toast.makeText(
+                                    context.applicationContext,
+                                    message,
+                                    android.widget.Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        } catch (e: Exception) {
+                            android.widget.Toast.makeText(
+                                context.applicationContext,
+                                "上报失败：${e.message}",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
                         }
                     }
                 )

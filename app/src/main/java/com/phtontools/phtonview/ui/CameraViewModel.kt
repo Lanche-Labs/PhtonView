@@ -38,9 +38,6 @@ class CameraViewModel @Inject constructor(
     val meteringResult: StateFlow<MeteringResult> = repository.meteringResult
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MeteringResult())
 
-    val histogramData: StateFlow<HistogramData> = repository.histogramData
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HistogramData())
-
     val focusMode: StateFlow<FocusMode> = repository.focusMode
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), FocusMode.AF)
 
@@ -64,15 +61,6 @@ class CameraViewModel @Inject constructor(
 
     val cameraStatus: StateFlow<CameraStatus> = repository.cameraStatus
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), CameraStatus())
-
-    val histogramType: StateFlow<HistogramType> = repository.histogramType
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HistogramType.None)
-
-    val gridType: StateFlow<GridType> = repository.gridType
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), GridType.None)
-
-    val zebraPattern: StateFlow<ZebraPattern> = repository.zebraPattern
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ZebraPattern.None)
 
     val intervalometer: StateFlow<IntervalometerSettings> = repository.intervalometer
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), IntervalometerSettings())
@@ -167,10 +155,6 @@ class CameraViewModel @Inject constructor(
 
     fun setFocusMagnification(scale: Float) { repository.setFocusMagnification(scale) }
     fun setFocusPeakingEnabled(enabled: Boolean) { repository.setFocusPeakingEnabled(enabled) }
-
-    fun setHistogramType(type: HistogramType) { repository.setHistogramType(type) }
-    fun setGridType(type: GridType) { repository.setGridType(type) }
-    fun setZebraPattern(pattern: ZebraPattern) { repository.setZebraPattern(pattern) }
 
     fun fetchCameraStatus() = viewModelScope.launch {
         val status = repository.fetchCameraStatus()

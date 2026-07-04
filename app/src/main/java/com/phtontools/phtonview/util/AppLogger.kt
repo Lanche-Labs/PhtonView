@@ -1,5 +1,7 @@
 package com.phtontools.phtonview.util
 
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.phtontools.phtonview.BuildConfig
 import org.json.JSONObject
@@ -123,7 +125,7 @@ object AppLogger {
     /**
      * 将收集到的日志作为 GitHub Issue 提交。
      * 若 [token] 为空或提交失败，仅记录失败并不抛出异常。
-     * [onResult] 会在提交完成后回调 (success, message)。
+     * [onResult] 会在提交完成后在主线程回调 (success, message)。
      */
     fun submitToGitHubIssue(
         token: String,
@@ -133,23 +135,15 @@ object AppLogger {
         onResult: ((Boolean, String) -> Unit)? = null
     ) {
         if (token.isBlank()) {
-            onResult?.invoke(false, "GITHUB_TOKEN 未配置")
+            notifyResult(onResult, false, "GITHUB_TOKEN 未配置")
             return
         }
         if (submitting.getAndSet(true)) {
-            onResult?.invoke(false, "正在提交中，请稍后再试")
+            notifyResult(onResult, false, "正在提交中，请稍后再试")
             return
         }
-        val body = buildString {
-            appendLine("## PhtonView 自动日志报告")
-            appendLine("- 应用版本：${BuildConfig.VERSION_NAME}")
-            appendLine("- 时间：${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}")
-            appendLine("- 日志条数：${logs.size}")
-            appendLine()
-            appendLine("```")
-            logs.forEach { appendLine(it.format()) }
-            appendLine("```")
-        }
+        val snapshot = logs.toList()
+        val body = buildIssueBody(snapshot)
         Thread {
             var success = false
             var message = ""
@@ -187,7 +181,7 @@ object AppLogger {
                     Log.i(TAG, "GitHub issue submitted successfully")
                 } else {
                     success = false
-                    message = "日志上报失败：HTTP $responseCode"
+                    message = parseGitHubError(responseCode, responseBody)
                     Log.w(TAG, "GitHub issue submission failed: HTTP $responseCode, body=$responseBody")
                 }
             } catch (e: Exception) {
@@ -196,8 +190,71 @@ object AppLogger {
                 Log.w(TAG, "GitHub issue submission error", e)
             } finally {
                 submitting.set(false)
-                onResult?.invoke(success, message)
+                notifyResult(onResult, success, message)
             }
         }.start()
+    }
+
+    /**
+     * 构建 GitHub Issue 正文，限制总长度不超过 GitHub 上限（65536 字符），
+     * 避免提交时因 body 过长而被服务器拒绝。
+     */
+    private fun buildIssueBody(snapshot: List<LogEntry>): String {
+        val header = buildString {
+            appendLine("## PhtonView 日志报告")
+            appendLine("- 应用版本：${BuildConfig.VERSION_NAME}")
+            appendLine("- 时间：${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}")
+            appendLine("- 日志条数：${snapshot.size}")
+            appendLine()
+        }
+        val footer = "\n```\n"
+        val maxBodyBytes = 65000
+        val maxLogBytes = maxBodyBytes - header.toByteArray(Charsets.UTF_8).size - footer.toByteArray(Charsets.UTF_8).size - 100
+
+        val logBuilder = StringBuilder()
+        logBuilder.appendLine("```")
+        var currentBytes = logBuilder.toString().toByteArray(Charsets.UTF_8).size
+        for (entry in snapshot) {
+            val line = entry.format() + "\n"
+            val lineBytes = line.toByteArray(Charsets.UTF_8).size
+            if (currentBytes + lineBytes > maxLogBytes) {
+                logBuilder.appendLine("\n...（日志过长，已截断）")
+                break
+            }
+            logBuilder.append(line)
+            currentBytes += lineBytes
+        }
+        logBuilder.append("```")
+        return header.toString() + logBuilder.toString()
+    }
+
+    /**
+     * 根据 HTTP 状态码和 GitHub 返回内容给出更明确的失败提示。
+     */
+    private fun parseGitHubError(responseCode: Int, responseBody: String): String {
+        val base = when (responseCode) {
+            401 -> "GITHUB_TOKEN 无效或已过期（HTTP 401），请检查 token 是否正确"
+            403 -> "GITHUB_TOKEN 没有该仓库的 Issues 写入权限（HTTP 403），请确认 token 拥有 Lanche-Labs/PhtonView 的 Issues 读写权限"
+            404 -> "仓库不存在或无法访问（HTTP 404）"
+            422 -> "请求格式错误，可能是日志过长或标签不存在（HTTP 422）"
+            in 500..599 -> "GitHub 服务器错误（HTTP $responseCode），请稍后重试"
+            else -> "日志上报失败：HTTP $responseCode"
+        }
+        val detail = runCatching {
+            JSONObject(responseBody).optString("message", "")
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+        return if (detail != null) "$base\n详情：$detail" else base
+    }
+
+    /**
+     * 确保 [onResult] 在主线程回调，避免调用方在后台线程直接弹 Toast 导致崩溃。
+     */
+    private fun notifyResult(onResult: ((Boolean, String) -> Unit)?, success: Boolean, message: String) {
+        onResult ?: return
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            onResult(success, message)
+        } else {
+            Handler(Looper.getMainLooper()).post { onResult(success, message) }
+        }
     }
 }

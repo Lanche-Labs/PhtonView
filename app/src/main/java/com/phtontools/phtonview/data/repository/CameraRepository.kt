@@ -14,7 +14,6 @@ interface CameraRepository {
     val exposureSettings: StateFlow<ExposureSettings>
     val cameraSettings: StateFlow<CameraSettings>
     val meteringResult: StateFlow<MeteringResult>
-    val histogramData: StateFlow<HistogramData>
     val focusMode: StateFlow<FocusMode>
     val afMode: StateFlow<AfMode>
     val focusMagnification: StateFlow<Float>
@@ -25,9 +24,6 @@ interface CameraRepository {
     val bulbSettings: StateFlow<BulbSettings>
     val timerSettings: StateFlow<TimerSettings>
     val aebSettings: StateFlow<AebSettings>
-    val histogramType: StateFlow<HistogramType>
-    val gridType: StateFlow<GridType>
-    val zebraPattern: StateFlow<ZebraPattern>
     val photos: StateFlow<List<PhotoItem>>
     val liveViewEnabled: StateFlow<Boolean>
     val burstRunning: StateFlow<Boolean>
@@ -79,9 +75,6 @@ interface CameraRepository {
 
     fun setFocusMagnification(scale: Float)
     fun setFocusPeakingEnabled(enabled: Boolean)
-    fun setHistogramType(type: HistogramType)
-    fun setGridType(type: GridType)
-    fun setZebraPattern(pattern: ZebraPattern)
     fun setLiveViewEnabled(enabled: Boolean)
 
     suspend fun fetchCameraStatus(): Map<String, String>

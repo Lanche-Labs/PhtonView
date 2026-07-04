@@ -25,9 +25,6 @@
     <string name="af_continuous">连续对焦</string>
     <string name="magnification_format">放大 %1$.0fx</string>
     <string name="focus_peaking">峰值对焦</string>
-    <string name="grid">网格</string>
-    <string name="histogram">直方图</string>
-    <string name="zebra">斑马纹</string>
     <string name="gallery">图库</string>
     <string name="no_photos">相机中未找到照片</string>
     <string name="download_preview">下载并预览</string>
@@ -64,7 +61,6 @@
     <string name="flash_mode">闪光灯模式</string>
     <string name="flash_compensation">闪光灯补偿</string>
     <string name="storage_target">存储目标</string>
-    <string name="live_view_assist">实时取景辅助</string>
     <string name="advanced_capture">高级拍摄</string>
     <string name="bulb_duration">B门时长：%d 秒</string>
     <string name="timer_delay">自拍延时：%d 秒</string>
@@ -104,13 +100,6 @@
 
     <!-- 辅助 -->
     <string name="off">关</string>
-    <string name="histogram_luminance">亮度</string>
-    <string name="histogram_rgb">RGB</string>
-    <string name="grid_rule_of_thirds">三分线</string>
-    <string name="grid_center">中心线</string>
-    <string name="grid_diagonal">对角线</string>
-    <string name="zebra_over">过曝</string>
-    <string name="zebra_under">欠曝</string>
 
     <!-- 预设 -->
     <string name="preset_portrait">人像</string>
@@ -125,8 +114,6 @@
     <string name="wb_custom">自定义</string>
     <string name="flash_red_eye">防红眼</string>
     <string name="flash_rear_sync">后帘同步</string>
-    <string name="grid_golden_ratio">黄金比例</string>
-    <string name="zebra_both">全部</string>
 
     <!-- 高级拍摄说明 -->
     <string name="burst_summary">连续拍摄多张照片</string>

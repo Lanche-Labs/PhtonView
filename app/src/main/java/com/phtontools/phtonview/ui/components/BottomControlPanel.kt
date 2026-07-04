@@ -43,11 +43,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.phtontools.phtonview.R
 import com.phtontools.phtonview.data.model.ExposureSettings
-import com.phtontools.phtonview.data.model.GridType
-import com.phtontools.phtonview.data.model.HistogramType
 import com.phtontools.phtonview.data.model.MeteringMode
 import com.phtontools.phtonview.data.model.MeteringResult
-import com.phtontools.phtonview.data.model.ZebraPattern
 
 /**
  * PRO 模式底部控制面板。
@@ -247,8 +244,8 @@ private fun CleanLandscapeControlColumn(
 /**
  * 专业模式底部控制面板。
  *
- * 在简洁模式基础上，底部增加一排快捷功能入口（峰值、网格、直方图、斑马纹、
- * 实时取景、B门、定时器、间隔拍摄、AEB），方便一键调用。
+ * 在简洁模式基础上，底部增加一排快捷功能入口（峰值、实时取景、B门、定时器、
+ * 间隔拍摄、AEB），方便一键调用。
  */
 @Composable
 fun ProBottomControlPanel(
@@ -256,9 +253,6 @@ fun ProBottomControlPanel(
     metering: MeteringResult,
     isLandscape: Boolean = false,
     peakingEnabled: Boolean,
-    gridType: GridType,
-    histogramType: HistogramType,
-    zebraPattern: ZebraPattern,
     liveViewEnabled: Boolean,
     burstRunning: Boolean,
     bulbEnabled: Boolean,
@@ -267,9 +261,6 @@ fun ProBottomControlPanel(
     onOpenGallery: () -> Unit = {},
     onMeteringModeChange: (MeteringMode) -> Unit,
     onTogglePeaking: () -> Unit,
-    onToggleGrid: () -> Unit,
-    onToggleHistogram: () -> Unit,
-    onToggleZebra: () -> Unit,
     onToggleLiveView: () -> Unit,
     onBurst: () -> Unit,
     onBulb: () -> Unit
@@ -289,16 +280,10 @@ fun ProBottomControlPanel(
             )
             ProToolColumn(
                 peakingEnabled = peakingEnabled,
-                gridType = gridType,
-                histogramType = histogramType,
-                zebraPattern = zebraPattern,
                 liveViewEnabled = liveViewEnabled,
                 burstRunning = burstRunning,
                 bulbEnabled = bulbEnabled,
                 onTogglePeaking = onTogglePeaking,
-                onToggleGrid = onToggleGrid,
-                onToggleHistogram = onToggleHistogram,
-                onToggleZebra = onToggleZebra,
                 onToggleLiveView = onToggleLiveView,
                 onBurst = onBurst,
                 onBulb = onBulb
@@ -310,16 +295,10 @@ fun ProBottomControlPanel(
         ) {
             ProToolRow(
                 peakingEnabled = peakingEnabled,
-                gridType = gridType,
-                histogramType = histogramType,
-                zebraPattern = zebraPattern,
                 liveViewEnabled = liveViewEnabled,
                 burstRunning = burstRunning,
                 bulbEnabled = bulbEnabled,
                 onTogglePeaking = onTogglePeaking,
-                onToggleGrid = onToggleGrid,
-                onToggleHistogram = onToggleHistogram,
-                onToggleZebra = onToggleZebra,
                 onToggleLiveView = onToggleLiveView,
                 onBurst = onBurst,
                 onBulb = onBulb
@@ -339,25 +318,16 @@ fun ProBottomControlPanel(
 @Composable
 private fun ProToolRow(
     peakingEnabled: Boolean,
-    gridType: GridType,
-    histogramType: HistogramType,
-    zebraPattern: ZebraPattern,
     liveViewEnabled: Boolean,
     burstRunning: Boolean,
     bulbEnabled: Boolean,
     onTogglePeaking: () -> Unit,
-    onToggleGrid: () -> Unit,
-    onToggleHistogram: () -> Unit,
-    onToggleZebra: () -> Unit,
     onToggleLiveView: () -> Unit,
     onBurst: () -> Unit,
     onBulb: () -> Unit
 ) {
     val tools = listOf(
         ToolItem(stringResource(id = R.string.focus_peaking), peakingEnabled, onTogglePeaking),
-        ToolItem(stringResource(id = R.string.grid), gridType != GridType.None, onToggleGrid),
-        ToolItem(stringResource(id = R.string.histogram), histogramType != HistogramType.None, onToggleHistogram),
-        ToolItem(stringResource(id = R.string.zebra), zebraPattern != ZebraPattern.None, onToggleZebra),
         ToolItem(stringResource(id = R.string.live_view), liveViewEnabled, onToggleLiveView),
         ToolItem(stringResource(id = R.string.burst), burstRunning, onBurst),
         ToolItem(stringResource(id = R.string.bulb), bulbEnabled, onBulb)
@@ -377,25 +347,16 @@ private fun ProToolRow(
 @Composable
 private fun ProToolColumn(
     peakingEnabled: Boolean,
-    gridType: GridType,
-    histogramType: HistogramType,
-    zebraPattern: ZebraPattern,
     liveViewEnabled: Boolean,
     burstRunning: Boolean,
     bulbEnabled: Boolean,
     onTogglePeaking: () -> Unit,
-    onToggleGrid: () -> Unit,
-    onToggleHistogram: () -> Unit,
-    onToggleZebra: () -> Unit,
     onToggleLiveView: () -> Unit,
     onBurst: () -> Unit,
     onBulb: () -> Unit
 ) {
     val tools = listOf(
         ToolItem(stringResource(id = R.string.focus_peaking), peakingEnabled, onTogglePeaking),
-        ToolItem(stringResource(id = R.string.grid), gridType != GridType.None, onToggleGrid),
-        ToolItem(stringResource(id = R.string.histogram), histogramType != HistogramType.None, onToggleHistogram),
-        ToolItem(stringResource(id = R.string.zebra), zebraPattern != ZebraPattern.None, onToggleZebra),
         ToolItem(stringResource(id = R.string.live_view), liveViewEnabled, onToggleLiveView),
         ToolItem(stringResource(id = R.string.burst), burstRunning, onBurst),
         ToolItem(stringResource(id = R.string.bulb), bulbEnabled, onBulb)

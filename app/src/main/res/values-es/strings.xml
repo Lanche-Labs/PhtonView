@@ -49,7 +49,6 @@
     <string name="flash_mode">Modo flash</string>
     <string name="flash_compensation">Compensación flash</string>
     <string name="storage_target">Destino de almacenamiento</string>
-    <string name="live_view_assist">Asistencia vista en vivo</string>
     <string name="advanced_capture">Captura avanzada</string>
     <string name="bulb_duration">Bulb：%d s</string>
     <string name="timer_delay">Autodisparador：%d s</string>

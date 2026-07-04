@@ -170,55 +170,6 @@ data class MeteringResult(
 )
 
 /**
- * 直方图数据。
- */
-data class HistogramData(
-    val red: IntArray = IntArray(256),
-    val green: IntArray = IntArray(256),
-    val blue: IntArray = IntArray(256),
-    val luminance: IntArray = IntArray(256)
-) {
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (javaClass != other?.javaClass) return false
-        other as HistogramData
-        return red.contentEquals(other.red) &&
-                green.contentEquals(other.green) &&
-                blue.contentEquals(other.blue) &&
-                luminance.contentEquals(other.luminance)
-    }
-
-    override fun hashCode(): Int {
-        var result = red.contentHashCode()
-        result = 31 * result + green.contentHashCode()
-        result = 31 * result + blue.contentHashCode()
-        result = 31 * result + luminance.contentHashCode()
-        return result
-    }
-}
-
-/**
- * 直方图叠加类型。
- */
-enum class HistogramType {
-    None, Luminance, RGB
-}
-
-/**
- * 网格线类型。
- */
-enum class GridType {
-    None, RuleOfThirds, GoldenRatio, Center, Diagonal
-}
-
-/**
- * 斑马纹警告类型。
- */
-enum class ZebraPattern {
-    None, Over, Under, Both
-}
-
-/**
  * 照片文件信息。
  */
 data class PhotoItem(

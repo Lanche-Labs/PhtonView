@@ -62,9 +62,6 @@ fun CameraSettingsPanel(
     bulbSettings: BulbSettings,
     timerSettings: TimerSettings,
     aebSettings: AebSettings,
-    histogramType: HistogramType,
-    gridType: GridType,
-    zebraPattern: ZebraPattern,
     liveViewEnabled: Boolean,
     onFocusModeChange: (FocusMode) -> Unit,
     onAfModeChange: (AfMode) -> Unit,
@@ -79,9 +76,6 @@ fun CameraSettingsPanel(
     onFlashModeChange: (FlashMode) -> Unit,
     onFlashCompensationChange: (Float) -> Unit,
     onStorageTargetChange: (StorageTarget) -> Unit,
-    onHistogramTypeChange: (HistogramType) -> Unit,
-    onGridTypeChange: (GridType) -> Unit,
-    onZebraPatternChange: (ZebraPattern) -> Unit,
     onLiveViewEnabledChange: (Boolean) -> Unit,
     onBurst: () -> Unit,
     onBulb: () -> Unit,
@@ -236,40 +230,13 @@ fun CameraSettingsPanel(
                 }
             }
 
-            // 实时取景辅助
-            ExpandableSection(title = stringResource(id = R.string.live_view_assist)) {
+            // 实时取景
+            ExpandableSection(title = stringResource(id = R.string.live_view)) {
                 SectionItem {
                     ToggleRow(
                         label = stringResource(id = R.string.live_view),
                         checked = liveViewEnabled,
                         onCheckedChange = onLiveViewEnabledChange
-                    )
-                }
-                SectionItem {
-                    SectionLabel(text = stringResource(id = R.string.histogram))
-                    HorizontalEnumSelector(
-                        values = HistogramType.entries,
-                        selected = histogramType,
-                        label = { it.displayName() },
-                        onSelected = onHistogramTypeChange
-                    )
-                }
-                SectionItem {
-                    SectionLabel(text = stringResource(id = R.string.grid))
-                    HorizontalEnumSelector(
-                        values = GridType.entries,
-                        selected = gridType,
-                        label = { it.displayName() },
-                        onSelected = onGridTypeChange
-                    )
-                }
-                SectionItem {
-                    SectionLabel(text = stringResource(id = R.string.zebra))
-                    HorizontalEnumSelector(
-                        values = ZebraPattern.entries,
-                        selected = zebraPattern,
-                        label = { it.displayName() },
-                        onSelected = onZebraPatternChange
                     )
                 }
             }
@@ -635,36 +602,6 @@ private fun FlashMode.displayName(): String = stringResource(
         FlashMode.SlowSync -> R.string.flash_slow_sync
         FlashMode.RedEye -> R.string.flash_red_eye
         FlashMode.RearSync -> R.string.flash_rear_sync
-    }
-)
-
-@Composable
-private fun HistogramType.displayName(): String = stringResource(
-    id = when (this) {
-        HistogramType.None -> R.string.off
-        HistogramType.Luminance -> R.string.histogram_luminance
-        HistogramType.RGB -> R.string.histogram_rgb
-    }
-)
-
-@Composable
-private fun GridType.displayName(): String = stringResource(
-    id = when (this) {
-        GridType.None -> R.string.off
-        GridType.RuleOfThirds -> R.string.grid_rule_of_thirds
-        GridType.GoldenRatio -> R.string.grid_golden_ratio
-        GridType.Center -> R.string.grid_center
-        GridType.Diagonal -> R.string.grid_diagonal
-    }
-)
-
-@Composable
-private fun ZebraPattern.displayName(): String = stringResource(
-    id = when (this) {
-        ZebraPattern.None -> R.string.off
-        ZebraPattern.Over -> R.string.zebra_over
-        ZebraPattern.Under -> R.string.zebra_under
-        ZebraPattern.Both -> R.string.zebra_both
     }
 )
 
