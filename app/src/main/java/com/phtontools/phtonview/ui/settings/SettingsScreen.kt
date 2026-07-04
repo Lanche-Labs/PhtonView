@@ -41,6 +41,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
@@ -48,6 +49,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -109,6 +111,7 @@ fun SettingsScreen(
     var debugMode by remember { mutableStateOf(settingsManager.debugMode) }
     var uxImprovement by remember { mutableStateOf(settingsManager.uxImprovementEnabled) }
     var pendingRelease by remember { mutableStateOf<UpdateChecker.ReleaseInfo?>(null) }
+    var downloadState by remember { mutableStateOf<UpdateChecker.DownloadState>(UpdateChecker.DownloadState.Idle) }
 
     val checkUpdate: () -> Unit = {
         scope.launch {
@@ -286,12 +289,16 @@ fun SettingsScreen(
                 SettingsPage.Update -> UpdatePage(
                     modifier = Modifier.padding(padding),
                     release = pendingRelease,
-                    onConfirm = {
-                        pendingRelease?.let { release ->
-                            if (UpdateChecker.canInstallUpdate(context)) {
-                                UpdateChecker.downloadAndInstall(context, release)
-                            } else {
-                                UpdateChecker.requestInstallPermission(context)
+                    downloadState = downloadState,
+                    onDownload = { release ->
+                        if (!UpdateChecker.canInstallUpdate(context)) {
+                            UpdateChecker.requestInstallPermission(context)
+                        } else {
+                            downloadState = UpdateChecker.DownloadState.Progress(0, 0, -1)
+                            scope.launch {
+                                UpdateChecker.downloadUpdate(context, release).collect { state ->
+                                    downloadState = state
+                                }
                             }
                         }
                     }
@@ -593,8 +600,17 @@ private fun CreditsPage(
 private fun UpdatePage(
     modifier: Modifier = Modifier,
     release: UpdateChecker.ReleaseInfo?,
-    onConfirm: () -> Unit
+    downloadState: UpdateChecker.DownloadState,
+    onDownload: (UpdateChecker.ReleaseInfo) -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    LaunchedEffect(downloadState) {
+        if (downloadState is UpdateChecker.DownloadState.Success) {
+            UpdateChecker.installApk(context, downloadState.file)
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -620,13 +636,69 @@ private fun UpdatePage(
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
-            Button(
-                onClick = onConfirm,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("下载并安装")
+
+            when (downloadState) {
+                is UpdateChecker.DownloadState.Idle,
+                is UpdateChecker.DownloadState.Error -> {
+                    val buttonText = if (downloadState is UpdateChecker.DownloadState.Error) {
+                        "重试下载"
+                    } else {
+                        "下载并安装"
+                    }
+                    Button(
+                        onClick = { onDownload(release) },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = downloadState !is UpdateChecker.DownloadState.Progress
+                    ) {
+                        Text(buttonText)
+                    }
+                    if (downloadState is UpdateChecker.DownloadState.Error) {
+                        Text(
+                            text = "下载失败：${downloadState.message}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+                is UpdateChecker.DownloadState.Progress -> {
+                    val progressText = if (downloadState.total > 0) {
+                        "${downloadState.percent}% (${formatBytes(downloadState.downloaded)} / ${formatBytes(downloadState.total)})"
+                    } else {
+                        "已下载 ${formatBytes(downloadState.downloaded)}"
+                    }
+                    Text(
+                        text = progressText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                    )
+                    LinearProgressIndicator(
+                        progress = {
+                            if (downloadState.total > 0) downloadState.percent / 100f else 0f
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                is UpdateChecker.DownloadState.Success -> {
+                    Text(
+                        text = "下载完成，正在启动安装...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    LinearProgressIndicator(
+                        progress = { 1f },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         }
+    }
+}
+
+private fun formatBytes(bytes: Long): String {
+    return when {
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 -> "%.1f KB".format(bytes / 1024.0)
+        else -> "%.2f MB".format(bytes / (1024.0 * 1024.0))
     }
 }
 

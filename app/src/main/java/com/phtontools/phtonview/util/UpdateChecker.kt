@@ -13,6 +13,9 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.phtontools.phtonview.BuildConfig
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
@@ -29,6 +32,13 @@ object UpdateChecker {
         val downloadUrl: String,
         val body: String
     )
+
+    sealed class DownloadState {
+        object Idle : DownloadState()
+        data class Progress(val percent: Int, val downloaded: Long, val total: Long) : DownloadState()
+        data class Success(val file: File) : DownloadState()
+        data class Error(val message: String) : DownloadState()
+    }
 
     suspend fun fetchLatestRelease(): ReleaseInfo? = withContext(Dispatchers.IO) {
         try {
@@ -143,7 +153,48 @@ object UpdateChecker {
         )
     }
 
-    private fun installApk(context: Context, file: File) {
+    fun downloadUpdate(context: Context, release: ReleaseInfo): Flow<DownloadState> = flow {
+        emit(DownloadState.Progress(0, 0, -1))
+        var connection: HttpURLConnection? = null
+        try {
+            val file = File(context.cacheDir, "updates/PhtonView-${release.version}.apk")
+            file.parentFile?.mkdirs()
+
+            connection = URL(release.downloadUrl).openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 30000
+            connection.readTimeout = 30000
+            connection.setRequestProperty("Accept", "*/*")
+            connection.connect()
+
+            val total = connection.contentLength.toLong().coerceAtLeast(-1)
+            connection.inputStream.use { input ->
+                file.outputStream().use { output ->
+                    val buffer = ByteArray(8192)
+                    var downloaded = 0L
+                    var read: Int
+                    while (input.read(buffer).also { read = it } != -1) {
+                        output.write(buffer, 0, read)
+                        downloaded += read
+                        if (total > 0) {
+                            val percent = (downloaded * 100 / total).toInt()
+                            emit(DownloadState.Progress(percent, downloaded, total))
+                        } else {
+                            emit(DownloadState.Progress(0, downloaded, -1))
+                        }
+                    }
+                }
+            }
+            emit(DownloadState.Success(file))
+        } catch (e: Exception) {
+            AppLogger.e("UpdateChecker: download failed", e)
+            emit(DownloadState.Error(e.message ?: "下载失败"))
+        } finally {
+            connection?.disconnect()
+        }
+    }.flowOn(Dispatchers.IO)
+
+    fun installApk(context: Context, file: File) {
         if (!file.exists()) return
         val uri = FileProvider.getUriForFile(
             context,
