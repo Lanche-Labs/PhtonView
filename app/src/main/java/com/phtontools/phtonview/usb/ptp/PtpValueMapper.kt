@@ -235,12 +235,12 @@ object PtpValueMapper {
     }
 
     fun flashModeToPtp(mode: FlashMode): Int = when (mode) {
-        FlashMode.Auto -> 1
-        FlashMode.On -> 2
-        FlashMode.Off -> 3
-        FlashMode.RedEye -> 4
-        FlashMode.SlowSync -> 5
-        FlashMode.RearSync -> 6
+        FlashMode.Auto -> 1      // Auto flash
+        FlashMode.Off -> 2       // Flash off
+        FlashMode.On -> 3        // Fill flash (force on)
+        FlashMode.RedEye -> 4    // Red-eye auto
+        FlashMode.SlowSync -> 5  // Red-eye fill (closest standard value)
+        FlashMode.RearSync -> 6  // External sync (closest standard value)
     }
 
     fun shootingModeToPtp(mode: ShootingMode): Int = when (mode) {
