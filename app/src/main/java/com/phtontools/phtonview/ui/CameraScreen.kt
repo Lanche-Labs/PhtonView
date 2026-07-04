@@ -100,6 +100,7 @@ fun CameraScreen(
     val metering by viewModel.meteringResult.collectAsStateWithLifecycle()
     val focusMode by viewModel.focusMode.collectAsStateWithLifecycle()
     val afMode by viewModel.afMode.collectAsStateWithLifecycle()
+    val afAreaMode by viewModel.afAreaMode.collectAsStateWithLifecycle()
     val magnification by viewModel.focusMagnification.collectAsStateWithLifecycle()
     val peakingEnabled by viewModel.focusPeakingEnabled.collectAsStateWithLifecycle()
     val intervalometer by viewModel.intervalometer.collectAsStateWithLifecycle()
@@ -138,6 +139,7 @@ fun CameraScreen(
                     metering = metering,
                     focusMode = focusMode,
                     afMode = afMode,
+                    afAreaMode = afAreaMode,
                     magnification = magnification,
                     peakingEnabled = peakingEnabled,
                     intervalometer = intervalometer,
@@ -147,6 +149,7 @@ fun CameraScreen(
                     liveViewEnabled = liveViewEnabled,
                     onFocusModeChange = viewModel::setFocusMode,
                     onAfModeChange = viewModel::setAfMode,
+                    onAfAreaModeChange = viewModel::setAfAreaMode,
                     onMagnificationChange = viewModel::setFocusMagnification,
                     onPeakingChange = viewModel::setFocusPeakingEnabled,
                     onMeteringModeChange = viewModel::setMeteringMode,
@@ -389,7 +392,8 @@ private fun PortraitLayout(
                 onTogglePeaking = { viewModel.setFocusPeakingEnabled(!peakingEnabled) },
                 onToggleLiveView = { viewModel.setLiveViewEnabled(!liveViewEnabled) },
                 onBurst = { if (!burstRunning) viewModel.startBurstCapture(cameraSettings.burstCount) },
-                onBulb = { if (bulbSettings.enabled) viewModel.stopBulb() else viewModel.startBulb(bulbSettings.durationSeconds) }
+                onBulb = { if (bulbSettings.enabled) viewModel.stopBulb() else viewModel.startBulb(bulbSettings.durationSeconds) },
+                onFocus = { viewModel.triggerAf() }
             )
         } else {
             CleanBottomControlPanel(
@@ -492,7 +496,8 @@ private fun LandscapeLayout(
                 onTogglePeaking = { viewModel.setFocusPeakingEnabled(!peakingEnabled) },
                 onToggleLiveView = { viewModel.setLiveViewEnabled(!liveViewEnabled) },
                 onBurst = { if (!burstRunning) viewModel.startBurstCapture(cameraSettings.burstCount) },
-                onBulb = { if (bulbSettings.enabled) viewModel.stopBulb() else viewModel.startBulb(bulbSettings.durationSeconds) }
+                onBulb = { if (bulbSettings.enabled) viewModel.stopBulb() else viewModel.startBulb(bulbSettings.durationSeconds) },
+                onFocus = { viewModel.triggerAf() }
             )
         } else {
             CleanBottomControlPanel(

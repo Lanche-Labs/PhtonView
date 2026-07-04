@@ -82,6 +82,12 @@
     <string name="af_s">单次对焦</string>
     <string name="af_c">连续对焦</string>
     <string name="af_mode">AF 模式</string>
+    <string name="af_area_mode">对焦区域</string>
+    <string name="af_area_single">单点</string>
+    <string name="af_area_zone">区域</string>
+    <string name="af_area_tracking">追踪</string>
+    <string name="af_area_face">面部</string>
+    <string name="focus_button">对焦</string>
 
     <!-- 白平衡 -->
     <string name="wb_auto">自动</string>

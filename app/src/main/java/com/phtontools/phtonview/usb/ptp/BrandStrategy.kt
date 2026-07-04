@@ -22,6 +22,9 @@ interface BrandStrategy {
     val afDriveOperation: Short?
     val changeAfAreaOperation: Short?
 
+    /** 对焦区域模式属性码 */
+    val afAreaModeProperty: Short?
+
     /** 快门属性码：主选 + 备选 */
     val primaryShutterProperty: Short
     val fallbackShutterProperty: Short?
@@ -55,6 +58,7 @@ object NikonStrategy : BrandStrategy {
     override val terminateCaptureOperation = PtpConstants.NIKON_OPERATION_TERMINATE_CAPTURE
     override val afDriveOperation = PtpConstants.NIKON_OPERATION_AF_DRIVE
     override val changeAfAreaOperation = PtpConstants.NIKON_OPERATION_CHANGE_AF_AREA
+    override val afAreaModeProperty = PtpConstants.DEVICE_PROP_NIKON_AF_AREA_MODE
     override val primaryShutterProperty = PtpConstants.DEVICE_PROP_EXPOSURE_TIME
     override val fallbackShutterProperty = PtpConstants.DEVICE_PROP_NIKON_EXPOSURE_TIME
     override val liveViewStatusProperty = PtpConstants.DEVICE_PROP_NIKON_LIVE_VIEW_STATUS
@@ -74,6 +78,7 @@ object CanonStrategy : BrandStrategy {
     override val terminateCaptureOperation = null
     override val afDriveOperation = null
     override val changeAfAreaOperation = null
+    override val afAreaModeProperty = null
     override val primaryShutterProperty = PtpConstants.DEVICE_PROP_EXPOSURE_TIME
     override val fallbackShutterProperty = null
     override val liveViewStatusProperty = null
@@ -92,6 +97,7 @@ object SonyStrategy : BrandStrategy {
     override val terminateCaptureOperation = null
     override val afDriveOperation = null
     override val changeAfAreaOperation = null
+    override val afAreaModeProperty = null
     override val primaryShutterProperty = PtpConstants.DEVICE_PROP_EXPOSURE_TIME
     override val fallbackShutterProperty = null
     override val liveViewStatusProperty = null
@@ -110,6 +116,7 @@ object FujiStrategy : BrandStrategy {
     override val terminateCaptureOperation = null
     override val afDriveOperation = null
     override val changeAfAreaOperation = null
+    override val afAreaModeProperty = null
     override val primaryShutterProperty = PtpConstants.DEVICE_PROP_EXPOSURE_TIME
     override val fallbackShutterProperty = null
     override val liveViewStatusProperty = null
@@ -128,6 +135,7 @@ object PanasonicStrategy : BrandStrategy {
     override val terminateCaptureOperation = null
     override val afDriveOperation = null
     override val changeAfAreaOperation = null
+    override val afAreaModeProperty = null
     override val primaryShutterProperty = PtpConstants.DEVICE_PROP_EXPOSURE_TIME
     override val fallbackShutterProperty = null
     override val liveViewStatusProperty = null
@@ -146,6 +154,7 @@ object OlympusStrategy : BrandStrategy {
     override val terminateCaptureOperation = null
     override val afDriveOperation = null
     override val changeAfAreaOperation = null
+    override val afAreaModeProperty = null
     override val primaryShutterProperty = PtpConstants.DEVICE_PROP_EXPOSURE_TIME
     override val fallbackShutterProperty = null
     override val liveViewStatusProperty = null
@@ -164,6 +173,7 @@ object GenericStrategy : BrandStrategy {
     override val terminateCaptureOperation = null
     override val afDriveOperation = null
     override val changeAfAreaOperation = null
+    override val afAreaModeProperty = null
     override val primaryShutterProperty = PtpConstants.DEVICE_PROP_EXPOSURE_TIME
     override val fallbackShutterProperty = null
     override val liveViewStatusProperty = null

@@ -23,6 +23,13 @@
     <string name="af_continuous">AF-C</string>
     <string name="magnification_format">확대 %1$.0fx</string>
     <string name="focus_peaking">피킹</string>
+    <string name="af_mode">AF Mode</string>
+    <string name="af_area_mode">AF Area</string>
+    <string name="af_area_single">Single</string>
+    <string name="af_area_zone">Zone</string>
+    <string name="af_area_tracking">Tracking</string>
+    <string name="af_area_face">Face</string>
+    <string name="focus_button">Focus</string>
 
     <!-- 노출 -->
     <string name="metering_mode">측광 모드</string>

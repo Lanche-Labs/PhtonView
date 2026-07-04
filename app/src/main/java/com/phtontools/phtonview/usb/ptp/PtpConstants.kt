@@ -87,6 +87,8 @@ object PtpConstants {
     const val DEVICE_PROP_NIKON_LIVE_VIEW_STATUS: Short = 0xD1A2.toShort()
     const val DEVICE_PROP_NIKON_LIVE_VIEW_PROHIBIT_CONDITION: Short = 0xD1A4.toShort()
     const val DEVICE_PROP_NIKON_RECORDING_MEDIA: Short = 0xD10B.toShort()
+    const val DEVICE_PROP_NIKON_AF_MODE: Short = 0xD161.toShort()
+    const val DEVICE_PROP_NIKON_AF_AREA_MODE: Short = 0xD163.toShort()
 
     // 对象格式
     const val OBJECT_FORMAT_ASSOCIATION: Short = 0x3001

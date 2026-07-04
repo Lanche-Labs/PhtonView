@@ -263,7 +263,8 @@ fun ProBottomControlPanel(
     onTogglePeaking: () -> Unit,
     onToggleLiveView: () -> Unit,
     onBurst: () -> Unit,
-    onBulb: () -> Unit
+    onBulb: () -> Unit,
+    onFocus: () -> Unit = {}
 ) {
     if (isLandscape) {
         Row(
@@ -286,7 +287,8 @@ fun ProBottomControlPanel(
                 onTogglePeaking = onTogglePeaking,
                 onToggleLiveView = onToggleLiveView,
                 onBurst = onBurst,
-                onBulb = onBulb
+                onBulb = onBulb,
+                onFocus = onFocus
             )
         }
     } else {
@@ -301,7 +303,8 @@ fun ProBottomControlPanel(
                 onTogglePeaking = onTogglePeaking,
                 onToggleLiveView = onToggleLiveView,
                 onBurst = onBurst,
-                onBulb = onBulb
+                onBulb = onBulb,
+                onFocus = onFocus
             )
             CleanPortraitControlColumn(
                 exposure = exposure,
@@ -324,13 +327,15 @@ private fun ProToolRow(
     onTogglePeaking: () -> Unit,
     onToggleLiveView: () -> Unit,
     onBurst: () -> Unit,
-    onBulb: () -> Unit
+    onBulb: () -> Unit,
+    onFocus: () -> Unit = {}
 ) {
     val tools = listOf(
         ToolItem(stringResource(id = R.string.focus_peaking), peakingEnabled, onTogglePeaking),
         ToolItem(stringResource(id = R.string.live_view), liveViewEnabled, onToggleLiveView),
         ToolItem(stringResource(id = R.string.burst), burstRunning, onBurst),
-        ToolItem(stringResource(id = R.string.bulb), bulbEnabled, onBulb)
+        ToolItem(stringResource(id = R.string.bulb), bulbEnabled, onBulb),
+        ToolItem(stringResource(id = R.string.focus_button), false, onFocus)
     )
 
     androidx.compose.foundation.lazy.LazyRow(
@@ -353,13 +358,15 @@ private fun ProToolColumn(
     onTogglePeaking: () -> Unit,
     onToggleLiveView: () -> Unit,
     onBurst: () -> Unit,
-    onBulb: () -> Unit
+    onBulb: () -> Unit,
+    onFocus: () -> Unit = {}
 ) {
     val tools = listOf(
         ToolItem(stringResource(id = R.string.focus_peaking), peakingEnabled, onTogglePeaking),
         ToolItem(stringResource(id = R.string.live_view), liveViewEnabled, onToggleLiveView),
         ToolItem(stringResource(id = R.string.burst), burstRunning, onBurst),
-        ToolItem(stringResource(id = R.string.bulb), bulbEnabled, onBulb)
+        ToolItem(stringResource(id = R.string.bulb), bulbEnabled, onBulb),
+        ToolItem(stringResource(id = R.string.focus_button), false, onFocus)
     )
 
     Column(

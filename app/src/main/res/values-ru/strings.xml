@@ -23,6 +23,13 @@
     <string name="af_continuous">AF-C</string>
     <string name="magnification_format">Увеличение %1$.0fx</string>
     <string name="focus_peaking">Пикинг</string>
+    <string name="af_mode">AF Mode</string>
+    <string name="af_area_mode">AF Area</string>
+    <string name="af_area_single">Single</string>
+    <string name="af_area_zone">Zone</string>
+    <string name="af_area_tracking">Tracking</string>
+    <string name="af_area_face">Face</string>
+    <string name="focus_button">Focus</string>
 
     <!-- Экспозиция -->
     <string name="metering_mode">Режим замера</string>

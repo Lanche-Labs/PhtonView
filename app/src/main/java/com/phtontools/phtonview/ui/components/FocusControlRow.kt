@@ -22,6 +22,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.phtontools.phtonview.R
+import com.phtontools.phtonview.data.model.AfAreaMode
 import com.phtontools.phtonview.data.model.AfMode
 import com.phtontools.phtonview.data.model.FocusMode
 
@@ -29,12 +30,14 @@ import com.phtontools.phtonview.data.model.FocusMode
 fun FocusControlRow(
     focusMode: FocusMode,
     afMode: AfMode,
+    afAreaMode: AfAreaMode,
     magnification: Float,
     peakingEnabled: Boolean,
     compact: Boolean,
     veryCompact: Boolean = false,
     onFocusModeChange: (FocusMode) -> Unit,
     onAfModeChange: (AfMode) -> Unit,
+    onAfAreaModeChange: (AfAreaMode) -> Unit,
     onMagnificationChange: (Float) -> Unit,
     onPeakingChange: (Boolean) -> Unit
 ) {
@@ -62,6 +65,19 @@ fun FocusControlRow(
                 onClick = {
                     onAfModeChange(if (afMode == AfMode.AF_S) AfMode.AF_C else AfMode.AF_S)
                 }
+            )
+
+            val nextAreaMode = when (afAreaMode) {
+                AfAreaMode.SinglePoint -> AfAreaMode.Zone
+                AfAreaMode.Zone -> AfAreaMode.Tracking
+                AfAreaMode.Tracking -> AfAreaMode.FaceDetection
+                AfAreaMode.FaceDetection -> AfAreaMode.SinglePoint
+            }
+            CompactToggleButton(
+                label = stringResource(id = afAreaModeStringRes(afAreaMode)),
+                compact = compact,
+                veryCompact = veryCompact,
+                onClick = { onAfAreaModeChange(nextAreaMode) }
             )
         } else {
             Row(
@@ -99,6 +115,13 @@ fun FocusControlRow(
             }
         }
     }
+}
+
+private fun afAreaModeStringRes(mode: AfAreaMode): Int = when (mode) {
+    AfAreaMode.SinglePoint -> R.string.af_area_single
+    AfAreaMode.Zone -> R.string.af_area_zone
+    AfAreaMode.Tracking -> R.string.af_area_tracking
+    AfAreaMode.FaceDetection -> R.string.af_area_face
 }
 
 @Composable

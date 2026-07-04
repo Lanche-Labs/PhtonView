@@ -49,6 +49,16 @@ enum class AfMode {
 }
 
 /**
+ * 对焦区域模式。
+ */
+enum class AfAreaMode {
+    SinglePoint,   // 单点对焦
+    Zone,          // 区域对焦
+    Tracking,      // 追踪对焦
+    FaceDetection  // 面部识别对焦
+}
+
+/**
  * 测光模式。
  */
 enum class MeteringMode {
@@ -156,6 +166,7 @@ data class CameraSettings(
     val flashMode: FlashMode = FlashMode.Auto,
     val flashCompensation: Float = 0f,
     val focusPoint: Pair<Float, Float>? = null,
+    val afAreaMode: AfAreaMode = AfAreaMode.SinglePoint,
     val storageTarget: StorageTarget = StorageTarget.Card1,
     val preset: ShootingPreset = ShootingPreset.User1
 )

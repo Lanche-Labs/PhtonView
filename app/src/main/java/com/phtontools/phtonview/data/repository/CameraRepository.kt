@@ -16,6 +16,7 @@ interface CameraRepository {
     val meteringResult: StateFlow<MeteringResult>
     val focusMode: StateFlow<FocusMode>
     val afMode: StateFlow<AfMode>
+    val afAreaMode: StateFlow<AfAreaMode>
     val focusMagnification: StateFlow<Float>
     val focusPeakingEnabled: StateFlow<Boolean>
     val detectedUsbDevice: StateFlow<String?>
@@ -40,6 +41,7 @@ interface CameraRepository {
     suspend fun setAfArea(x: Float, y: Float)
     fun setFocusMode(mode: FocusMode)
     fun setAfMode(mode: AfMode)
+    fun setAfAreaMode(mode: AfAreaMode)
     suspend fun setMeteringMode(mode: MeteringMode)
     suspend fun setSpotMeteringPoint(x: Float, y: Float)
 

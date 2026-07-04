@@ -204,6 +204,18 @@ object PtpValueMapper {
         AfMode.AF_C -> 2
     }
 
+    /**
+     * Nikon AF area mode values (0xD163).
+     * Maps the UI modes to the vendor-specific codes used by Nikon bodies.
+     * Other brands will use their own strategy/property if available.
+     */
+    fun afAreaModeToPtp(mode: AfAreaMode): Int = when (mode) {
+        AfAreaMode.SinglePoint -> 1    // Single-point AF
+        AfAreaMode.Zone -> 2           // Dynamic-area AF / Zone
+        AfAreaMode.Tracking -> 3       // 3D-tracking
+        AfAreaMode.FaceDetection -> 4  // Auto-area AF with face detection
+    }
+
     fun meteringModeToPtp(mode: MeteringMode): Int = when (mode) {
         MeteringMode.Matrix -> 1
         MeteringMode.CenterWeighted -> 2

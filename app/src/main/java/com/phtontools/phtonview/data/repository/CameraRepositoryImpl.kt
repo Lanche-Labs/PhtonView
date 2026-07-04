@@ -84,6 +84,9 @@ class CameraRepositoryImpl @Inject constructor(
     private val _afMode = MutableStateFlow(AfMode.AF_S)
     override val afMode: StateFlow<AfMode> = _afMode
 
+    private val _afAreaMode = MutableStateFlow(AfAreaMode.SinglePoint)
+    override val afAreaMode: StateFlow<AfAreaMode> = _afAreaMode
+
     private val _focusMagnification = MutableStateFlow(1f)
     override val focusMagnification: StateFlow<Float> = _focusMagnification
 
@@ -711,6 +714,13 @@ class CameraRepositoryImpl @Inject constructor(
         applyPtpPropertyAsync(PtpConstants.DEVICE_PROP_FOCUS_MODE, PtpValueMapper.afModeToPtp(mode))
     }
 
+    override fun setAfAreaMode(mode: AfAreaMode) {
+        _afAreaMode.value = mode
+        _cameraSettings.value = _cameraSettings.value.copy(afAreaMode = mode)
+        val property = brandStrategy.afAreaModeProperty ?: return
+        applyPtpPropertyAsync(property, PtpValueMapper.afAreaModeToPtp(mode))
+    }
+
     override suspend fun setMeteringMode(mode: MeteringMode) {
         // #region debug-point I:metering
         AppLogger.report("I", "CameraRepositoryImpl.kt:setMeteringMode", "Set metering mode", mapOf("mode" to mode.name, "ptpValue" to PtpValueMapper.meteringModeToPtp(mode).toString()))
@@ -917,6 +927,7 @@ class CameraRepositoryImpl @Inject constructor(
         _meteringResult.value = MeteringResult()
         _focusMode.value = FocusMode.AF
         _afMode.value = AfMode.AF_S
+        _afAreaMode.value = AfAreaMode.SinglePoint
         _focusMagnification.value = 1f
         _focusPeakingEnabled.value = false
         _intervalometer.value = IntervalometerSettings()

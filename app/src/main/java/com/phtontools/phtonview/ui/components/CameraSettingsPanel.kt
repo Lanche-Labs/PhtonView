@@ -56,6 +56,7 @@ fun CameraSettingsPanel(
     metering: MeteringResult,
     focusMode: FocusMode,
     afMode: AfMode,
+    afAreaMode: AfAreaMode,
     magnification: Float,
     peakingEnabled: Boolean,
     intervalometer: IntervalometerSettings,
@@ -65,6 +66,7 @@ fun CameraSettingsPanel(
     liveViewEnabled: Boolean,
     onFocusModeChange: (FocusMode) -> Unit,
     onAfModeChange: (AfMode) -> Unit,
+    onAfAreaModeChange: (AfAreaMode) -> Unit,
     onMagnificationChange: (Float) -> Unit,
     onPeakingChange: (Boolean) -> Unit,
     onMeteringModeChange: (MeteringMode) -> Unit,
@@ -146,6 +148,15 @@ fun CameraSettingsPanel(
                             selected = afMode,
                             label = { it.displayName() },
                             onSelected = onAfModeChange
+                        )
+                    }
+                    SectionItem {
+                        SectionLabel(text = stringResource(id = R.string.af_area_mode))
+                        HorizontalEnumSelector(
+                            values = AfAreaMode.entries,
+                            selected = afAreaMode,
+                            label = { it.displayName() },
+                            onSelected = onAfAreaModeChange
                         )
                     }
                 } else {
@@ -566,6 +577,16 @@ private fun AfMode.displayName(): String = stringResource(
     id = when (this) {
         AfMode.AF_S -> R.string.af_s
         AfMode.AF_C -> R.string.af_c
+    }
+)
+
+@Composable
+private fun AfAreaMode.displayName(): String = stringResource(
+    id = when (this) {
+        AfAreaMode.SinglePoint -> R.string.af_area_single
+        AfAreaMode.Zone -> R.string.af_area_zone
+        AfAreaMode.Tracking -> R.string.af_area_tracking
+        AfAreaMode.FaceDetection -> R.string.af_area_face
     }
 )
 

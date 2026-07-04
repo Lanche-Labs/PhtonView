@@ -44,6 +44,9 @@ class CameraViewModel @Inject constructor(
     val afMode: StateFlow<AfMode> = repository.afMode
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AfMode.AF_S)
 
+    val afAreaMode: StateFlow<AfAreaMode> = repository.afAreaMode
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AfAreaMode.SinglePoint)
+
     val focusMagnification: StateFlow<Float> = repository.focusMagnification
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 1f)
 
@@ -110,6 +113,7 @@ class CameraViewModel @Inject constructor(
 
     fun setFocusMode(mode: FocusMode) { repository.setFocusMode(mode) }
     fun setAfMode(mode: AfMode) { repository.setAfMode(mode) }
+    fun setAfAreaMode(mode: AfAreaMode) { repository.setAfAreaMode(mode) }
 
     fun setMeteringMode(mode: MeteringMode) = viewModelScope.launch { repository.setMeteringMode(mode) }
     fun setSpotMeteringPoint(x: Float, y: Float) = viewModelScope.launch { repository.setSpotMeteringPoint(x, y) }
