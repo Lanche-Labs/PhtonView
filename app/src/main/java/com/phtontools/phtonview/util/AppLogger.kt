@@ -11,9 +11,13 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 object AppLogger {
+    private val reportExecutor by lazy {
+        Executors.newSingleThreadExecutor { r -> Thread(r, "PhtonView-Report") }
+    }
     private const val TAG = "PhtonView"
     private const val MAX_COLLECTED_LOGS = 2000
 
@@ -82,7 +86,10 @@ object AppLogger {
         val message = "[DEBUG-$hypothesisId] $location: $msg data=$data"
         collect("D", TAG, message, null)
 
-        Thread {
+        // 仅在调试或日志收集开启时发送本地遥测，避免 release 版本中高频创建线程。
+        if (!debugEnabled && !collectionEnabled) return
+
+        reportExecutor.execute {
             try {
                 val url = URL("http://127.0.0.1:7777/event")
                 val conn = url.openConnection() as HttpURLConnection
@@ -103,7 +110,7 @@ object AppLogger {
                 conn.responseCode
                 conn.disconnect()
             } catch (_: Exception) { }
-        }.start()
+        }
     }
     // #endregion
 

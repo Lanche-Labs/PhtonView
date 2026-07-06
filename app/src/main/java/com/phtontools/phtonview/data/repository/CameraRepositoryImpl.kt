@@ -124,7 +124,7 @@ class CameraRepositoryImpl @Inject constructor(
     private var currentModelName: String = ""
     private var preBulbShutter: String = "1/125"
     private val isNikon: Boolean
-        get() = currentModelName.contains("Nikon", ignoreCase = true) || currentModelName.contains("NIKON", ignoreCase = true)
+        get() = currentModelName.contains("Nikon", ignoreCase = true)
             || detectBrand(currentModelName) == CameraBrand.Nikon
 
     /**
@@ -236,18 +236,6 @@ class CameraRepositoryImpl @Inject constructor(
             PtpConstants.VENDOR_EXTENSION_OLYMPUS -> CameraBrand.Olympus
             else -> CameraBrand.Generic
         }
-    }
-
-    /**
-     * 综合 DeviceInfo 和型号名识别品牌，任一来源命中即采用对应策略。
-     */
-    private fun resolveBrand(connection: CameraConnection, model: String): CameraBrand {
-        val modelBrand = detectBrand(model)
-        AppLogger.report("J", "CameraRepositoryImpl.kt:resolveBrand", "Model brand", mapOf("model" to model, "brand" to modelBrand.name))
-        // 型号名优先：包含品牌关键词时直接使用
-        if (modelBrand != CameraBrand.Generic) return modelBrand
-        // 否则依赖 DeviceInfo 的 vendorExtensionID（已由 collectConnectionState 设置 brandStrategy 前调用）
-        return CameraBrand.Generic
     }
 
     /**
@@ -667,7 +655,6 @@ class CameraRepositoryImpl @Inject constructor(
 
     private fun stopLiveViewInternal() {
         liveViewJob?.cancel()
-        runCatching { runBlocking { liveViewJob?.join() } }
         liveViewJob = null
         _liveViewFrame.value = null
     }
@@ -1160,9 +1147,10 @@ class CameraRepositoryImpl @Inject constructor(
         intervalometerJob = scope.launch {
             try {
                 if (settings.startDelaySeconds > 0) delay(settings.startDelaySeconds * 1000L)
-                repeat(settings.totalShots.coerceAtLeast(1)) {
+                val total = settings.totalShots.coerceAtLeast(1)
+                repeat(total) { index ->
                     captureImage()
-                    delay(settings.intervalSeconds * 1000L)
+                    if (index < total - 1) delay(settings.intervalSeconds * 1000L)
                 }
             } finally {
                 _intervalometer.value = _intervalometer.value.copy(enabled = false)

@@ -33,9 +33,17 @@ keystore/
 screen*.png
 *.log
 app-debug-logcat*.txt
+phtonview_logcat*.txt
 app.png
 ui.xml
 releases/
+
+# Temporary upstream reference files and scripts
+/config.c
+/library.c
+/ptp.h
+/download_ptp.py
+/decode_ptp.py
 
 # OS files
 .DS_Store

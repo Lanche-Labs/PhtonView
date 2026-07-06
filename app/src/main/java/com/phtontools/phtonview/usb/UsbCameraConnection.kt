@@ -20,6 +20,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -47,6 +49,7 @@ class UsbCameraConnection @Inject constructor(
     private var bulkOutEndpoint: UsbEndpoint? = null
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val connectionLock = Mutex()
 
     private val _permissionState = MutableStateFlow(false)
     val permissionState: StateFlow<Boolean> = _permissionState
@@ -333,41 +336,56 @@ class UsbCameraConnection @Inject constructor(
                 AppLogger.report("A", "UsbCameraConnection.kt:openDevice", "PTP session failed", mapOf("error" to (e.message ?: "unknown")))
                 // #endregion
                 AppLogger.e("Failed to open PTP session", e)
-                _connectionState.value = CameraConnection.ConnectionState.Connected(device.productName ?: "Camera")
+                cleanupFailedConnection(newConnection)
+                _connectionState.value = CameraConnection.ConnectionState.Error("PTP session failed: ${e.message}")
             }
         }
     }
 
     override fun disconnect() {
         AppLogger.d("disconnect() called")
-        val wasSessionOpen = sessionOpen
-        val conn = connection
-        val iface = cameraDevice?.getInterface(0)
-        val outEp = bulkOutEndpoint
-        val inEp = bulkInEndpoint
+        // 同步完成清理，避免连接字段在关闭前被清空导致其他命令看到不一致状态。
+        // CameraRepositoryImpl 已在 IO 协程中调用本方法，不会阻塞主线程。
+        runBlocking {
+            connectionLock.withLock {
+                val wasSessionOpen = sessionOpen
+                val conn = connection
+                val device = cameraDevice
+                val outEp = bulkOutEndpoint
+                val inEp = bulkInEndpoint
 
-        connection = null
-        cameraDevice = null
-        bulkInEndpoint = null
-        bulkOutEndpoint = null
-        sessionOpen = false
-        consecutiveBulkFailures.set(0)
-        _connectionState.value = CameraConnection.ConnectionState.Disconnected
-        _permissionState.value = false
-        _detectedDevice.value = null
+                sessionOpen = false
+                consecutiveBulkFailures.set(0)
+                _connectionState.value = CameraConnection.ConnectionState.Disconnected
+                _permissionState.value = false
+                _detectedDevice.value = null
 
-        // 在独立协程中完成关闭会话与释放 USB，避免在主线程/BroadcastReceiver 中阻塞。
-        scope.launch {
-            if (wasSessionOpen && conn != null && outEp != null && inEp != null) {
-                runCatching { closeSessionOnConnection(conn, outEp, inEp) }
-            }
-            conn?.let {
-                try {
-                    iface?.let { i -> it.releaseInterface(i) }
-                    it.close()
-                } catch (_: Exception) { }
+                if (wasSessionOpen && conn != null && outEp != null && inEp != null) {
+                    runCatching { closeSessionOnConnection(conn, outEp, inEp) }
+                }
+                conn?.let {
+                    try {
+                        device?.getInterface(0)?.let { i -> it.releaseInterface(i) }
+                        it.close()
+                    } catch (_: Exception) { }
+                }
+
+                connection = null
+                cameraDevice = null
+                bulkInEndpoint = null
+                bulkOutEndpoint = null
             }
         }
+    }
+
+    private fun cleanupFailedConnection(conn: UsbDeviceConnection?) {
+        conn ?: return
+        try {
+            cameraDevice?.getInterface(0)?.let { conn.releaseInterface(it) }
+        } catch (_: Exception) { }
+        try {
+            conn.close()
+        } catch (_: Exception) { }
     }
 
     /**

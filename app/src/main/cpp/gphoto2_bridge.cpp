@@ -135,6 +135,11 @@ Java_com_phtontools_phtonview_ndk_Gphoto2Bridge_nativeConnect(
     const char *port = nullptr;
     gp_list_get_name(list, index, &model);
     gp_list_get_value(list, index, &port);
+    if (!model || !port) {
+        LOGE("failed to get model/port for camera index %d", index);
+        gp_list_free(list);
+        return JNI_FALSE;
+    }
 
     CameraAbilitiesList *abilities = nullptr;
     GPPortInfoList *portinfo = nullptr;
@@ -146,17 +151,33 @@ Java_com_phtontools_phtonview_ndk_Gphoto2Bridge_nativeConnect(
     ret = gp_camera_new(&g_camera);
     if (ret >= GP_OK) {
         int m = gp_abilities_list_lookup_model(abilities, model);
-        CameraAbilities a;
-        gp_abilities_list_get_abilities(abilities, m, &a);
-        gp_camera_set_abilities(g_camera, a);
+        if (m < GP_OK) {
+            LOGE("gp_abilities_list_lookup_model failed: %d", m);
+            gp_camera_free(g_camera);
+            g_camera = nullptr;
+        } else {
+            CameraAbilities a;
+            gp_abilities_list_get_abilities(abilities, m, &a);
+            gp_camera_set_abilities(g_camera, a);
 
-        int p = gp_port_info_list_lookup_path(portinfo, port);
-        GPPortInfo info;
-        gp_port_info_list_get_info(portinfo, p, &info);
-        gp_camera_set_port_info(g_camera, info);
+            int p = gp_port_info_list_lookup_path(portinfo, port);
+            if (p < GP_OK) {
+                LOGE("gp_port_info_list_lookup_path failed: %d", p);
+                gp_camera_free(g_camera);
+                g_camera = nullptr;
+            } else {
+                GPPortInfo info;
+                gp_port_info_list_get_info(portinfo, p, &info);
+                gp_camera_set_port_info(g_camera, info);
 
-        ret = gp_camera_init(g_camera, g_context);
-        LOGI("gp_camera_init returned %d", ret);
+                ret = gp_camera_init(g_camera, g_context);
+                LOGI("gp_camera_init returned %d", ret);
+                if (ret < GP_OK) {
+                    gp_camera_free(g_camera);
+                    g_camera = nullptr;
+                }
+            }
+        }
     }
 
     gp_port_info_list_free(portinfo);
@@ -190,10 +211,15 @@ extern "C" JNIEXPORT jstring JNICALL
 Java_com_phtontools_phtonview_ndk_Gphoto2Bridge_nativeExecuteCommand(
         JNIEnv *env, jobject /*thiz*/, jstring command) {
     const char *cmd = env->GetStringUTFChars(command, nullptr);
+    if (!cmd) {
+        return env->NewStringUTF("ERR: null command");
+    }
     LOGI("GPhoto2 execute command: %s", cmd);
     std::string result;
 #ifdef HAVE_GPHOTO2
-    if (std::string(cmd) == "summary") {
+    if (!g_camera || !g_context) {
+        result = "ERR: not connected";
+    } else if (std::string(cmd) == "summary") {
         CameraText text;
         int ret = gp_camera_get_summary(g_camera, &text, g_context);
         result = (ret >= GP_OK) ? text.text : ("ERR: " + std::to_string(ret));
