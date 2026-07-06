@@ -173,6 +173,9 @@ class CameraRepositoryImpl @Inject constructor(
                     is CameraConnection.ConnectionState.Connected -> {
                         val cleanModel = cleanModelName(state.model)
                         currentModelName = cleanModel
+                        // 先发布 Connected 状态，确保后续品牌初始化、实时取景等逻辑能读到已连接。
+                        _connectionState.value = ConnectionState.Connected(cleanModel)
+
                         // 综合 DeviceInfo VendorExtensionID 和型号名识别品牌，任一命中即采用对应策略
                         val vendorIdBrand = detectBrandFromDeviceInfo(connection)
                         val modelBrand = detectBrand(state.model)
@@ -198,7 +201,7 @@ class CameraRepositoryImpl @Inject constructor(
                         if (!_liveViewEnabled.value) {
                             startLiveView()
                         }
-                        ConnectionState.Connected(cleanModel)
+                        _connectionState.value
                     }
                     is CameraConnection.ConnectionState.Error -> ConnectionState.Error(state.message)
                 }
@@ -482,51 +485,74 @@ class CameraRepositoryImpl @Inject constructor(
         // #region debug-point F:liveview-start
         AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Start live view", mapOf("connected" to ensureConnected().toString()))
         // #endregion
-        if (!ensureConnected()) return
+
+        // 等待连接真正就绪：状态为 Connected 且 DeviceInfo 可读。很多相机_CONNECTED_状态
+        // 发布得比 PTP 会话实际可用要早，直接发取景命令会得到 session-not-open。
+        if (!waitForConnectionReady()) {
+            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Connection not ready", emptyMap())
+            return
+        }
+
         _liveViewEnabled.value = true
         val conn = currentConnection ?: return
         if (conn.connectionType == ConnectionType.USB) {
-            runCatching {
-                // 根据品牌策略进入实时取景：尼康需先切 PC 模式并检查状态，佳能/索尼/富士用各自操作码，通用品牌不支持
-                if (brandStrategy.brand == CameraBrand.Nikon) {
-                    brandStrategy.changeCameraModeOperation?.let { conn.sendCommand(it, 1) }
-                    waitForDeviceReady()
+            var started = false
+            val candidates = liveViewStartCandidates()
+            if (candidates.isEmpty()) {
+                AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view not supported for brand", mapOf("brand" to brandStrategy.brand.name))
+                _liveViewEnabled.value = false
+                return
+            }
 
-                    brandStrategy.liveViewStatusProperty?.let { prop ->
-                        val lvStatus = conn.getDeviceProperty(prop)
-                        AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view status", mapOf("status" to (lvStatus?.toString() ?: "null")))
-                    }
-                    brandStrategy.liveViewProhibitProperty?.let { prop ->
-                        val prohibit = conn.getDeviceProperty(prop)
-                        if (prohibit != null && prohibit != 0) {
-                            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view prohibited", mapOf("condition" to String.format(Locale.US, "0x%08X", prohibit)))
+            for (startOp in candidates) {
+                runCatching {
+                    // 尼康需先切 PC 模式并尝试设置录制介质
+                    if (brandStrategy.brand == CameraBrand.Nikon) {
+                        brandStrategy.changeCameraModeOperation?.let { conn.sendCommand(it, 1) }
+                        waitForDeviceReady()
+
+                        brandStrategy.liveViewStatusProperty?.let { prop ->
+                            val lvStatus = conn.getDeviceProperty(prop)
+                            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view status", mapOf("status" to (lvStatus?.toString() ?: "null")))
+                        }
+                        brandStrategy.liveViewProhibitProperty?.let { prop ->
+                            val prohibit = conn.getDeviceProperty(prop)
+                            if (prohibit != null && prohibit != 0) {
+                                AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view prohibited", mapOf("condition" to String.format(Locale.US, "0x%08X", prohibit)))
+                            }
+                        }
+                        brandStrategy.recordingMediaProperty?.let { prop ->
+                            runCatching { conn.setDeviceProperty(prop, 1) }
                         }
                     }
-                    brandStrategy.recordingMediaProperty?.let { prop ->
-                        runCatching { conn.setDeviceProperty(prop, 1) }
-                    }
-                }
 
-                val startOp = brandStrategy.liveViewStartOperation
-                if (startOp != null) {
-                    val (code, _) = conn.sendCommand(startOp)
-                    AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view start command sent", mapOf("brand" to brandStrategy.brand.name, "responseCode" to String.format(Locale.US, "0x%04X", code)))
-                } else {
-                    AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view not supported for brand", mapOf("brand" to brandStrategy.brand.name))
-                    _liveViewEnabled.value = false
-                    return
+                    // 同一个启动 opcode 重复尝试 3 次，给相机足够准备时间
+                    repeat(3) { attempt ->
+                        val (code, _) = conn.sendCommand(startOp)
+                        AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view start attempt", mapOf("attempt" to (attempt + 1).toString(), "op" to String.format(Locale.US, "0x%04X", startOp), "responseCode" to String.format(Locale.US, "0x%04X", code)))
+                        if (code == PtpConstants.RESPONSE_OK) {
+                            started = true
+                            return@repeat
+                        }
+                        delay(100)
+                    }
+                    if (brandStrategy.brand == CameraBrand.Nikon) waitForDeviceReady()
+                }.onFailure {
+                    // #region debug-point F:liveview-start-error
+                    AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view start error", mapOf("op" to String.format(Locale.US, "0x%04X", startOp), "error" to (it.message ?: "unknown")))
+                    // #endregion
                 }
-                if (brandStrategy.brand == CameraBrand.Nikon) waitForDeviceReady()
-            }.onFailure {
-                // #region debug-point F:liveview-start-error
-                AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view start error", mapOf("error" to (it.message ?: "unknown")))
-                // #endregion
-                // 启动失败时退出 PC 模式，避免相机一直显示“正在连接 PC”
+                if (started) break
+            }
+
+            if (!started) {
+                AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "All live view start methods failed", emptyMap())
                 _liveViewEnabled.value = false
                 runCatching {
                     brandStrategy.changeCameraModeOperation?.let { conn.sendCommand(it, 0) }
                     waitForDeviceReady()
                 }
+                return
             }
         }
         startLiveViewLoop()
@@ -582,27 +608,41 @@ class CameraRepositoryImpl @Inject constructor(
             var dropCount = 0
             var lastLogTime = System.nanoTime()
             var lastErrorTime = 0L
+            var consecutiveFrameFailures = 0
             val targetIntervalNs = 16_666_667L // 60fps
+            val getCandidates = liveViewGetCandidates()
+            if (getCandidates.isEmpty()) {
+                AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "No live view get candidates", mapOf("brand" to brandStrategy.brand.name))
+                _liveViewFrame.value = null
+                return@launch
+            }
             while (isActive && _liveViewEnabled.value && _connectionState.value is ConnectionState.Connected) {
                 val loopStart = System.nanoTime()
                 var captured = false
                 try {
                     val conn = currentConnection ?: break
                     if (conn.connectionType == ConnectionType.USB) {
-                        val getOp = brandStrategy.liveViewGetOperation ?: break
-                        // 缩短超时，避免取消时卡死；相机通常几十毫秒内就能返回一帧
-                        val data = if (conn is UsbCameraConnection) {
-                            conn.sendCommandWithData(getOp, timeoutMs = 300, params = intArrayOf())
-                        } else {
-                            conn.sendCommandWithData(getOp)
+                        // 依次尝试所有候选取图 opcode，有一个成功就继续解析
+                        var frameData: ByteArray? = null
+                        for (getOp in getCandidates) {
+                            val data = if (conn is UsbCameraConnection) {
+                                conn.sendCommandWithData(getOp, timeoutMs = 300, params = intArrayOf())
+                            } else {
+                                conn.sendCommandWithData(getOp)
+                            }
+                            if (data.size > 12) {
+                                frameData = data
+                                break
+                            }
                         }
-                        if (data.size <= 12) continue
-                        val jpegData = extractNikonLiveViewJpeg(data)
+                        val data = frameData ?: continue
+                        val jpegData = extractLiveViewJpeg(data)
                         if (jpegData.isEmpty()) continue
                         val bitmap = BitmapFactory.decodeByteArray(jpegData, 0, jpegData.size, decodeOptions)
                         bitmap?.let {
                             _liveViewFrame.value = it
                             captured = true
+                            consecutiveFrameFailures = 0
                         }
 
                         frameCount++
@@ -616,12 +656,19 @@ class CameraRepositoryImpl @Inject constructor(
                         }
                     }
                 } catch (e: Exception) {
+                    consecutiveFrameFailures++
                     val now = System.nanoTime()
                     if (now - lastErrorTime >= 1_000_000_000L) {
-                        AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Live view frame error", mapOf("error" to (e.message ?: "unknown")))
+                        AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Live view frame error", mapOf("error" to (e.message ?: "unknown"), "consecutiveFailures" to consecutiveFrameFailures.toString()))
                         lastErrorTime = now
                     }
                     if (settingsManager.debugMode) e.printStackTrace()
+                    // 连续大量帧失败说明连接或相机状态已异常，退出循环避免空转
+                    if (consecutiveFrameFailures >= 60) {
+                        AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Too many frame failures, stopping", emptyMap())
+                        _liveViewEnabled.value = false
+                        break
+                    }
                 }
                 val elapsedNs = System.nanoTime() - loopStart
                 val delayNs = targetIntervalNs - elapsedNs
@@ -1601,6 +1648,56 @@ class CameraRepositoryImpl @Inject constructor(
     }
 
     /**
+     * Wait until the connection is not only Connected but also has a usable PTP
+     * session (verified by reading DeviceInfo). Some cameras report Connected
+     * before the session is fully open, causing subsequent live view commands to
+     * fail with session-not-open.
+     */
+    private suspend fun waitForConnectionReady(timeoutMs: Long = 5000, retryIntervalMs: Long = 200): Boolean {
+        val end = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < end) {
+            val conn = currentConnection
+            if (_connectionState.value is ConnectionState.Connected && conn != null) {
+                val info = runCatching { conn.getDeviceInfoRaw() }.getOrDefault(ByteArray(0))
+                if (info.size >= 12) return true
+            }
+            delay(retryIntervalMs)
+        }
+        return ensureConnected() && currentConnection != null
+    }
+
+    /**
+     * Build a list of candidate live view start operations. The brand strategy
+     * comes first; redundant fallbacks are appended so we can try multiple
+     * methods if the primary opcode is rejected.
+     */
+    private fun liveViewStartCandidates(): List<Short> {
+        val candidates = mutableListOf<Short>()
+        brandStrategy.liveViewStartOperation?.let { candidates.add(it) }
+        if (brandStrategy.brand == CameraBrand.Nikon) {
+            candidates.add(PtpConstants.NIKON_OPERATION_START_LIVEVIEW)
+        }
+        return candidates.distinct()
+    }
+
+    /**
+     * Build a list of candidate live view frame read operations. Some cameras
+     * expose live view through more than one vendor opcode; trying them in turn
+     * increases the chance of getting a frame.
+     */
+    private fun liveViewGetCandidates(): List<Short> {
+        val candidates = mutableListOf<Short>()
+        brandStrategy.liveViewGetOperation?.let { candidates.add(it) }
+        when (brandStrategy.brand) {
+            CameraBrand.Nikon -> candidates.add(PtpConstants.NIKON_OPERATION_GET_LIVEVIEW_IMAGE)
+            CameraBrand.Sony -> candidates.add(PtpConstants.SONY_OPERATION_GET_LIVEVIEW_IMAGE)
+            CameraBrand.Fuji -> candidates.add(PtpConstants.FUJI_OPERATION_GET_LIVEVIEW_IMAGE)
+            else -> { /* no generic fallback */ }
+        }
+        return candidates.distinct()
+    }
+
+    /**
      * Poll Nikon DeviceReady (0x90C8) until the camera reports OK or the timeout
      * expires. This mirrors libgphoto2's nikon_wait_busy and is required after
      * starting live view, changing modes, or triggering capture on cameras like
@@ -1623,15 +1720,41 @@ class CameraRepositoryImpl @Inject constructor(
     }
 
     /**
-     * Extract the JPEG payload from a Nikon GetLiveViewImage response.
-     * Uses a single-pass marker scan to minimize per-frame allocation and latency.
+     * Extract the JPEG payload from a live view data container.
+     * Vendors wrap the JPEG differently (Nikon adds a header, Sony/Fuji may
+     * return raw JPEG, some have multiple SOI/EOI pairs). We try several
+     * heuristics and return the first valid-looking JPEG.
      */
-    private fun extractNikonLiveViewJpeg(data: ByteArray): ByteArray {
+    private fun extractLiveViewJpeg(data: ByteArray): ByteArray {
+        if (data.size < 2) return ByteArray(0)
+
+        // Strategy 1: data already starts with JPEG SOI
+        if (data[0] == 0xFF.toByte() && data[1] == 0xD8.toByte()) {
+            val eoi = data.indexOfJpegMarker(0xD9, start = 2)
+            return if (eoi >= 0) data.copyOfRange(0, (eoi + 2).coerceAtMost(data.size)) else data
+        }
+
+        // Strategy 2: scan for the first SOI marker
         val soi = data.indexOfJpegMarker(0xD8)
-        if (soi < 0 || soi + 1 >= data.size) return data
-        val eoi = data.indexOfJpegMarker(0xD9, start = soi + 2)
-        val end = if (eoi >= soi) (eoi + 2).coerceAtMost(data.size) else data.size
-        return data.copyOfRange(soi, end)
+        if (soi >= 0) {
+            val eoi = data.indexOfJpegMarker(0xD9, start = soi + 2)
+            val end = if (eoi >= soi) (eoi + 2).coerceAtMost(data.size) else data.size
+            return data.copyOfRange(soi, end)
+        }
+
+        // Strategy 3: some cameras put the frame after a length-prefixed header;
+        // scan the payload portion for any SOI marker
+        val payload = PtpCommand.decodeDataPayload(data)
+        if (payload.size >= 2) {
+            val payloadSoi = payload.indexOfJpegMarker(0xD8)
+            if (payloadSoi >= 0) {
+                val eoi = payload.indexOfJpegMarker(0xD9, start = payloadSoi + 2)
+                val end = if (eoi >= payloadSoi) (eoi + 2).coerceAtMost(payload.size) else payload.size
+                return payload.copyOfRange(payloadSoi, end)
+            }
+        }
+
+        return ByteArray(0)
     }
 
     /**

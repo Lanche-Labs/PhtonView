@@ -30,10 +30,10 @@ object PtpConstants {
 
     // 品牌 Vendor Extension ID（来自 DeviceInfo）
     const val VENDOR_EXTENSION_CANON: Int = 0x0000000A
-    const val VENDOR_EXTENSION_FUJI: Int = 0x0000000B
-    const val VENDOR_EXTENSION_SONY: Int = 0x00000011
+    const val VENDOR_EXTENSION_SONY: Int = 0x0000000B
+    const val VENDOR_EXTENSION_FUJI: Int = 0x0000000C
+    const val VENDOR_EXTENSION_NIKON: Int = 0x0000000D
     const val VENDOR_EXTENSION_PANASONIC: Int = 0x0000001E
-    const val VENDOR_EXTENSION_NIKON: Int = 0x0000000C
     const val VENDOR_EXTENSION_OLYMPUS: Int = 0x00000006
 
     // 佳能厂商扩展操作码

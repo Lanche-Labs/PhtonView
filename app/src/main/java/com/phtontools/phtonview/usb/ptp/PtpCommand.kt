@@ -117,30 +117,77 @@ class PtpCommand(
 
         /**
          * Decode PTP DeviceInfo dataset and return the model string.
+         *
+         * 不同厂商/协议栈对 DeviceInfo 数组 count 的宽度实现不一致：Nikon/MTP 风格为 UINT32，
+         * 标准 PTP 为 UINT16。此处依次尝试两种结构化解析，均失败时再回退到原始字节中扫描
+         * UTF-16LE 字符串，确保型号几乎总能被识别。
          */
         fun decodeDeviceInfoModel(data: ByteArray): String {
             val payload = decodeDataPayload(data)
             if (payload.size < 12) return "Unknown"
-            val buffer = ByteBuffer.wrap(payload)
-            buffer.order(ByteOrder.LITTLE_ENDIAN)
+
+            parseDeviceInfoModel(payload, countBytes = 4)?.let {
+                AppLogger.d("decodeDeviceInfoModel: parsed with UINT32 counts -> $it")
+                return it
+            }
+            parseDeviceInfoModel(payload, countBytes = 2)?.let {
+                AppLogger.d("decodeDeviceInfoModel: parsed with UINT16 counts -> $it")
+                return it
+            }
+            scanPayloadForModel(payload)?.let {
+                AppLogger.d("decodeDeviceInfoModel: scanned model -> $it")
+                return it
+            }
+            AppLogger.w("decodeDeviceInfoModel: all strategies failed")
+            return "Unknown"
+        }
+
+        private fun parseDeviceInfoModel(payload: ByteArray, countBytes: Int): String? {
+            val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
             return try {
                 buffer.getShort() // StandardVersion
-                buffer.getInt() // VendorExtensionID
+                buffer.getInt()   // VendorExtensionID
                 buffer.getShort() // VendorExtensionVersion
                 readPtpString(buffer) // skip vendor extension desc
                 buffer.getShort() // FunctionalMode
-                // Nikon 等设备返回的 DeviceInfo 中数组长度字段为 UINT32。
-                buffer.position(buffer.position() + buffer.getInt() * 2) // operations
-                buffer.position(buffer.position() + buffer.getInt() * 2) // events
-                buffer.position(buffer.position() + buffer.getInt() * 2) // properties
-                buffer.position(buffer.position() + buffer.getInt() * 2) // capture formats
-                buffer.position(buffer.position() + buffer.getInt() * 2) // image formats
+                repeat(5) {
+                    val count = if (countBytes == 4) buffer.getInt() else buffer.getShort().toInt()
+                    buffer.position(buffer.position() + count * 2)
+                }
                 readPtpString(buffer) // manufacturer
                 readPtpString(buffer) // model
             } catch (e: Exception) {
-                AppLogger.e("decodeDeviceInfoModel failed: ${e.message}", e)
-                "Unknown"
+                null
             }
+        }
+
+        private fun scanPayloadForModel(payload: ByteArray): String? {
+            val strings = mutableListOf<String>()
+            var i = 0
+            while (i < payload.size) {
+                val length = payload[i].toInt() and 0xFF
+                if (length in 1..128 && i + 1 + length * 2 <= payload.size) {
+                    val nullPos = i + 1 + (length - 1) * 2
+                    if (payload[nullPos] == 0.toByte() && payload[nullPos + 1] == 0.toByte()) {
+                        val chars = CharArray(length - 1)
+                        val buf = ByteBuffer.wrap(payload, i + 1, (length - 1) * 2).order(ByteOrder.LITTLE_ENDIAN)
+                        for (j in 0 until length - 1) {
+                            chars[j] = buf.getShort().toInt().toChar()
+                        }
+                        val s = String(chars).trim()
+                        if (s.isNotBlank() && s.all { it.isLetterOrDigit() || it in " -_[]().:/" }) {
+                            strings.add(s)
+                        }
+                        i += 1 + length * 2
+                        continue
+                    }
+                }
+                i++
+            }
+            val excluded = setOf("microsoft.com: 1.0")
+            return strings
+                .filter { it !in excluded && it.any { c -> c.isDigit() } }
+                .minByOrNull { it.length }
         }
 
         /**
