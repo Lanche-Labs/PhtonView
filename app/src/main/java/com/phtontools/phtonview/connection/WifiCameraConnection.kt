@@ -232,9 +232,8 @@ class WifiCameraConnection @Inject constructor(
     }
 
     override suspend fun sendCommandWithData(code: Short, vararg params: Int): ByteArray {
-        // Simplified: open data connection on demand is not implemented in this basic bridge.
-        AppLogger.d("sendCommandWithData not fully implemented for WiFi")
-        return ByteArray(0)
+        // ponytail: WiFi PTP-IP data phase is not implemented; fail fast instead of returning empty bytes.
+        throw UnsupportedOperationException("WiFi PTP-IP data phase is not implemented")
     }
 
     override fun nextTransactionId(): Int = transactionIdCounter++

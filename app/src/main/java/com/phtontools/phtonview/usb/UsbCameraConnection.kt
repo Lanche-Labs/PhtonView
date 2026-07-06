@@ -191,14 +191,6 @@ class UsbCameraConnection @Inject constructor(
         return camera
     }
 
-    /**
-     * Re-scan USB devices with retries. Useful when the device was already
-     * connected before the app started and the first enumeration missed it.
-     */
-    suspend fun rescanUsbDevices(): UsbDevice? {
-        return findAndRequestCameraWithRetry()
-    }
-
     private suspend fun findAndRequestCameraWithRetry(retryCount: Int = 12, delayMs: Long = 500): UsbDevice? {
         repeat(retryCount) { attempt ->
             val deviceList = usbManager.deviceList.values
@@ -350,7 +342,6 @@ class UsbCameraConnection @Inject constructor(
             connectionLock.withLock {
                 val wasSessionOpen = sessionOpen
                 val conn = connection
-                val device = cameraDevice
                 val outEp = bulkOutEndpoint
                 val inEp = bulkInEndpoint
 
@@ -363,12 +354,8 @@ class UsbCameraConnection @Inject constructor(
                 if (wasSessionOpen && conn != null && outEp != null && inEp != null) {
                     runCatching { closeSessionOnConnection(conn, outEp, inEp) }
                 }
-                conn?.let {
-                    try {
-                        device?.getInterface(0)?.let { i -> it.releaseInterface(i) }
-                        it.close()
-                    } catch (_: Exception) { }
-                }
+                // ponytail: reuse single cleanup path for failed and normal disconnect.
+                cleanupFailedConnection(conn)
 
                 connection = null
                 cameraDevice = null
@@ -530,6 +517,9 @@ class UsbCameraConnection @Inject constructor(
         AppLogger.report("B", "UsbCameraConnection.kt:sendCommandWithDataInternal", "PTP data command", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "tid" to command.transactionId.toString(), "params" to command.parameters.joinToString()))
         // #endregion
 
+        // ponytail: 复用 bulk 读取 buffer，避免循环内重复分配 16 KB。
+        val readBuffer = ByteArray(16384)
+
         suspend fun transferOnce(): Pair<ByteArray, Short> {
             val written = conn.bulkTransfer(outEp, commandBytes, commandBytes.size, timeoutMs)
             AppLogger.d("bulkTransfer OUT returned: $written")
@@ -545,14 +535,13 @@ class UsbCameraConnection @Inject constructor(
 
             while (true) {
                 // 增大单次读取缓冲，减少 USB 传输往返次数
-                val buffer = ByteArray(16384)
-                val length = conn.bulkTransfer(inEp, buffer, buffer.size, timeoutMs)
+                val length = conn.bulkTransfer(inEp, readBuffer, readBuffer.size, timeoutMs)
                 AppLogger.d("bulkTransfer IN chunk returned: $length")
                 if (length <= 0) break
-                AppLogger.logUsb("IN", buffer, length)
+                AppLogger.logUsb("IN", readBuffer, length)
 
                 if (length >= 12) {
-                    val bb = ByteBuffer.wrap(buffer, 0, length)
+                    val bb = ByteBuffer.wrap(readBuffer, 0, length)
                     bb.order(ByteOrder.LITTLE_ENDIAN)
                     val containerLength = bb.getInt(0)
                     val containerType = bb.getShort(4)
@@ -563,7 +552,7 @@ class UsbCameraConnection @Inject constructor(
                     if (containerType == PtpConstants.CONTAINER_TYPE_DATA && isFirstDataChunk) {
                         // 首个数据容器包：保留完整头部，供上层 decodeDataPayload 自行剥离
                         dataLengthRemaining = containerLength - length
-                        result.write(buffer, 0, length)
+                        result.write(readBuffer, 0, length)
                         isFirstDataChunk = false
                         if (dataLengthRemaining <= 0) {
                             // 数据已在单包内传完，继续读取响应容器
@@ -576,14 +565,14 @@ class UsbCameraConnection @Inject constructor(
                 // 仍在接收数据容器后续字节（不含头部，直接追加）
                 if (dataLengthRemaining > 0) {
                     val take = minOf(length, dataLengthRemaining)
-                    result.write(buffer, 0, take)
+                    result.write(readBuffer, 0, take)
                     dataLengthRemaining -= take
                     if (dataLengthRemaining <= 0) {
                         // 数据传完，下一轮应该是响应容器
                         continue
                     }
                 } else {
-                    result.write(buffer, 0, length)
+                    result.write(readBuffer, 0, length)
                 }
             }
 
@@ -761,20 +750,6 @@ class UsbCameraConnection @Inject constructor(
         val length = conn.bulkTransfer(inEp, responseBuffer, responseBuffer.size, PtpConstants.DEFAULT_TIMEOUT_MS)
         if (length <= 0) throw IllegalStateException("Failed to read response")
         PtpCommand.decodeResponse(responseBuffer.copyOf(length))
-    }
-
-    private fun encodeInt32(value: Int): ByteArray {
-        return ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(value).array()
-    }
-
-    private fun encodePtpString(text: String): ByteArray {
-        val chars = text.toCharArray()
-        val bytes = ByteArray(1 + chars.size * 2 + 2)
-        bytes[0] = (chars.size + 1).toByte()
-        val bb = ByteBuffer.wrap(bytes, 1, chars.size * 2)
-        bb.order(ByteOrder.LITTLE_ENDIAN)
-        chars.forEach { bb.putShort(it.code.toShort()) }
-        return bytes
     }
 
     override suspend fun listPhotos(folder: String): List<PhotoItem> {

@@ -123,23 +123,6 @@ class CameraRepositoryImpl @Inject constructor(
     private var currentConnection: CameraConnection? = null
     private var currentModelName: String = ""
     private var preBulbShutter: String = "1/125"
-    private val isNikon: Boolean
-        get() = currentModelName.contains("Nikon", ignoreCase = true)
-            || detectBrand(currentModelName) == CameraBrand.Nikon
-
-    /**
-     * Nikon cameras (especially older bodies like the D5200) control the regular
-     * shutter speed through the standard PTP ExposureTime property 0x500D using
-     * 1/10000-second units. The vendor-specific property 0xD100 uses a different
-     * (x<<16)|y encoding and is not always writable on these bodies. We still
-     * mirror values to 0xD100 when possible for newer models, but 0x500D is the
-     * authoritative source for exposure control and Bulb mode.
-     */
-    private val shutterPropertyCode: Short
-        get() = preferredShutterProperty
-
-    private val nikonShutterPropertyCode: Short
-        get() = PtpConstants.DEVICE_PROP_NIKON_EXPOSURE_TIME
 
     init {
         // 始终使用通用品牌，不再按品牌选择
@@ -364,7 +347,7 @@ class CameraRepositoryImpl @Inject constructor(
                 val ev = conn.getDeviceProperty(PtpConstants.DEVICE_PROP_EXPOSURE_COMPENSATION)
 
                 // 以连接时选定的快门属性为准，避免 0x500D 和 0xD100 混读导致显示错乱
-                val selectedShutterCode = shutterPropertyCode
+                val selectedShutterCode = preferredShutterProperty
                 val shutterRaw = conn.getDeviceProperty(selectedShutterCode)
                 val shutter = if (shutterRaw != null && shutterRaw != 0) {
                     PtpValueMapper.ptpToShutter(shutterRaw, brand, selectedShutterCode)
@@ -779,8 +762,8 @@ class CameraRepositoryImpl @Inject constructor(
     private suspend fun applyShutterProperty(shutter: String) {
         val brand = _cameraSettings.value.brand
         applyPtpProperty(
-            shutterPropertyCode,
-            PtpValueMapper.shutterToPtp(shutter, brand, shutterPropertyCode)
+            preferredShutterProperty,
+            PtpValueMapper.shutterToPtp(shutter, brand, preferredShutterProperty)
         )
     }
 
@@ -1330,28 +1313,40 @@ class CameraRepositoryImpl @Inject constructor(
         }
     }
 
-    private suspend fun parseFirmwareVersion(conn: CameraConnection): String {
+    /**
+     * Parse DeviceInfo once and return (manufacturer, model, firmwareVersion).
+     * ponytail: one PTP round-trip instead of two separate fetch functions.
+     */
+    private suspend fun parseDeviceInfoStrings(conn: CameraConnection): Triple<String, String, String> {
         return runCatching {
             val data = conn.sendCommandWithData(PtpConstants.OPERATION_GET_DEVICE_INFO)
-            if (data.size < 12) return@runCatching "Unknown"
+            if (data.size < 12) return@runCatching Triple("Unknown", "Unknown", "Unknown")
             val payload = PtpCommand.decodeDataPayload(data)
             val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
             buffer.getShort() // StandardVersion
             buffer.getInt() // VendorExtensionID
             buffer.getShort() // VendorExtensionVersion
-            readPtpString(buffer) // vendor extension desc
+            PtpCommand.readPtpString(buffer) // vendor extension desc
             buffer.getShort() // FunctionalMode
-            val opsCount = buffer.getInt()
-            buffer.position(buffer.position() + opsCount * 2)
-            val eventsCount = buffer.getInt()
-            buffer.position(buffer.position() + eventsCount * 2)
-            val propsCount = buffer.getInt()
-            buffer.position(buffer.position() + propsCount * 2)
-            val manufacturer = readPtpString(buffer)
-            val model = readPtpString(buffer)
-            val version = readPtpString(buffer)
-            version.ifBlank { model.ifBlank { manufacturer } }
-        }.getOrDefault("Unknown")
+            buffer.position(buffer.position() + buffer.getInt() * 2) // ops
+            buffer.position(buffer.position() + buffer.getInt() * 2) // events
+            buffer.position(buffer.position() + buffer.getInt() * 2) // props
+            buffer.position(buffer.position() + buffer.getInt() * 2) // capture formats
+            buffer.position(buffer.position() + buffer.getInt() * 2) // image formats
+            val manufacturer = PtpCommand.readPtpString(buffer)
+            val model = PtpCommand.readPtpString(buffer)
+            val version = PtpCommand.readPtpString(buffer)
+            Triple(manufacturer, model, version)
+        }.getOrDefault(Triple("Unknown", "Unknown", "Unknown"))
+    }
+
+    private suspend fun parseFirmwareVersion(conn: CameraConnection): String {
+        val (_, model, version) = parseDeviceInfoStrings(conn)
+        return version.ifBlank { model.ifBlank { "Unknown" } }
+    }
+
+    private suspend fun parseManufacturer(conn: CameraConnection): String {
+        return parseDeviceInfoStrings(conn).first
     }
 
     private fun formatBytes(bytes: Long): String {
@@ -1436,38 +1431,6 @@ class CameraRepositoryImpl @Inject constructor(
         else -> "模式 $raw"
     }
 
-    private suspend fun parseManufacturer(conn: CameraConnection): String {
-        return runCatching {
-            val data = conn.sendCommandWithData(PtpConstants.OPERATION_GET_DEVICE_INFO)
-            if (data.size < 12) return@runCatching "Unknown"
-            val payload = PtpCommand.decodeDataPayload(data)
-            val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
-            buffer.getShort() // StandardVersion
-            buffer.getInt() // VendorExtensionID
-            buffer.getShort() // VendorExtensionVersion
-            readPtpString(buffer) // vendor extension desc
-            buffer.getShort() // FunctionalMode
-            val opsCount = buffer.getInt()
-            buffer.position(buffer.position() + opsCount * 2)
-            val eventsCount = buffer.getInt()
-            buffer.position(buffer.position() + eventsCount * 2)
-            val propsCount = buffer.getInt()
-            buffer.position(buffer.position() + propsCount * 2)
-            readPtpString(buffer) // manufacturer
-        }.getOrDefault("Unknown")
-    }
-
-    private fun readPtpString(buffer: ByteBuffer): String {
-        val length = buffer.get().toInt() and 0xFF
-        if (length == 0) return ""
-        val sb = StringBuilder()
-        for (i in 0 until length - 1) {
-            if (buffer.remaining() < 2) break
-            sb.append(buffer.getShort().toInt().toChar())
-        }
-        return sb.toString().trimEnd('\u0000')
-    }
-
     override suspend fun syncDateTime(): Boolean {
         if (!ensureConnected()) return false
         val conn = currentConnection ?: return false
@@ -1476,7 +1439,7 @@ class CameraRepositoryImpl @Inject constructor(
         val success = runCatching {
             val now = SimpleDateFormat("yyyyMMdd'T'HHmmss", Locale.getDefault()).format(Date())
             // PTP DateTime 属性 (0x5011) 使用 length-prefixed UTF-16LE 字符串
-            val data = encodePtpString(now)
+            val data = PtpCommand.encodePtpString(now)
             val ok = conn.setDevicePropertyValue(0x5011.toShort(), data)
             AppLogger.report("K", "CameraRepositoryImpl.kt:syncDateTime", "Sync date/time", mapOf("value" to now, "success" to ok.toString()))
             ok
@@ -1486,21 +1449,6 @@ class CameraRepositoryImpl @Inject constructor(
         }
         if (wasLiveView) runCatching { startLiveView() }
         return success
-    }
-
-    /**
-     * 编码 PTP 字符串：1 byte 长度（含空终止符）+ UTF-16LE 字符 + 2 byte 空终止符。
-     */
-    private fun encodePtpString(text: String): ByteArray {
-        val chars = text.toCharArray()
-        // 长度字节 = 字符数 + 1（空终止符）
-        val lengthByte = (chars.size + 1).toByte()
-        val bytes = ByteArray(1 + chars.size * 2 + 2)
-        bytes[0] = lengthByte
-        val bb = java.nio.ByteBuffer.wrap(bytes, 1, chars.size * 2)
-        bb.order(java.nio.ByteOrder.LITTLE_ENDIAN)
-        chars.forEach { bb.putShort(it.code.toShort()) }
-        return bytes
     }
 
     override suspend fun executeGphoto2Command(command: String): String {

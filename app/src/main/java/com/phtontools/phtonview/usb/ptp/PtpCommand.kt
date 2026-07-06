@@ -81,37 +81,37 @@ class PtpCommand(
             val buffer = ByteBuffer.wrap(payload)
             buffer.order(ByteOrder.LITTLE_ENDIAN)
 
-            try {
+            return try {
                 buffer.getInt() // StorageID
                 val format = buffer.getShort()
-                val protectionStatus = buffer.getShort()
+                buffer.getShort() // protectionStatus
                 val compressedSize = buffer.getInt()
-                val thumbFormat = buffer.getShort()
-                val thumbCompressedSize = buffer.getInt()
-                val thumbPixWidth = buffer.getInt()
-                val thumbPixHeight = buffer.getInt()
+                buffer.getShort() // thumbFormat
+                buffer.getInt() // thumbCompressedSize
+                buffer.getInt() // thumbPixWidth
+                buffer.getInt() // thumbPixHeight
                 val imagePixWidth = buffer.getInt()
                 val imagePixHeight = buffer.getInt()
-                val imageBitDepth = buffer.getInt()
-                val parentObject = buffer.getInt()
-                val associationType = buffer.getShort()
-                val associationDesc = buffer.getInt()
-                val sequenceNumber = buffer.getInt()
+                buffer.getInt() // imageBitDepth
+                buffer.getInt() // parentObject
+                buffer.getShort() // associationType
+                buffer.getInt() // associationDesc
+                buffer.getInt() // sequenceNumber
                 val filename = readPtpString(buffer)
                 val captureDate = readPtpString(buffer)
-                val modificationDate = readPtpString(buffer)
-                val keywords = readPtpString(buffer)
+                readPtpString(buffer) // modificationDate
+                readPtpString(buffer) // keywords
 
-                return ObjectInfo(
-                    filename = filename ?: "unknown",
+                ObjectInfo(
+                    filename = filename.ifBlank { "unknown" },
                     objectFormat = format,
                     compressedSize = compressedSize.toLong() and 0xFFFFFFFFL,
                     imagePixWidth = imagePixWidth,
                     imagePixHeight = imagePixHeight,
-                    captureDate = captureDate ?: ""
+                    captureDate = captureDate
                 )
             } catch (e: Exception) {
-                return null
+                null
             }
         }
 
@@ -123,38 +123,22 @@ class PtpCommand(
             if (payload.size < 12) return "Unknown"
             val buffer = ByteBuffer.wrap(payload)
             buffer.order(ByteOrder.LITTLE_ENDIAN)
-            try {
+            return try {
                 buffer.getShort() // StandardVersion
                 buffer.getInt() // VendorExtensionID
                 buffer.getShort() // VendorExtensionVersion
-                AppLogger.d("decodeDeviceInfoModel after header pos=${buffer.position()}")
-                // Skip vendor extension desc string
-                readPtpString(buffer)
-                AppLogger.d("decodeDeviceInfoModel after ext desc pos=${buffer.position()}")
+                readPtpString(buffer) // skip vendor extension desc
                 buffer.getShort() // FunctionalMode
-                val operationsCount = buffer.getInt()
-                AppLogger.d("decodeDeviceInfoModel ops=$operationsCount pos=${buffer.position()}")
-                buffer.position(buffer.position() + operationsCount * 2)
-                val eventsCount = buffer.getInt()
-                AppLogger.d("decodeDeviceInfoModel events=$eventsCount pos=${buffer.position()}")
-                buffer.position(buffer.position() + eventsCount * 2)
-                val propertiesCount = buffer.getInt()
-                AppLogger.d("decodeDeviceInfoModel props=$propertiesCount pos=${buffer.position()}")
-                buffer.position(buffer.position() + propertiesCount * 2)
-                val captureFormatsCount = buffer.getInt()
-                AppLogger.d("decodeDeviceInfoModel caps=$captureFormatsCount pos=${buffer.position()}")
-                buffer.position(buffer.position() + captureFormatsCount * 2)
-                val imageFormatsCount = buffer.getInt()
-                AppLogger.d("decodeDeviceInfoModel imgs=$imageFormatsCount pos=${buffer.position()}")
-                buffer.position(buffer.position() + imageFormatsCount * 2)
-                val manufacturer = readPtpString(buffer)
-                AppLogger.d("decodeDeviceInfoModel manufacturer='$manufacturer' pos=${buffer.position()}")
-                val model = readPtpString(buffer)
-                AppLogger.d("decodeDeviceInfoModel model='$model' pos=${buffer.position()}")
-                return model ?: "Unknown"
+                buffer.position(buffer.position() + buffer.getInt() * 2) // operations
+                buffer.position(buffer.position() + buffer.getInt() * 2) // events
+                buffer.position(buffer.position() + buffer.getInt() * 2) // properties
+                buffer.position(buffer.position() + buffer.getInt() * 2) // capture formats
+                buffer.position(buffer.position() + buffer.getInt() * 2) // image formats
+                readPtpString(buffer) // manufacturer
+                readPtpString(buffer) // model
             } catch (e: Exception) {
                 AppLogger.e("decodeDeviceInfoModel failed: ${e.message}", e)
-                return "Unknown"
+                "Unknown"
             }
         }
 
@@ -170,19 +154,37 @@ class PtpCommand(
             }
         }
 
-        private fun readPtpString(buffer: ByteBuffer): String? {
+        /**
+         * Decode a length-prefixed UTF-16LE PTP string from [buffer].
+         * ponytail: kept simple; caller checks remaining bytes before use.
+         */
+        fun readPtpString(buffer: ByteBuffer): String {
             if (buffer.remaining() < 1) return ""
             val lengthByte = buffer.get().toInt() and 0xFF
             if (lengthByte == 0) return ""
             val charCount = lengthByte - 1
-            // Length byte counts total code units including the null terminator
             if (buffer.remaining() < lengthByte * 2) return ""
             val chars = CharArray(charCount)
             for (i in 0 until charCount) {
-                chars[i] = buffer.getShort().toChar()
+                chars[i] = buffer.getShort().toInt().toChar()
             }
             buffer.getShort() // consume null terminator
             return String(chars)
+        }
+
+        /**
+         * Encode a PTP string: 1 byte length (including null terminator) +
+         * UTF-16LE characters + 2 byte null terminator.
+         * ponytail: single source of truth, reused by repository and connection layers.
+         */
+        fun encodePtpString(text: String): ByteArray {
+            val chars = text.toCharArray()
+            val bytes = ByteArray(1 + chars.size * 2 + 2)
+            bytes[0] = (chars.size + 1).toByte()
+            ByteBuffer.wrap(bytes, 1, chars.size * 2)
+                .order(ByteOrder.LITTLE_ENDIAN)
+                .apply { chars.forEach { putShort(it.code.toShort()) } }
+            return bytes
         }
     }
 }

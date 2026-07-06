@@ -30,6 +30,14 @@ object AppLogger {
     private val logs = ConcurrentLinkedQueue<LogEntry>()
     private val submitting = AtomicBoolean(false)
 
+    // ponytail: reuse SimpleDateFormat per thread instead of creating one per log entry.
+    private val dateFormatter = object : ThreadLocal<SimpleDateFormat>() {
+        override fun initialValue() = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
+    }
+    private val issueDateFormatter = object : ThreadLocal<SimpleDateFormat>() {
+        override fun initialValue() = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+    }
+
     data class LogEntry(
         val time: Long,
         val level: String,
@@ -38,7 +46,7 @@ object AppLogger {
         val throwable: String?
     ) {
         fun format(): String {
-            val timeStr = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault()).format(Date(time))
+            val timeStr = dateFormatter.get()!!.format(Date(time))
             return "$timeStr [$level/$tag] $message${throwable?.let { "\n$it" } ?: ""}"
         }
     }
@@ -210,7 +218,7 @@ object AppLogger {
         val header = buildString {
             appendLine("## PhtonView 日志报告")
             appendLine("- 应用版本：${BuildConfig.VERSION_NAME}")
-            appendLine("- 时间：${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}")
+            appendLine("- 时间：${issueDateFormatter.get()!!.format(Date())}")
             appendLine("- 日志条数：${snapshot.size}")
             appendLine()
         }
