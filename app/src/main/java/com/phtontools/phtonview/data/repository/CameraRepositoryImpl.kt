@@ -17,6 +17,7 @@ import com.phtontools.phtonview.usb.ptp.PtpValueMapper
 import com.phtontools.phtonview.util.AppLogger
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
@@ -28,6 +29,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -45,8 +47,14 @@ class CameraRepositoryImpl @Inject constructor(
     private val liveViewDispatcher = Executors.newSingleThreadExecutor { r ->
         Thread(r, "PhtonView-LiveView")
     }.asCoroutineDispatcher()
+    private val decodeDispatcher = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "PhtonView-LiveViewDecode")
+    }.asCoroutineDispatcher()
     private val connectionLock = Mutex()
     private var liveViewJob: Job? = null
+
+    // 生产-消费流水线：USB 取图线程把最新 JPEG 放到这里，解码线程异步解码后更新 UI
+    private val latestJpegBytes = AtomicReference<ByteArray?>(null)
     private var intervalometerJob: Job? = null
     private var bulbJob: Job? = null
     private var connectionStateJob: Job? = null
@@ -596,13 +604,17 @@ class CameraRepositoryImpl @Inject constructor(
 
     private fun startLiveViewLoop() {
         liveViewJob?.cancel()
-        liveViewJob = scope.launch(liveViewDispatcher) {
-            // 提升实时取景线程优先级，减少被调度器打断的概率
-            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
+        val signal = Channel<Unit>(Channel.CONFLATED)
+        val supervisor = SupervisorJob()
+        liveViewJob = supervisor
 
-            // 复用 Options 减少 GC 压力；RGB_565 比 ARGB_8888 解码更快，且实时取景预览够看
-            val decodeOptions = BitmapFactory.Options().apply {
-                inPreferredConfig = Bitmap.Config.RGB_565
+        // Producer：专精 USB 取图，把最新 JPEG 字节推进缓冲区，不等待解码
+        scope.launch(liveViewDispatcher + supervisor) {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
+            val getCandidates = liveViewGetCandidates()
+            if (getCandidates.isEmpty()) {
+                AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "No live view get candidates", mapOf("brand" to brandStrategy.brand.name))
+                return@launch
             }
             var frameCount = 0
             var dropCount = 0
@@ -610,23 +622,16 @@ class CameraRepositoryImpl @Inject constructor(
             var lastErrorTime = 0L
             var consecutiveFrameFailures = 0
             val targetIntervalNs = 16_666_667L // 60fps
-            val getCandidates = liveViewGetCandidates()
-            if (getCandidates.isEmpty()) {
-                AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "No live view get candidates", mapOf("brand" to brandStrategy.brand.name))
-                _liveViewFrame.value = null
-                return@launch
-            }
             while (isActive && _liveViewEnabled.value && _connectionState.value is ConnectionState.Connected) {
                 val loopStart = System.nanoTime()
-                var captured = false
                 try {
                     val conn = currentConnection ?: break
                     if (conn.connectionType == ConnectionType.USB) {
-                        // 依次尝试所有候选取图 opcode，有一个成功就继续解析
                         var frameData: ByteArray? = null
                         for (getOp in getCandidates) {
+                            // 缩短超时，避免相机偶尔无帧时卡住，丢一帧也比卡顿强
                             val data = if (conn is UsbCameraConnection) {
-                                conn.sendCommandWithData(getOp, timeoutMs = 300, params = intArrayOf())
+                                conn.sendCommandWithData(getOp, timeoutMs = 150, params = intArrayOf())
                             } else {
                                 conn.sendCommandWithData(getOp)
                             }
@@ -637,19 +642,17 @@ class CameraRepositoryImpl @Inject constructor(
                         }
                         val data = frameData ?: continue
                         val jpegData = extractLiveViewJpeg(data)
-                        if (jpegData.isEmpty()) continue
-                        val bitmap = BitmapFactory.decodeByteArray(jpegData, 0, jpegData.size, decodeOptions)
-                        bitmap?.let {
-                            _liveViewFrame.value = it
-                            captured = true
+                        if (jpegData.isNotEmpty()) {
+                            latestJpegBytes.set(jpegData)
+                            signal.trySend(Unit)
                             consecutiveFrameFailures = 0
+                            frameCount++
                         }
 
-                        frameCount++
                         val now = System.nanoTime()
                         if (now - lastLogTime >= 5_000_000_000L) {
                             val avgMs = ((now - lastLogTime) / 1_000_000.0) / frameCount.coerceAtLeast(1)
-                            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Live view frames", mapOf("frames" to frameCount.toString(), "dropped" to dropCount.toString(), "avgIntervalMs" to String.format(Locale.US, "%.2f", avgMs)))
+                            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Live view capture frames", mapOf("frames" to frameCount.toString(), "dropped" to dropCount.toString(), "avgIntervalMs" to String.format(Locale.US, "%.2f", avgMs)))
                             frameCount = 0
                             dropCount = 0
                             lastLogTime = now
@@ -659,13 +662,12 @@ class CameraRepositoryImpl @Inject constructor(
                     consecutiveFrameFailures++
                     val now = System.nanoTime()
                     if (now - lastErrorTime >= 1_000_000_000L) {
-                        AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Live view frame error", mapOf("error" to (e.message ?: "unknown"), "consecutiveFailures" to consecutiveFrameFailures.toString()))
+                        AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Live view capture error", mapOf("error" to (e.message ?: "unknown"), "consecutiveFailures" to consecutiveFrameFailures.toString()))
                         lastErrorTime = now
                     }
                     if (settingsManager.debugMode) e.printStackTrace()
-                    // 连续大量帧失败说明连接或相机状态已异常，退出循环避免空转
                     if (consecutiveFrameFailures >= 60) {
-                        AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Too many frame failures, stopping", emptyMap())
+                        AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Too many capture failures, stopping", emptyMap())
                         _liveViewEnabled.value = false
                         break
                     }
@@ -674,9 +676,49 @@ class CameraRepositoryImpl @Inject constructor(
                 val delayNs = targetIntervalNs - elapsedNs
                 if (delayNs > 0) {
                     delay(delayNs / 1_000_000)
-                } else if (captured) {
-                    // 已落后超过一帧，跳过下一次等待以追赶，但累计丢帧数便于观察
+                } else {
+                    // 已落后，累计丢帧数便于观察，不阻塞取图
                     dropCount++
+                }
+            }
+            signal.close()
+        }
+
+        // Consumer：专精 JPEG 解码，与 USB 取图并行，解码慢就自然跳过旧帧
+        scope.launch(decodeDispatcher + supervisor) {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
+            val decodeOptions = BitmapFactory.Options().apply {
+                inPreferredConfig = Bitmap.Config.RGB_565
+            }
+            var reusableBitmap: Bitmap? = null
+            var decodeFrameCount = 0
+            var lastLogTime = System.nanoTime()
+            for (unit in signal) {
+                if (!_liveViewEnabled.value || _connectionState.value !is ConnectionState.Connected) break
+                val jpegData = latestJpegBytes.getAndSet(null) ?: continue
+                try {
+                    decodeOptions.inBitmap = reusableBitmap
+                    val bitmap = BitmapFactory.decodeByteArray(jpegData, 0, jpegData.size, decodeOptions)
+                    if (bitmap != null) {
+                        _liveViewFrame.value = bitmap
+                        reusableBitmap = bitmap
+                        decodeFrameCount++
+                    } else {
+                        reusableBitmap = null
+                    }
+                } catch (e: IllegalArgumentException) {
+                    // inBitmap 尺寸或配置不匹配，重置后下一帧重新分配
+                    reusableBitmap = null
+                    if (settingsManager.debugMode) e.printStackTrace()
+                } catch (e: Exception) {
+                    if (settingsManager.debugMode) e.printStackTrace()
+                }
+                val now = System.nanoTime()
+                if (now - lastLogTime >= 5_000_000_000L) {
+                    val avgMs = ((now - lastLogTime) / 1_000_000.0) / decodeFrameCount.coerceAtLeast(1)
+                    AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Live view decode frames", mapOf("decoded" to decodeFrameCount.toString(), "avgDecodeMs" to String.format(Locale.US, "%.2f", avgMs)))
+                    decodeFrameCount = 0
+                    lastLogTime = now
                 }
             }
             // Clear the frame when the loop exits so the UI doesn't stick on the last frame.
