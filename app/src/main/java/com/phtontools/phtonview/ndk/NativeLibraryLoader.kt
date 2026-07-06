@@ -23,14 +23,15 @@ object NativeLibraryLoader {
     // bootstrap 本身无依赖，先被 System.load，随后负责 RTLD_GLOBAL 加载其余库。
     private const val BOOTSTRAP_LIB = "bootstrap"
 
-    // 依赖库加载顺序：ltdl_preload 必须先加载，为 libltdl.so 提供缺失符号。
+    // 依赖库加载顺序：叶子依赖先加载，确保 RTLD_NOW 能立即解析符号。
+    // ltdl_preload 必须为 libltdl.so 提供缺失符号；usb 必须在 gphoto2_port/gphoto2 之前。
     private val DEPENDENCIES = listOf(
         "ltdl_preload",
         "ltdl",
-        "gphoto2",
-        "gphoto2_port",
         "usb-1.0",
-        "usb-0.1"
+        "usb-0.1",
+        "gphoto2_port",
+        "gphoto2"
     )
 
     // 需要解压/校验的全部原生库（包含引导库与最终由 JVM 加载的 phtonview）。
@@ -45,10 +46,9 @@ object NativeLibraryLoader {
             System.load(bootstrapFile.absolutePath)
             AppLogger.d("Loaded bootstrap library: ${bootstrapFile.absolutePath}")
 
-            // 2. 通过 bootstrap 以 RTLD_GLOBAL 预加载所有依赖，
+            // 2. 通过 bootstrap 以 RTLD_GLOBAL | RTLD_NOW 按依赖顺序加载所有依赖，
             //    让 ltdl_preload 的符号在 libltdl.so 加载前进入全局命名空间。
             val depPaths = DEPENDENCIES.map { File(libDir, "lib$it.so").absolutePath }.toTypedArray()
-            depPaths.forEach { AppLogger.d("NativeLibraryLoader dependency path: $it") }
             val globalLoaded = try {
                 loadLibrariesGlobally(depPaths)
             } catch (e: Throwable) {
@@ -56,16 +56,10 @@ object NativeLibraryLoader {
                 false
             }
             if (!globalLoaded) {
-                AppLogger.w("NativeLibraryLoader: RTLD_GLOBAL preload failed, falling back to individual System.load")
-                DEPENDENCIES.forEach {
-                    val file = File(libDir, "lib$it.so")
-                    try {
-                        System.load(file.absolutePath)
-                        AppLogger.d("Fallback loaded: ${file.absolutePath}")
-                    } catch (e: Throwable) {
-                        AppLogger.e("Fallback load failed: ${file.absolutePath}", e)
-                    }
-                }
+                // ponytail: System.load 使用 RTLD_LOCAL，无法让 ltdl_preload 符号全局可见，
+                // 回退只会产生更隐蔽的 UnsatisfiedLinkError；直接失败并保留清晰日志。
+                AppLogger.e("NativeLibraryLoader: RTLD_GLOBAL preload failed; aborting native load")
+                return false
             }
 
             // 3. 最后由 JVM 加载 phtonview，触发 JNI 方法注册，同时让其链接的

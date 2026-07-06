@@ -9,13 +9,16 @@ object Gphoto2Bridge {
 
 
 
-    private fun loadNativeLibraries(context: Context) {
-        NativeLibraryLoader.load(context)
+    private fun loadNativeLibraries(context: Context): Boolean {
+        return NativeLibraryLoader.load(context)
     }
 
     fun init(context: Context): Boolean {
         AppLogger.d("GPhoto2Bridge.init()")
-        loadNativeLibraries(context)
+        if (!loadNativeLibraries(context)) {
+            AppLogger.e("GPhoto2Bridge.init() aborted: native libraries failed to load")
+            return false
+        }
         return try {
             val base = File(context.filesDir, "gphoto2/modules")
             modulesBasePath = base.absolutePath
