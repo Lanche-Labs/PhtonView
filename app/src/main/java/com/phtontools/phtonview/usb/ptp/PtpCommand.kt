@@ -129,6 +129,7 @@ class PtpCommand(
                 buffer.getShort() // VendorExtensionVersion
                 readPtpString(buffer) // skip vendor extension desc
                 buffer.getShort() // FunctionalMode
+                // Nikon 等设备返回的 DeviceInfo 中数组长度字段为 UINT32。
                 buffer.position(buffer.position() + buffer.getInt() * 2) // operations
                 buffer.position(buffer.position() + buffer.getInt() * 2) // events
                 buffer.position(buffer.position() + buffer.getInt() * 2) // properties

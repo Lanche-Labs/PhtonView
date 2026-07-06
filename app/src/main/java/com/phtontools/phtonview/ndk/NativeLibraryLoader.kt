@@ -58,7 +58,8 @@ object NativeLibraryLoader {
             if (!globalLoaded) {
                 // ponytail: System.load 使用 RTLD_LOCAL，无法让 ltdl_preload 符号全局可见，
                 // 回退只会产生更隐蔽的 UnsatisfiedLinkError；直接失败并保留清晰日志。
-                AppLogger.e("NativeLibraryLoader: RTLD_GLOBAL preload failed; aborting native load")
+                val detail = getLastNativeError()
+                AppLogger.e("NativeLibraryLoader: RTLD_GLOBAL preload failed; aborting native load: $detail")
                 return false
             }
 
@@ -75,6 +76,8 @@ object NativeLibraryLoader {
     }
 
     private external fun loadLibrariesGlobally(paths: Array<String>): Boolean
+
+    private external fun getLastNativeError(): String
 
     private fun hasLibraryFiles(dir: File): Boolean {
         if (!dir.exists() || !dir.isDirectory) return false

@@ -210,13 +210,14 @@ class CameraRepositoryImpl @Inject constructor(
         val raw = runCatching { connection.getDeviceInfoRaw() }.getOrDefault(ByteArray(0))
         val vendorId = if (raw.size >= 12) PtpCommand.decodeVendorExtensionId(raw) else null
         AppLogger.report("J", "CameraRepositoryImpl.kt:detectBrandFromDeviceInfo", "VendorExtensionID", mapOf("id" to String.format(Locale.US, "0x%08X", vendorId ?: 0), "rawSize" to raw.size.toString()))
+        // 0x06 是 Microsoft/MTP 通用扩展 ID，不能唯一代表 Olympus；
+        // 品牌回退优先依赖型号名识别，避免 Nikon 等 MTP 设备被误判。
         return when (vendorId) {
             PtpConstants.VENDOR_EXTENSION_NIKON -> CameraBrand.Nikon
             PtpConstants.VENDOR_EXTENSION_CANON -> CameraBrand.Canon
             PtpConstants.VENDOR_EXTENSION_SONY -> CameraBrand.Sony
             PtpConstants.VENDOR_EXTENSION_FUJI -> CameraBrand.Fuji
             PtpConstants.VENDOR_EXTENSION_PANASONIC -> CameraBrand.Panasonic
-            PtpConstants.VENDOR_EXTENSION_OLYMPUS -> CameraBrand.Olympus
             else -> CameraBrand.Generic
         }
     }
