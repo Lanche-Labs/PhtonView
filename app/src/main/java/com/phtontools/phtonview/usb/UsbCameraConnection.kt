@@ -639,12 +639,12 @@ class UsbCameraConnection @Inject constructor(
             PtpCommand(PtpConstants.OPERATION_DEVICE_PROP_VALUE_GET, nextTransactionId(), intArrayOf(code.toInt()))
         )
         val payload = PtpCommand.decodeDataPayload(data)
-        val value = if (payload.size < 2) null else {
+        val value = if (payload.isEmpty()) null else {
             val buffer = ByteBuffer.wrap(payload)
             buffer.order(ByteOrder.LITTLE_ENDIAN)
             when (payload.size) {
-                1 -> buffer.get().toInt()
-                2 -> buffer.getShort().toInt()
+                1 -> buffer.get().toInt() and 0xFF
+                2 -> buffer.getShort().toInt() and 0xFFFF
                 4 -> buffer.getInt()
                 else -> buffer.getInt()
             }
