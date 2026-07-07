@@ -120,6 +120,8 @@ object PtpConstants {
     const val NIKON_OPERATION_CHANGE_CAMERA_MODE: Short = 0x90C2.toShort()
     const val NIKON_OPERATION_TERMINATE_CAPTURE: Short = 0x920C.toShort()
     const val NIKON_OPERATION_INITIATE_CAPTURE_REC_IN_MEDIA: Short = 0x9207.toShort()
+    // Nikon 专用 B 门启动/停止（与 InitiateCapture 不混淆，老机身 D5200 等必须用专用 opcode 才会进入 Bulb 拍摄模式而非 PC 模式）
+    const val NIKON_OPERATION_INITIATE_BULB_CAPTURE: Short = 0x920B.toShort()
 
     // 响应码
     const val RESPONSE_OK: Short = 0x2001

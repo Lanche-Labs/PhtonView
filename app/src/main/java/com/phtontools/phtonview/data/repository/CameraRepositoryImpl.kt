@@ -10,6 +10,7 @@ import com.phtontools.phtonview.data.model.*
 import com.phtontools.phtonview.ndk.Gphoto2Bridge
 import com.phtontools.phtonview.usb.UsbCameraConnection
 import com.phtontools.phtonview.usb.ptp.BrandStrategy
+import com.phtontools.phtonview.connection.WifiCameraDiscovery
 import com.phtontools.phtonview.usb.ptp.GenericStrategy
 import com.phtontools.phtonview.usb.ptp.PtpCommand
 import com.phtontools.phtonview.usb.ptp.PtpConstants
@@ -19,6 +20,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
@@ -38,7 +40,8 @@ import javax.inject.Singleton
 class CameraRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
     private val settingsManager: SettingsManager,
-    private val connections: Set<@JvmSuppressWildcards CameraConnection>
+    private val connections: Set<@JvmSuppressWildcards CameraConnection>,
+    private val wifiDiscovery: WifiCameraDiscovery
 ) : CameraRepository {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -52,6 +55,7 @@ class CameraRepositoryImpl @Inject constructor(
     private var connectionStateJob: Job? = null
     private var connectionStateTarget: CameraConnection? = null
     private var eventLoopJob: Job? = null
+    private var periodicSyncJob: Job? = null
 
     /**
      * 根据相机型号/能力选择使用标准 0x500D 还是尼康 0xD100 快门属性，
@@ -206,6 +210,14 @@ class CameraRepositoryImpl @Inject constructor(
                         if (brandStrategy.eventPollOperation != null) {
                             startEventLoop()
                         }
+
+                        // 连接成功后立即同步一次相机属性（曝光补偿/ISO/光圈/快门等），
+                        // 确保 UI 与相机实际设置一致，避免显示残留的旧值而让用户感觉"数据错乱"。
+                        readNikonExposureFromCamera(delayMs = 0)
+                        // 启动周期属性同步，5 秒一次，仅在连接且非活动时执行，
+                        // 不会与事件循环 / 取景 / 拍摄抢 USB 端点。
+                        startPeriodicPropertySync()
+
                         _connectionState.value
                     }
                     is CameraConnection.ConnectionState.Error -> ConnectionState.Error(state.message)
@@ -351,11 +363,17 @@ class CameraRepositoryImpl @Inject constructor(
      * Read the current exposure parameters from the camera and mirror them in the
      * UI state. This prevents the app display from drifting away from the actual
      * camera settings (e.g. when the camera dial or another app changed them).
+     * 在 B 门/拍摄期间跳过轮询，避免在 PTP 会话中发送额外属性查询而让相机切回
+     * "正在连接 PC"。
      */
     private fun readNikonExposureFromCamera(delayMs: Long = 300) {
         scope.launch {
             delay(delayMs)
             if (!ensureConnected()) return@launch
+            if (isBulbInProgress || _burstRunning.value) {
+                AppLogger.d("readNikonExposureFromCamera: skipped due to in-progress capture/bulb")
+                return@launch
+            }
             val conn = currentConnection ?: return@launch
             val brand = _cameraSettings.value.brand
             runCatching {
@@ -377,7 +395,14 @@ class CameraRepositoryImpl @Inject constructor(
                     iso = iso.coerceIn(50, 204800),
                     aperture = PtpValueMapper.ptpToAperture(fNumber),
                     shutter = shutter,
-                    ev = ev?.let { it / 1000f } ?: _exposureSettings.value.ev
+                    // 关键：相机回读的 EV 在 PTP 0x5010（INT16 1/1000 EV）下理论值
+                    // 可达 ±32.7 EV，但普通相机的 EV 范围通常在 ±5 之内；曾因 Nikon D5200
+                    // 偶尔回读到 ±32000 这种异常值（实质是别的属性被误读），导致 UI 显示
+                    // "-32.0 EV" 看起来像溢出。这里把 EV 限制在 ±5 范围，超出时退回原值。
+                    ev = ev?.let { raw ->
+                        val v = raw / 1000f
+                        if (v.isNaN() || v < -5f || v > 5f) _exposureSettings.value.ev else v
+                    } ?: _exposureSettings.value.ev
                 )
                 AppLogger.report("N", "CameraRepositoryImpl.kt:readNikonExposureFromCamera", "Exposure synced", mapOf(
                     "iso" to iso.toString(),
@@ -454,18 +479,30 @@ class CameraRepositoryImpl @Inject constructor(
         // #endregion
         try {
             val type = _cameraSettings.value.connectionType
-            // WiFi 模式下若尚未配对，优先从设置中恢复已保存地址，避免用户忘记点击配对按钮。
-            if (type == ConnectionType.WiFi) {
-                settingsManager.wifiPairedAddress?.takeIf { it.isNotBlank() }?.let { address ->
-                    AppLogger.d("connect: auto-pairing saved WiFi address $address")
-                    pairWifi(address, WifiBrandPreset.forAddress(address, settingsManager.cameraBrand))
-                }
-            }
             val target = resolveConnection(type)
             if (target == null) {
                 _connectionState.value = ConnectionState.Error("No connection implementation available")
                 return
             }
+
+            if (type == ConnectionType.WiFi) {
+                // WiFi 模式下优先自动发现相机，免去用户手动输入 IP/端口。
+                val discovered = autoDiscoverWifiCamera()
+                if (discovered != null) {
+                    AppLogger.report("E", "CameraRepositoryImpl.kt:connect", "WiFi auto-discovered", mapOf("host" to discovered.host, "port" to discovered.port.toString(), "vendor" to (discovered.vendorHint ?: "unknown")))
+                    val brand = brandFromVendorHint(discovered.vendorHint)
+                    pairWifi(discovered.host, WifiBrandPreset.forBrand(brand))
+                    settingsManager.wifiPairedAddress = discovered.host
+                    settingsManager.wifiPairedPort = discovered.port
+                } else {
+                    // 发现失败时回退到已保存地址
+                    settingsManager.wifiPairedAddress?.takeIf { it.isNotBlank() }?.let { address ->
+                        AppLogger.d("connect: auto-pairing saved WiFi address $address")
+                        pairWifi(address, WifiBrandPreset.forAddress(address, settingsManager.cameraBrand))
+                    }
+                }
+            }
+
             switchConnection(target, autoConnect = false)
             target.connect()
         } catch (e: Exception) {
@@ -477,9 +514,54 @@ class CameraRepositoryImpl @Inject constructor(
         }
     }
 
+    /**
+     * 自动发现 WiFi 相机。启动 mDNS + 端口扫描，等待首个可用服务。
+     * 发现成功返回 [CameraServiceInfo]，失败返回 null。
+     */
+    private suspend fun autoDiscoverWifiCamera(): WifiCameraDiscovery.CameraServiceInfo? {
+        return try {
+            withTimeout(12000L) {
+                wifiDiscovery.clear()
+                wifiDiscovery.startDiscovery()
+                try {
+                    wifiDiscovery.discoveredServices
+                        .first { it.isNotEmpty() }
+                        .firstOrNull()
+                } finally {
+                    wifiDiscovery.stopDiscovery()
+                }
+            }
+        } catch (_: TimeoutCancellationException) {
+            AppLogger.w("WiFi auto-discovery timed out")
+            null
+        } catch (e: Exception) {
+            AppLogger.e("WiFi auto-discovery failed", e)
+            null
+        }
+    }
+
+    private fun brandFromVendorHint(hint: String?): CameraBrand {
+        return when (hint?.uppercase()) {
+            "NIKON" -> CameraBrand.Nikon
+            "CANON" -> CameraBrand.Canon
+            "SONY" -> CameraBrand.Sony
+            "FUJI", "FUJIFILM" -> CameraBrand.Fuji
+            "PANASONIC" -> CameraBrand.Panasonic
+            "OLYMPUS", "OMSYSTEM" -> CameraBrand.Olympus
+            "PENTAX" -> CameraBrand.Pentax
+            "RICOH" -> CameraBrand.Ricoh
+            "LEICA" -> CameraBrand.Leica
+            "SIGMA" -> CameraBrand.Sigma
+            "TAMRON" -> CameraBrand.Tamron
+            "KODAK" -> CameraBrand.Kodak
+            else -> CameraBrand.Generic
+        }
+    }
+
     override fun disconnect() {
         stopLiveViewInternal()
         stopEventLoop()
+        stopPeriodicPropertySync()
         intervalometerJob?.cancel()
         bulbJob?.cancel()
         connectionStateJob?.cancel()
@@ -492,6 +574,7 @@ class CameraRepositoryImpl @Inject constructor(
             // 关闭 USB 前必须让相机退出 PC 控制模式，否则相机会一直显示“正在连接 PC”，
             // 只能插拔数据线恢复。
             runCatching { exitPcControlMode(conn) }
+            resetPcModeState()
             conn?.disconnect()
         }
     }
@@ -530,15 +613,10 @@ class CameraRepositoryImpl @Inject constructor(
             for ((startOp, startParams) in candidates) {
                 runCatching {
                     // 尼康/佳能需先切 PC 模式并尝试设置录制介质
-                    brandStrategy.changeCameraModeOperation?.let { op ->
-                        val (code, _) = conn.sendCommand(op, 1)
-                        // libgphoto2：ChangeCameraModeFailed 不一定致命，继续尝试
-                        if (code != PtpConstants.RESPONSE_OK &&
-                            code != PtpConstants.NIKON_RESPONSE_CHANGE_CAMERA_MODE_FAILED
-                        ) {
-                            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Change camera mode rejected", mapOf("code" to String.format(Locale.US, "0x%04X", code)))
-                            return@runCatching
-                        }
+                    val pcEntered = enterPcMode()
+                    if (!pcEntered) {
+                        AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "PC mode enter rejected", emptyMap())
+                        return@runCatching
                     }
                     waitForDeviceReady()
 
@@ -579,10 +657,7 @@ class CameraRepositoryImpl @Inject constructor(
             if (!started) {
                 AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "All live view start methods failed", emptyMap())
                 _liveViewEnabled.value = false
-                runCatching {
-                    brandStrategy.changeCameraModeOperation?.let { conn.sendCommand(it, 0) }
-                    waitForDeviceReady()
-                }
+                runCatching { exitPcMode() }
                 return
             }
         }
@@ -611,11 +686,7 @@ class CameraRepositoryImpl @Inject constructor(
                     waitForDeviceReady(conn)
                     // Return the camera to normal mode so it no longer shows
                     // "Connecting to PC" on its screen.
-                    brandStrategy.changeCameraModeOperation?.let { op ->
-                        val (code, _) = conn.sendCommand(op, 0)
-                        AppLogger.d("stopLiveView: PC mode exit response 0x${String.format(Locale.US, "%04X", code)}")
-                    }
-                    waitForDeviceReady(conn)
+                    exitPcMode()
                 }.onFailure {
                     AppLogger.report("F", "CameraRepositoryImpl.kt:stopLiveView", "Stop live view error", mapOf("error" to (it.message ?: "unknown")))
                 }
@@ -851,8 +922,11 @@ class CameraRepositoryImpl @Inject constructor(
     }
 
     override suspend fun setEv(ev: Float) {
-        _exposureSettings.value = _exposureSettings.value.copy(ev = ev)
-        applyPtpProperty(PtpConstants.DEVICE_PROP_EXPOSURE_COMPENSATION, PtpValueMapper.evToPtp(ev))
+        // 限制 EV 范围到 ±5（PTP 0x5010 INT16 范围 / 1000），避免手动输入或相机回读
+        // 出现 ±32.7 EV 这类"溢出"值（曾经被同步进 UI 后让用户看到 -32.0 EV）。
+        val coerced = ev.coerceIn(-5f, 5f)
+        _exposureSettings.value = _exposureSettings.value.copy(ev = coerced)
+        applyPtpProperty(PtpConstants.DEVICE_PROP_EXPOSURE_COMPENSATION, PtpValueMapper.evToPtp(coerced))
         readNikonExposureFromCamera(delayMs = 300)
     }
 
@@ -1011,7 +1085,7 @@ class CameraRepositoryImpl @Inject constructor(
                     runCatching { startLiveView() }
                 } else {
                     // 没有取景时拍完就退出 PC 模式，避免相机一直显示“正在连接 PC”
-                    runCatching { exitPcControlMode() }
+                    runCatching { exitPcMode() }
                 }
             }
     }
@@ -1049,7 +1123,7 @@ class CameraRepositoryImpl @Inject constructor(
         val conn = currentConnection ?: return
         runCatching {
             // Ensure PC control mode before capture; older Nikon/Canon bodies need this.
-            brandStrategy.changeCameraModeOperation?.let { conn.sendCommand(it, 1) }
+            enterPcMode()
             waitForDeviceReady()
 
             val (code, _) = when (brandStrategy.brand) {
@@ -1088,10 +1162,12 @@ class CameraRepositoryImpl @Inject constructor(
             AppLogger.report("G", "CameraRepositoryImpl.kt:doCaptureImage", "Capture error", mapOf("error" to (it.message ?: "unknown")))
             runCatching { conn.sendCommand(PtpConstants.OPERATION_INITIATE_CAPTURE) }
         }
+        // 退出 PC 模式（引用计数减 1）；连拍循环由 captureBurst 自身维持 PC 模式以避免反复切换。
     }
 
     override suspend fun captureBurst(count: Int) {
         _burstRunning.value = true
+        var acquiredPcMode = false
         try {
             val settings = _cameraSettings.value
             // 优先使用调用方传入的张数；未传入或无效时再使用设置中保存的值
@@ -1105,9 +1181,11 @@ class CameraRepositoryImpl @Inject constructor(
             ))
             val wasLiveView = _liveViewEnabled.value
             if (wasLiveView) stopLiveView()
+            // 连拍开始前一次性进入 PC 模式，避免每张都重复 ChangeCameraMode 导致 0xA003 错误
+            if (enterPcMode()) acquiredPcMode = true
             for (index in 0 until actual) {
                 if (!ensureConnected()) break
-                doCaptureImage()
+                doCaptureImageNoPcMode()
                 if (index < actual - 1) {
                     // 尼康机身需要等待命令处理完成，再拍下一张
                     if (brandStrategy.brand == CameraBrand.Nikon) waitForDeviceReady(waitMs = 50, timeoutMs = 2000)
@@ -1117,7 +1195,52 @@ class CameraRepositoryImpl @Inject constructor(
             if (wasLiveView) runCatching { startLiveView() }
             AppLogger.report("G", "CameraRepositoryImpl.kt:captureBurst", "Burst finished", mapOf("count" to actual.toString()))
         } finally {
+            if (acquiredPcMode) {
+                runCatching { exitPcMode() }.onFailure {
+                    AppLogger.w("captureBurst: PC mode exit failed: ${it.message}")
+                }
+            }
             _burstRunning.value = false
+        }
+    }
+
+    /**
+     * 拍摄单张但不进入 PC 模式（适用于连拍循环已外层进入 PC 模式的场景）。
+     */
+    private suspend fun doCaptureImageNoPcMode() {
+        if (!ensureConnected()) return
+        val conn = currentConnection ?: return
+        runCatching {
+            waitForDeviceReady()
+            val (code, _) = when (brandStrategy.brand) {
+                CameraBrand.Nikon -> {
+                    val afParam = if (_focusMode.value == FocusMode.AF) 0xFFFFFFFE.toInt() else 0xFFFFFFFF.toInt()
+                    val targetParam = if (_cameraSettings.value.storageTarget == StorageTarget.Camera) 1 else 0
+                    conn.sendCommand(brandStrategy.captureOperation, afParam, targetParam)
+                }
+                CameraBrand.Canon -> {
+                    brandStrategy.afDriveOperation?.let { conn.sendCommand(it) }
+                    conn.sendCommand(PtpConstants.CANON_EOS_OPERATION_REMOTE_RELEASE_ON, 1)
+                }
+                CameraBrand.Panasonic -> {
+                    conn.sendCommand(brandStrategy.captureOperation, 0x03000019)
+                }
+                else -> {
+                    conn.sendCommand(brandStrategy.captureOperation)
+                }
+            }
+            if (code != PtpConstants.RESPONSE_OK && brandStrategy.brand != CameraBrand.Canon) {
+                AppLogger.report("G", "CameraRepositoryImpl.kt:doCaptureImageNoPcMode", "Capture primary failed, fallback", mapOf("responseCode" to String.format(Locale.US, "0x%04X", code)))
+                conn.sendCommand(PtpConstants.OPERATION_INITIATE_CAPTURE)
+            }
+            if (brandStrategy.brand == CameraBrand.Canon) {
+                delay(100)
+                conn.sendCommand(PtpConstants.CANON_EOS_OPERATION_REMOTE_RELEASE_OFF, 1)
+            }
+            waitForDeviceReady()
+        }.onFailure {
+            AppLogger.report("G", "CameraRepositoryImpl.kt:doCaptureImageNoPcMode", "Capture error", mapOf("error" to (it.message ?: "unknown")))
+            runCatching { conn.sendCommand(PtpConstants.OPERATION_INITIATE_CAPTURE) }
         }
     }
 
@@ -1134,6 +1257,7 @@ class CameraRepositoryImpl @Inject constructor(
                 // B门需要退出实时取景，记录状态以便结束后恢复
                 val wasLiveView = _liveViewEnabled.value
                 if (wasLiveView) stopLiveView()
+                isBulbInProgress = true
                 if (brandStrategy.brand == CameraBrand.Nikon) {
                     doNikonBulbExposure(seconds)
                 } else {
@@ -1143,40 +1267,128 @@ class CameraRepositoryImpl @Inject constructor(
             } catch (_: CancellationException) {
                 // 用户主动取消，由外部 stopBulbExposure 处理清理
             } finally {
+                isBulbInProgress = false
                 _bulbSettings.value = _bulbSettings.value.copy(enabled = false)
             }
         }
     }
 
     /**
+     * 标记 B 门/拍摄等长时操作正在进行；用于在 B 门期间暂停定时属性轮询，
+     * 避免在 PTP 会话中发送额外属性查询而让相机切回"正在连接 PC"。
+     */
+    @Volatile
+    private var isBulbInProgress: Boolean = false
+
+    /**
+     * 记录相机是否已经处于 PC 远程控制模式（Nikon 0x90C2 / Canon 0x9114 等）。
+     * 多次进入只会产生 0xA003 CHANGE_CAMERA_MODE_FAILED，从而让相机一直
+     * 卡在切换 PC 模式状态。只有真正需要进入时才发命令，并仅在所有长时操作
+     * 结束后退出，避免"PC 模式 → 退出 → 进入"循环造成曝光补偿等属性数据
+     * 短暂丢失而出现错乱。
+     */
+    @Volatile
+    private var pcModeActive: Boolean = false
+
+    /**
+     * 引用计数：当多个流程同时需要 PC 模式（如 liveview 启动 + bulb 启动）时，
+     * 仅在引用计数归零时才退出 PC 模式，避免互相踩踏。
+     */
+    private val pcModeRefCount = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /**
      * Nikon B门完整流程：进入 PC 控制模式 -> 手动曝光模式 -> Bulb ->
      * 开始曝光 -> 等待 -> 终止曝光 -> 恢复快门与模式 -> 退出 PC 控制模式。
+     * 使用 try/finally + 引用计数确保即便中途抛异常也能正确退出 PC 模式，
+     * 避免相机一直显示"正在连接 PC"而只能通过插拔数据线恢复。
      */
     private suspend fun doNikonBulbExposure(seconds: Int) {
         val conn = currentConnection ?: return
-        runCatching {
-            brandStrategy.changeCameraModeOperation?.let { conn.sendCommand(it, 1) }
-            waitForDeviceReady()
-            // 切到手动模式，确保支持 Bulb
-            setShootingMode(ShootingMode.M)
-            waitForDeviceReady()
-            setShutter("Bulb")
-            waitForDeviceReady()
-            delay(200)
-            val targetParam = if (_cameraSettings.value.storageTarget == StorageTarget.Camera) 1 else 0
-            conn.sendCommand(brandStrategy.captureOperation, 0xFFFFFFFF.toInt(), targetParam)
-            waitForDeviceReady()
-        }.onFailure {
-            AppLogger.report("G", "CameraRepositoryImpl.kt:doNikonBulbExposure", "Nikon bulb start error", mapOf("error" to (it.message ?: "unknown")))
-            return
+        isBulbInProgress = true
+        var acquiredPcMode = false
+        try {
+            runCatching {
+                if (enterPcMode()) acquiredPcMode = true
+                waitForDeviceReady()
+                // 切到手动模式，确保支持 Bulb
+                setShootingMode(ShootingMode.M)
+                waitForDeviceReady()
+                setShutter("Bulb")
+                waitForDeviceReady()
+                delay(200)
+                // 使用 Nikon 专用 B 门 opcode (0x920B InitiateBulbCapture) 触发曝光，
+                // 避免通用 InitiateCaptureRecInMedia (0x9207) 被相机误解为普通拍摄并切换到 PC 模式。
+                val bulbOp = brandStrategy.bulbOperation ?: brandStrategy.captureOperation
+                val (bulbCode, _) = conn.sendCommand(bulbOp, 0xFFFFFFFF.toInt())
+                if (bulbCode != PtpConstants.RESPONSE_OK) {
+                    AppLogger.report("G", "CameraRepositoryImpl.kt:doNikonBulbExposure", "Bulb start non-OK", mapOf("op" to String.format(Locale.US, "0x%04X", bulbOp), "responseCode" to String.format(Locale.US, "0x%04X", bulbCode)))
+                }
+                waitForDeviceReady()
+            }.onFailure {
+                AppLogger.report("G", "CameraRepositoryImpl.kt:doNikonBulbExposure", "Nikon bulb start error", mapOf("error" to (it.message ?: "unknown")))
+                return
+            }
+            delay(seconds * 1000L)
+            doStopBulbExposure()
+        } finally {
+            if (acquiredPcMode) {
+                runCatching { exitPcMode() }.onFailure {
+                    AppLogger.w("doNikonBulbExposure: PC mode exit failed: ${it.message}")
+                }
+            }
+            isBulbInProgress = false
         }
-        delay(seconds * 1000L)
-        doStopBulbExposure()
-        // 退出 PC 控制模式，避免相机一直显示“正在连接 PC”
+    }
+
+    /**
+     * 进入 PC 远程控制模式。多次进入通过引用计数去重，避免在 Nikon D5200
+     * 等老机身上重复发送 0x90C2 ChangeCameraMode 而收到 0xA003 失败。
+     */
+    private suspend fun enterPcMode(): Boolean {
+        val conn = currentConnection ?: return false
+        pcModeRefCount.incrementAndGet()
+        if (pcModeActive) return true
+        val op = brandStrategy.changeCameraModeOperation ?: run {
+            pcModeActive = true
+            return true
+        }
+        val (code, _) = runCatching { conn.sendCommand(op, 1) }
+            .getOrDefault(PtpConstants.RESPONSE_GENERAL_ERROR to IntArray(0))
+        if (code == PtpConstants.RESPONSE_OK || code == PtpConstants.NIKON_RESPONSE_CHANGE_CAMERA_MODE_FAILED) {
+            pcModeActive = true
+            return true
+        }
+        // 失败也要回退引用计数，避免泄漏
+        pcModeRefCount.decrementAndGet()
+        AppLogger.w("enterPcMode: failed code=${String.format(Locale.US, "0x%04X", code)}")
+        return false
+    }
+
+    /**
+     * 退出 PC 远程控制模式。仅在引用计数归零时真正发送 ChangeCameraMode(0)，
+     * 避免 liveview 与 bulb 同时持有时互相退出。
+     */
+    private suspend fun exitPcMode() {
+        val conn = currentConnection ?: return
+        val remaining = pcModeRefCount.decrementAndGet()
+        if (remaining > 0) return
+        if (remaining < 0) {
+            pcModeRefCount.set(0)
+        }
+        val op = brandStrategy.changeCameraModeOperation ?: return
         runCatching {
-            brandStrategy.changeCameraModeOperation?.let { conn.sendCommand(it, 0) }
+            conn.sendCommand(op, 0)
             waitForDeviceReady()
         }
+        pcModeActive = false
+    }
+
+    /**
+     * 当 PTP 连接断开或切到新设备时，强制重置 PC 模式与引用计数状态。
+     */
+    private fun resetPcModeState() {
+        pcModeActive = false
+        pcModeRefCount.set(0)
     }
 
     /**
@@ -1194,6 +1406,10 @@ class CameraRepositoryImpl @Inject constructor(
     }
 
     override suspend fun stopBulbExposure() {
+        // 先停掉 bulbJob，让 doNikonBulbExposure 的 finally 走 exitPcMode()，
+        // 然后再主动调用 doStopBulbExposure 发送 0x920C TerminateCapture。
+        // 注意：原实现只调用 doStopBulbExposure() 而没有 cancel/join，
+        // 会和正在进行的 bulb 协程争抢 PTP 会话，导致相机一直卡在"正在连接 PC"。
         bulbJob?.cancel()
         bulbJob?.join()
         doStopBulbExposure()
@@ -1394,7 +1610,8 @@ class CameraRepositoryImpl @Inject constructor(
                 temperatureCelsius = -1,
                 shotsRemaining = result["剩余可拍张数"]?.toIntOrNull() ?: -1,
                 shutterCount = -1,
-                firmwareVersion = result["固件版本"] ?: "Unknown"
+                firmwareVersion = result["固件版本"] ?: "Unknown",
+                manufacturer = result["制造商"] ?: "Unknown"
             )
         }.onFailure {
             AppLogger.report("K", "CameraRepositoryImpl.kt:fetchCameraStatus", "Fetch status error", mapOf("error" to (it.message ?: "unknown")))
@@ -1422,20 +1639,44 @@ class CameraRepositoryImpl @Inject constructor(
             val data = conn.sendCommandWithData(PtpConstants.OPERATION_GET_DEVICE_INFO)
             if (data.size < 12) return@runCatching Triple("Unknown", "Unknown", "Unknown")
             val payload = PtpCommand.decodeDataPayload(data)
+            if (payload.size < 12) return@runCatching Triple("Unknown", "Unknown", "Unknown")
             val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
+            if (buffer.remaining() < 12) return@runCatching Triple("Unknown", "Unknown", "Unknown")
             buffer.getShort() // StandardVersion
+            if (buffer.remaining() < 4) return@runCatching Triple("Unknown", "Unknown", "Unknown")
             buffer.getInt() // VendorExtensionID
+            if (buffer.remaining() < 2) return@runCatching Triple("Unknown", "Unknown", "Unknown")
             buffer.getShort() // VendorExtensionVersion
             PtpCommand.readPtpString(buffer) // vendor extension desc
+            if (buffer.remaining() < 2) return@runCatching Triple("Unknown", "Unknown", "Unknown")
             buffer.getShort() // FunctionalMode
-            buffer.position(buffer.position() + buffer.getInt() * 2) // ops
-            buffer.position(buffer.position() + buffer.getInt() * 2) // events
-            buffer.position(buffer.position() + buffer.getInt() * 2) // props
-            buffer.position(buffer.position() + buffer.getInt() * 2) // capture formats
-            buffer.position(buffer.position() + buffer.getInt() * 2) // image formats
+            // 关键：Nikon D5200 等设备的 DeviceInfo 数组计数是 UINT32，标准 PTP 是 UINT16。
+            // 之前的 `buffer.position() + buffer.getInt() * 2` 写法会让 getInt() 把 position
+            // 推进 4 字节，再 position() 又拿到新位置，结果多跳 4 字节，导致后续
+            // manufacturer/model/version 字符串读偏，显示成 "Unknown"。
+            // 修复：先 getInt() 拿到 count，再单独推进 count*2 字节。
+            repeat(5) { idx ->
+                if (buffer.remaining() < 4) return@runCatching Triple("Unknown", "Unknown", "Unknown")
+                val count = buffer.getInt()
+                val bytesToSkip = count * 2
+                if (bytesToSkip < 0 || bytesToSkip > buffer.remaining()) {
+                    return@runCatching Triple("Unknown", "Unknown", "Unknown")
+                }
+                buffer.position(buffer.position() + bytesToSkip)
+            }
             val manufacturer = PtpCommand.readPtpString(buffer)
             val model = PtpCommand.readPtpString(buffer)
             val version = PtpCommand.readPtpString(buffer)
+            AppLogger.report(
+                "K",
+                "CameraRepositoryImpl.kt:parseDeviceInfoStrings",
+                "DeviceInfo strings",
+                mapOf(
+                    "manufacturer" to manufacturer,
+                    "model" to model,
+                    "version" to version
+                )
+            )
             Triple(manufacturer, model, version)
         }.getOrDefault(Triple("Unknown", "Unknown", "Unknown"))
     }
@@ -1719,53 +1960,54 @@ class CameraRepositoryImpl @Inject constructor(
     }
 
     /**
-     * Build a list of candidate live view start operations with their parameters.
-     * The brand strategy comes first; redundant fallbacks are appended so we can
-     * try multiple methods if the primary opcode is rejected.
+     * 仅使用当前品牌策略定义的实时取景启动操作码，不再尝试跨品牌 fallback。
+     * 向 Nikon 等机身发送 Canon/Panasonic 厂商操作码会把 PTP 会话推入错误状态，
+     * 导致后续命令无响应。
      */
     private fun liveViewStartCandidates(): List<Pair<Short, IntArray>> {
-        val candidates = mutableListOf<Pair<Short, IntArray>>()
-        brandStrategy.liveViewStartOperation?.let {
-            candidates.add(it to brandStrategy.liveViewStartParams)
-        }
-        // Cross-brand fallbacks for tethering apps that identify the wrong brand
-        candidates.add(PtpConstants.NIKON_OPERATION_START_LIVEVIEW to IntArray(0))
-        candidates.add(PtpConstants.CANON_EOS_OPERATION_INITIATE_VIEWFINDER to IntArray(0))
-        candidates.add(PtpConstants.PANASONIC_OPERATION_LIVEVIEW to intArrayOf(0x0d000010))
-        candidates.add(PtpConstants.OPERATION_INITIATE_OPEN_CAPTURE to intArrayOf(0, 0))
-        return candidates.distinctBy { it.first }
+        val op = brandStrategy.liveViewStartOperation ?: return emptyList()
+        return listOf(op to brandStrategy.liveViewStartParams)
     }
 
     /**
-     * Build a list of candidate live view frame read operations. Some cameras
-     * expose live view through more than one vendor opcode; trying them in turn
-     * increases the chance of getting a frame.
+     * 仅使用当前品牌策略定义的实时取景取图操作码，不再尝试跨品牌 fallback。
      */
     private fun liveViewGetCandidates(): List<Short> {
-        val candidates = mutableListOf<Short>()
-        brandStrategy.liveViewGetOperation?.let { candidates.add(it) }
-        when (brandStrategy.brand) {
-            CameraBrand.Nikon -> candidates.add(PtpConstants.NIKON_OPERATION_GET_LIVEVIEW_IMAGE)
-            CameraBrand.Canon -> candidates.add(PtpConstants.CANON_EOS_OPERATION_GET_VIEWFINDER_DATA)
-            CameraBrand.Sony -> candidates.add(PtpConstants.SONY_OPERATION_GET_LIVEVIEW_IMAGE)
-            CameraBrand.Fuji -> candidates.add(PtpConstants.FUJI_OPERATION_GET_CAPTURE_PREVIEW)
-            CameraBrand.Panasonic -> candidates.add(PtpConstants.PANASONIC_OPERATION_LIVEVIEW_IMAGE)
-            CameraBrand.Olympus -> candidates.add(PtpConstants.OLYMPUS_OPERATION_GET_LIVEVIEW_IMAGE)
-            else -> { /* no generic fallback */ }
-        }
-        return candidates.distinct()
+        val op = brandStrategy.liveViewGetOperation ?: return emptyList()
+        return listOf(op)
     }
 
     /**
      * 启动品牌特定事件轮询循环。Nikon/Canon EOS 等老机身在 PC 模式下会积压事件，
-     * 不及时读取会导致命令被 busy 或进入“正在连接 PC”的假死状态。
-     * 循环定期调用品牌策略中的 eventPollOperation 清空事件队列，对事件内容只做日志。
+     * 不及时读取会导致命令被 busy 或进入"正在连接 PC"的假死状态。
+     *
+     * 关键：Nikon 等老机身（典型如 D5200）对事件轮询频率非常敏感——
+     * 每 800ms 轮询一次会让机身一直显示"正在连接 PC"，并占用大量 USB 带宽，
+     * 进而让用户感知的曝光补偿等属性读写出错。因此：
+     * 1. 空闲间隔设为 3 秒（仅在 B 门/连拍/取景全部停止时才使用）
+     * 2. 进入 B 门/连拍/取景状态时切换到 200ms 短间隔轮询（不带数据，仅命令），
+     *    以便及时把机身状态变化的事件取出，避免积压后被相机当 busy 拒收
+     * 3. 仅在已连接且未处于活动状态时执行完整轮询，最大限度减少与其它 PTP 命令冲突
      */
     private fun startEventLoop() {
         val pollOp = brandStrategy.eventPollOperation ?: return
         eventLoopJob?.cancel()
         eventLoopJob = scope.launch {
             while (isActive && ensureConnected()) {
+                val active = isBulbInProgress || _burstRunning.value || _liveViewEnabled.value
+                if (active) {
+                    // 活动期短间隔（200ms）无数据轮询，仅把事件队列清空
+                    // 使用 sendCommand 而非 sendCommandWithData，
+                    // 避免与正在进行的取景/拍摄 Data 阶段粘包造成数据错乱
+                    runCatching {
+                        val conn = currentConnection ?: return@runCatching
+                        conn.sendCommand(pollOp)
+                    }
+                    delay(200)
+                    continue
+                }
+                // 空闲期使用 3 秒长间隔，降低 USB 总线占用，
+                // 避免 Nikon 机身在空闲时仍被高频事件轮询卡在"正在连接 PC"
                 runCatching {
                     val conn = currentConnection ?: return@runCatching
                     val data = conn.sendCommandWithData(pollOp)
@@ -1791,7 +2033,7 @@ class CameraRepositoryImpl @Inject constructor(
                         )
                     )
                 }
-                delay(800)
+                delay(3000)
             }
         }
     }
@@ -1802,28 +2044,76 @@ class CameraRepositoryImpl @Inject constructor(
     }
 
     /**
+     * 启动周期属性同步：在连接且非活动状态时，每 5 秒同步一次曝光参数。
+     * 这样无需用户手动触发即可让 UI（曝光补偿 / ISO / 光圈 / 快门）与相机保持一致，
+     * 避免在事件循环高频 GET_EVENT 干扰下让用户看到"乱跳"或"残留"的数据。
+     *
+     * 关键安全保证：仅在未处于 B 门 / 连拍 / 取景状态时同步，
+     * 避免与正在进行的命令争抢 USB 端点；同步任务之间用 ptpLock 互斥。
+     */
+    private fun startPeriodicPropertySync() {
+        periodicSyncJob?.cancel()
+        periodicSyncJob = scope.launch {
+            while (isActive) {
+                delay(5000)
+                if (!isActive) break
+                if (_connectionState.value !is ConnectionState.Connected) continue
+                if (isBulbInProgress || _burstRunning.value || _liveViewEnabled.value) continue
+                // 仅在事件循环空闲时才同步，避免和 GET_EVENT 抢 USB 端点
+                val active = eventLoopJob?.isActive == true
+                if (active) {
+                    runCatching { readNikonExposureFromCamera(delayMs = 0) }
+                }
+            }
+        }
+    }
+
+    private fun stopPeriodicPropertySync() {
+        periodicSyncJob?.cancel()
+        periodicSyncJob = null
+    }
+
+    /**
      * Poll device-ready command until the camera reports OK or the timeout
      * expires. This mirrors libgphoto2's nikon_wait_busy and is required after
      * starting live view, changing modes, or triggering capture on cameras like
      * the D5200. If the brand strategy has no deviceReadyOperation, this is a
      * simple delay to avoid hammering the bus.
+     *
+     * 注意：日志显示 0x90C8 DeviceReady 在每次调用中都会返回 0x2019 DeviceBusy
+     * 数十次（紧循环无延迟），会让相机一直处于"正在连接 PC"状态。这里强制
+     * 最小 60ms 间隔 + 指数退避 + 总次数上限，避免对 PTP 会话造成雪崩式
+     * 压力。
      */
     private suspend fun waitForDeviceReady(
         conn: CameraConnection? = currentConnection,
-        waitMs: Long = 50,
-        timeoutMs: Long = 2000
+        waitMs: Long = 80,
+        timeoutMs: Long = 2000,
+        maxAttempts: Int = 25
     ) {
         conn ?: return
         val readyOp = brandStrategy.deviceReadyOperation
-        val end = System.currentTimeMillis() + timeoutMs
-        while (System.currentTimeMillis() < end) {
-            if (readyOp != null) {
-                val (code, _) = runCatching {
-                    conn.sendCommand(readyOp)
-                }.getOrDefault(PtpConstants.RESPONSE_GENERAL_ERROR to IntArray(0))
-                if (code == PtpConstants.RESPONSE_OK) return
-            }
+        if (readyOp == null) {
             delay(waitMs.coerceAtLeast(20))
+            return
+        }
+        val end = System.currentTimeMillis() + timeoutMs
+        var attempt = 0
+        var currentDelay = waitMs.coerceAtLeast(60)
+        while (attempt < maxAttempts && System.currentTimeMillis() < end) {
+            val (code, _) = runCatching {
+                conn.sendCommand(readyOp)
+            }.getOrDefault(PtpConstants.RESPONSE_GENERAL_ERROR to IntArray(0))
+            attempt++
+            if (code == PtpConstants.RESPONSE_OK) return
+            // 0x2019 DeviceBusy 是相机的正常状态机返回，不应当作错误抛出，
+            // 只需要退避重试
+            delay(currentDelay)
+            // 指数退避，但封顶 250ms，避免长时间阻塞 UI
+            currentDelay = (currentDelay * 2).coerceAtMost(250)
+        }
+        if (attempt >= maxAttempts) {
+            AppLogger.w("waitForDeviceReady: hit max attempts=$maxAttempts, op=${String.format(Locale.US, "0x%04X", readyOp)}")
         }
     }
 

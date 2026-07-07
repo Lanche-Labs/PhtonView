@@ -18,6 +18,7 @@ interface BrandStrategy {
 
     /** 拍摄相关操作码 */
     val captureOperation: Short
+    val bulbOperation: Short?
     val changeCameraModeOperation: Short?
     val terminateCaptureOperation: Short?
     val afDriveOperation: Short?
@@ -70,6 +71,7 @@ object NikonStrategy : BrandStrategy {
     override val liveViewStopOperation = PtpConstants.NIKON_OPERATION_STOP_LIVEVIEW
     override val liveViewGetOperation = PtpConstants.NIKON_OPERATION_GET_LIVEVIEW_IMAGE
     override val captureOperation = PtpConstants.NIKON_OPERATION_INITIATE_CAPTURE_REC_IN_MEDIA
+    override val bulbOperation = PtpConstants.NIKON_OPERATION_INITIATE_BULB_CAPTURE
     override val changeCameraModeOperation = PtpConstants.NIKON_OPERATION_CHANGE_CAMERA_MODE
     override val terminateCaptureOperation = PtpConstants.NIKON_OPERATION_TERMINATE_CAPTURE
     override val afDriveOperation = PtpConstants.NIKON_OPERATION_AF_DRIVE
@@ -94,6 +96,7 @@ object CanonStrategy : BrandStrategy {
     override val liveViewStopOperation = PtpConstants.CANON_EOS_OPERATION_TERMINATE_VIEWFINDER
     override val liveViewGetOperation = PtpConstants.CANON_EOS_OPERATION_GET_VIEWFINDER_DATA
     override val captureOperation = PtpConstants.OPERATION_INITIATE_CAPTURE
+    override val bulbOperation = null
     override val changeCameraModeOperation = PtpConstants.CANON_EOS_OPERATION_SET_REMOTE_MODE
     override val terminateCaptureOperation = null
     override val afDriveOperation = PtpConstants.CANON_EOS_OPERATION_DO_AF
@@ -118,6 +121,7 @@ object SonyStrategy : BrandStrategy {
     override val liveViewStopOperation = PtpConstants.SONY_OPERATION_SDIO_CONNECT
     override val liveViewGetOperation = PtpConstants.SONY_OPERATION_GET_LIVEVIEW_IMAGE
     override val captureOperation = PtpConstants.OPERATION_INITIATE_CAPTURE
+    override val bulbOperation = null
     override val changeCameraModeOperation = PtpConstants.SONY_OPERATION_SDIO_CONTROL_DEVICE
     override val terminateCaptureOperation = null
     override val afDriveOperation = PtpConstants.SONY_OPERATION_SDIO_CONTROL_DEVICE
@@ -142,6 +146,7 @@ object FujiStrategy : BrandStrategy {
     override val liveViewStopOperation = PtpConstants.OPERATION_TERMINATE_OPEN_CAPTURE
     override val liveViewGetOperation = PtpConstants.FUJI_OPERATION_GET_CAPTURE_PREVIEW
     override val captureOperation = PtpConstants.OPERATION_INITIATE_CAPTURE
+    override val bulbOperation = null
     override val changeCameraModeOperation = null
     override val terminateCaptureOperation = PtpConstants.OPERATION_TERMINATE_OPEN_CAPTURE
     override val afDriveOperation = PtpConstants.FUJI_OPERATION_SET_FOCUS_POINT
@@ -165,6 +170,7 @@ object PanasonicStrategy : BrandStrategy {
     override val liveViewStopOperation = PtpConstants.PANASONIC_OPERATION_LIVEVIEW
     override val liveViewGetOperation = PtpConstants.PANASONIC_OPERATION_LIVEVIEW_IMAGE
     override val captureOperation = PtpConstants.PANASONIC_OPERATION_INITIATE_CAPTURE
+    override val bulbOperation = null
     override val changeCameraModeOperation = null
     override val terminateCaptureOperation = null
     override val afDriveOperation = PtpConstants.PANASONIC_OPERATION_MANUAL_FOCUS_DRIVE
@@ -189,6 +195,7 @@ object OlympusStrategy : BrandStrategy {
     override val liveViewStopOperation = null
     override val liveViewGetOperation = PtpConstants.OLYMPUS_OPERATION_GET_LIVEVIEW_IMAGE
     override val captureOperation = PtpConstants.OLYMPUS_OPERATION_OMD_CAPTURE
+    override val bulbOperation = null
     override val changeCameraModeOperation = null
     override val terminateCaptureOperation = null
     override val afDriveOperation = PtpConstants.OLYMPUS_OPERATION_OMD_MF_DRIVE
@@ -213,6 +220,7 @@ object PentaxStrategy : BrandStrategy {
     override val liveViewStopOperation = null
     override val liveViewGetOperation = null
     override val captureOperation = PtpConstants.OPERATION_INITIATE_CAPTURE
+    override val bulbOperation = null
     override val changeCameraModeOperation = null
     override val terminateCaptureOperation = null
     override val afDriveOperation = null
@@ -235,6 +243,7 @@ object RicohStrategy : BrandStrategy {
     override val liveViewStopOperation = null
     override val liveViewGetOperation = null
     override val captureOperation = PtpConstants.OPERATION_INITIATE_CAPTURE
+    override val bulbOperation = null
     override val changeCameraModeOperation = null
     override val terminateCaptureOperation = null
     override val afDriveOperation = null
@@ -257,6 +266,7 @@ object LeicaStrategy : BrandStrategy {
     override val liveViewStopOperation = null
     override val liveViewGetOperation = null
     override val captureOperation = PtpConstants.OPERATION_INITIATE_CAPTURE
+    override val bulbOperation = null
     override val changeCameraModeOperation = null
     override val terminateCaptureOperation = null
     override val afDriveOperation = null
@@ -279,6 +289,7 @@ object SigmaStrategy : BrandStrategy {
     override val liveViewStopOperation = null
     override val liveViewGetOperation = null
     override val captureOperation = PtpConstants.OPERATION_INITIATE_CAPTURE
+    override val bulbOperation = null
     override val changeCameraModeOperation = null
     override val terminateCaptureOperation = null
     override val afDriveOperation = null
@@ -302,6 +313,7 @@ object TamronStrategy : BrandStrategy {
     override val liveViewStopOperation = null
     override val liveViewGetOperation = null
     override val captureOperation = PtpConstants.OPERATION_INITIATE_CAPTURE
+    override val bulbOperation = null
     override val changeCameraModeOperation = null
     override val terminateCaptureOperation = null
     override val afDriveOperation = null
@@ -325,6 +337,7 @@ object KodakStrategy : BrandStrategy {
     override val liveViewStopOperation = null
     override val liveViewGetOperation = null
     override val captureOperation = PtpConstants.OPERATION_INITIATE_CAPTURE
+    override val bulbOperation = null
     override val changeCameraModeOperation = null
     override val terminateCaptureOperation = null
     override val afDriveOperation = null
@@ -347,6 +360,7 @@ object GenericStrategy : BrandStrategy {
     override val liveViewStopOperation = null
     override val liveViewGetOperation = null
     override val captureOperation = PtpConstants.OPERATION_INITIATE_CAPTURE
+    override val bulbOperation = null
     override val changeCameraModeOperation = null
     override val terminateCaptureOperation = null
     override val afDriveOperation = null

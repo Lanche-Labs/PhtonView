@@ -148,6 +148,7 @@ data class CameraStatus(
     val shotsRemaining: Int = -1,
     val shutterCount: Int = -1,
     val firmwareVersion: String = "Unknown",
+    val manufacturer: String = "Unknown",
     val isRecordingVideo: Boolean = false
 )
 

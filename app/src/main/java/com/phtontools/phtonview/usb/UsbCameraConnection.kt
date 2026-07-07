@@ -26,6 +26,7 @@ import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -50,6 +51,9 @@ class UsbCameraConnection @Inject constructor(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val connectionLock = Mutex()
+    // 序列化所有 PTP USB 命令（sendCommand / sendCommandWithData），避免事件循环、
+    // 属性轮询、拍摄命令并发访问 bulk 端点导致数据错乱。
+    private val ptpLock = Mutex()
 
     private val _permissionState = MutableStateFlow(false)
     val permissionState: StateFlow<Boolean> = _permissionState
@@ -65,6 +69,9 @@ class UsbCameraConnection @Inject constructor(
 
     // 连续 USB bulk 传输失败计数，用于检测端点失效并自动恢复。
     private val consecutiveBulkFailures = AtomicInteger(0)
+
+    // 防止 USB attached/permission/connect 广播并发触发多次 openDevice，导致旧连接被中途关闭。
+    private val isOpeningDevice = AtomicBoolean(false)
 
     private val usbReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -238,10 +245,12 @@ class UsbCameraConnection @Inject constructor(
 
     override suspend fun connect() {
         AppLogger.d("connect() called")
-        // Avoid resetting back to Connecting if we are already connected.
-        if (_connectionState.value !is CameraConnection.ConnectionState.Connected) {
-            _connectionState.value = CameraConnection.ConnectionState.Connecting
+        val current = _connectionState.value
+        if (current is CameraConnection.ConnectionState.Connected || current is CameraConnection.ConnectionState.Connecting) {
+            AppLogger.d("USB already ${current.javaClass.simpleName}, skip duplicate connect")
+            return
         }
+        _connectionState.value = CameraConnection.ConnectionState.Connecting
         try {
             val device = findAndRequestCameraWithRetry()
             if (device == null) {
@@ -262,16 +271,22 @@ class UsbCameraConnection @Inject constructor(
      */
     private fun openDevice(device: UsbDevice) {
         AppLogger.d("Opening USB device: ${device.productName}")
-        // 已经连接同一台设备时直接跳过，避免广播/权限回调重复触发导致反复重连
+        // 已经连接或正在连接同一台设备时直接跳过，避免广播/权限回调重复触发导致反复重连
+        val state = _connectionState.value
         if (cameraDevice?.deviceId == device.deviceId &&
-            _connectionState.value is CameraConnection.ConnectionState.Connected
+            (state is CameraConnection.ConnectionState.Connected || state is CameraConnection.ConnectionState.Connecting)
         ) {
-            AppLogger.d("Device ${device.deviceId} already connected, skip duplicate open")
+            AppLogger.d("Device ${device.deviceId} already connected/connecting, skip duplicate open")
             return
         }
-        if (connection != null && cameraDevice?.deviceId == device.deviceId) return
+        // 原子方式抢占 openDevice 执行权；有另一个协程正在打开时直接返回，避免中途关闭旧连接。
+        if (!isOpeningDevice.compareAndSet(false, true)) {
+            AppLogger.d("Another openDevice in progress, skip duplicate open for ${device.deviceId}")
+            return
+        }
 
         val newConnection = usbManager.openDevice(device) ?: run {
+            isOpeningDevice.set(false)
             AppLogger.e("Failed to open USB device")
             _connectionState.value = CameraConnection.ConnectionState.Error("Failed to open USB device")
             return
@@ -294,6 +309,7 @@ class UsbCameraConnection @Inject constructor(
         }
 
         if (inputEndpoint == null || outputEndpoint == null) {
+            isOpeningDevice.set(false)
             newConnection.close()
             _connectionState.value = CameraConnection.ConnectionState.Error("USB endpoints not found")
             return
@@ -330,6 +346,8 @@ class UsbCameraConnection @Inject constructor(
                 AppLogger.e("Failed to open PTP session", e)
                 cleanupFailedConnection(newConnection)
                 _connectionState.value = CameraConnection.ConnectionState.Error("PTP session failed: ${e.message}")
+            } finally {
+                isOpeningDevice.set(false)
             }
         }
     }
@@ -482,23 +500,24 @@ class UsbCameraConnection @Inject constructor(
                 throw IllegalStateException("Failed to read response")
             }
             AppLogger.logUsb("IN", responseBytes, responseBytes.size)
-            return extractResponseContainer(responseBytes)
+            return extractResponseContainer(responseBytes, command.transactionId)
         }
 
-        val result = runCatching { transferOnce() }.getOrElse { firstError ->
-            AppLogger.report("B", "UsbCameraConnection.kt:sendCommandInternal", "First attempt failed, retry", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "error" to (firstError.message ?: "unknown")))
-            val failures = consecutiveBulkFailures.incrementAndGet()
-            if (failures >= 3) {
-                AppLogger.w("sendCommandInternal: consecutive failures=$failures, attempting USB endpoint recovery")
-                if (recoverUsbEndpoint()) {
-                    consecutiveBulkFailures.set(0)
-                    return@getOrElse transferOnce()
+        val result = ptpLock.withLock {
+            runCatching { transferOnce() }.getOrElse { firstError ->
+                AppLogger.report("B", "UsbCameraConnection.kt:sendCommandInternal", "First attempt failed, retry", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "error" to (firstError.message ?: "unknown")))
+                val failures = consecutiveBulkFailures.incrementAndGet()
+                if (failures >= 3) {
+                    AppLogger.w("sendCommandInternal: consecutive failures=$failures, attempting USB endpoint recovery")
+                    if (recoverUsbEndpoint()) {
+                        consecutiveBulkFailures.set(0)
+                        return@withLock transferOnce()
+                    }
                 }
-            }
-            delay(50)
-            runCatching { transferOnce() }.getOrElse { throw firstError }
+                delay(50)
+                runCatching { transferOnce() }.getOrElse { throw firstError }
+            }.also { consecutiveBulkFailures.set(0) }
         }
-        consecutiveBulkFailures.set(0)
         // #region debug-point B:ptp-response
         AppLogger.report("B", "UsbCameraConnection.kt:sendCommandInternal", "PTP response", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "responseCode" to String.format(Locale.US, "0x%04X", result.first), "responseParams" to result.second.joinToString()))
         // #endregion
@@ -508,30 +527,165 @@ class UsbCameraConnection @Inject constructor(
     /**
      * 从一次 bulk 读取结果中定位并解码 PTP Response 容器。
      * 某些相机会在响应前附带事件容器或粘包数据，这里遍历所有容器找到类型为 0x0003 的响应。
+     *
+     * 关键：Nikon 0x90C7 GET_EVENT 等 vendor 扩展命令的响应**只包含 Data 容器
+     * 而没有 Response 容器**（Nikon MTP 私有协议）。如果一个命令的响应里没找到
+     * Response 容器但找到了 Data 容器，说明这是事件类命令，应返回 0x2001 OK
+     * （GET_EVENT 没有 Response 容器，Nikon D5200 实测验证），而不是错误地把
+     * Data 容器当成 Response 解析（曾经导致 responseCode=0x90C7 与 6 个乱码 params）。
+     *
+     * @param expectedTid 当前命令的事务 ID；不匹配 TID 的 Response 容器会被跳过，
+     *        防止追读时拾取到下一条命令的响应而造成错乱。
      */
-    private fun extractResponseContainer(rawBytes: ByteArray): Pair<Short, IntArray> {
+    private fun extractResponseContainer(rawBytes: ByteArray, expectedTid: Int = 0): Pair<Short, IntArray> {
         var offset = 0
+        var foundData = false
+        var lastContainerType: Short = -1
         while (offset + 12 <= rawBytes.size) {
-            val bb = ByteBuffer.wrap(rawBytes, offset, rawBytes.size - offset)
-            bb.order(ByteOrder.LITTLE_ENDIAN)
-            val containerLength = bb.getInt(0)
-            val containerType = bb.getShort(4)
+            // 重要：ByteBuffer.wrap(array, offset, length) 的 arrayOffset() 始终为 0，
+            // absolute get 不会自动加上传入的 offset，必须手动在索引上加上 offset。
+            val containerLength = readInt32(rawBytes, offset)
+            val containerType = readInt16(rawBytes, offset + 4)
+            lastContainerType = containerType
             if (containerLength < 12 || offset + containerLength > rawBytes.size) {
                 //  malformed container, decode the first valid-looking response at offset
                 return PtpCommand.decodeResponse(rawBytes.copyOfRange(offset, rawBytes.size.coerceAtMost(offset + 512)))
             }
-            if (containerType == PtpConstants.CONTAINER_TYPE_RESPONSE) {
-                return PtpCommand.decodeResponse(rawBytes.copyOfRange(offset, offset + containerLength))
+            when (containerType) {
+                PtpConstants.CONTAINER_TYPE_RESPONSE -> {
+                    if (expectedTid != 0) {
+                        val containerTid = readInt32(rawBytes, offset + 8)
+                        if (containerTid != 0 && containerTid != expectedTid) {
+                            AppLogger.d("extractResponseContainer: skip TID mismatch response tid=$containerTid expected=$expectedTid at offset=$offset")
+                            offset += containerLength
+                            continue
+                        }
+                    }
+                    return PtpCommand.decodeResponse(rawBytes.copyOfRange(offset, offset + containerLength))
+                }
+                PtpConstants.CONTAINER_TYPE_DATA -> {
+                    // Data 容器（特别是 GET_EVENT 的响应）单独存在时不需要解码为 Response，
+                    // 仅记录已发现 Data 用于兜底判断
+                    foundData = true
+                    offset += containerLength
+                }
+                else -> {
+                    // 事件/Command 容器等跳过
+                    offset += containerLength
+                }
             }
-            offset += containerLength
+        }
+        // 兜底：仅含 Data 容器（无 Response）的情况——Nikon GET_EVENT 等命令就是这种格式。
+        // 视为成功 0x2001 OK，避免把 Data 容器误解码为 Response（曾导致 responseCode=0x90C7 与 6 个乱码 params）
+        if (foundData && lastContainerType == PtpConstants.CONTAINER_TYPE_DATA) {
+            AppLogger.d("extractResponseContainer: only Data container found (event-like command), assume OK")
+            return 0x2001.toShort() to intArrayOf()
         }
         // 兜底：按原始数据解码
         return PtpCommand.decodeResponse(rawBytes)
     }
 
     /**
-     * 严格按 512 字节包读取一次完整的 USB bulk 传输，直到遇到短包或零长度包。
-     * PTP/MTP 规范要求以短包/ZLP 标识传输结束，否则同一 PTP 容器可能被截断。
+     * 从一次或多次 bulk 读取结果中解析 Data 容器与 Response 容器。
+     * 返回剥离 Response 后的 dataBytes（保留 Data 容器头部供 decodeDataPayload 处理）
+     * 以及 Response code；若未找到 Response 则返回 -1。
+     *
+     * @param expectedTid 当前命令的事务 ID，用于丢弃不匹配 TID 的容器（防止追读
+     *        200ms 时拾取到下一条命令的 Response 导致数据串台）。传 0 时跳过校验。
+     */
+    private fun extractDataAndResponse(rawBytes: ByteArray, expectedTid: Int = 0): Pair<ByteArray, Short> {
+        var responseCode: Short = -1
+        val result = ByteArrayOutputStream(rawBytes.size)
+        var offset = 0
+        var containerCount = 0
+        var discardedTidMismatch = 0
+        while (offset + 12 <= rawBytes.size) {
+            // 重要：ByteBuffer.wrap(array, offset, length) 的 arrayOffset() 始终为 0，
+            // absolute get 不会自动加上传入的 offset，必须手动在索引上加上 offset。
+            val containerLength = readInt32(rawBytes, offset)
+            val containerType = readInt16(rawBytes, offset + 4)
+            containerCount++
+            if (containerLength < 12 || offset + containerLength > rawBytes.size) {
+                // 容器长度异常，剩余数据作为原始 payload 保留
+                AppLogger.d("extractDataAndResponse: malformed container at offset=$offset length=$containerLength total=${rawBytes.size}")
+                result.write(rawBytes, offset, rawBytes.size - offset)
+                break
+            }
+            // TID 校验：仅对 Data/Response 容器进行匹配。事件容器 0x0004 不带 TID
+            // （保留 0 或 0xFFFFFFFF），不应校验；其他厂商特定容器若带 TID 不匹配，
+            // 也应丢弃，防止追读 200ms 时拾取到下个命令的响应而造成数据错乱。
+            val containerTid = if (containerType == PtpConstants.CONTAINER_TYPE_DATA ||
+                containerType == PtpConstants.CONTAINER_TYPE_RESPONSE
+            ) readInt32(rawBytes, offset + 8) else 0
+            if (expectedTid != 0 && containerTid != 0 && containerTid != expectedTid) {
+                discardedTidMismatch++
+                AppLogger.d("extractDataAndResponse: skip TID mismatch container type=${String.format(Locale.US, "0x%04X", containerType)} tid=$containerTid expected=$expectedTid length=$containerLength")
+                offset += containerLength
+                continue
+            }
+            when (containerType) {
+                PtpConstants.CONTAINER_TYPE_RESPONSE -> {
+                    responseCode = readInt16(rawBytes, offset + 6)
+                    AppLogger.d("extractDataAndResponse: found Response container #$containerCount code=${String.format(Locale.US, "0x%04X", responseCode)} offset=$offset")
+                    offset += containerLength
+                    break
+                }
+                PtpConstants.CONTAINER_TYPE_DATA -> {
+                    result.write(rawBytes, offset, containerLength)
+                    offset += containerLength
+                }
+                else -> {
+                    // 事件或其他容器直接跳过
+                    AppLogger.d("extractDataAndResponse: skip container type=${String.format(Locale.US, "0x%04X", containerType)} length=$containerLength")
+                    offset += containerLength
+                }
+            }
+        }
+
+        var dataBytes = result.toByteArray()
+        // 兼容：响应容器可能粘在 dataBytes 尾部
+        if (responseCode == (-1).toShort() && dataBytes.size >= 12) {
+            val tailOffset = dataBytes.size - 12
+            if (readInt16(dataBytes, tailOffset + 4) == PtpConstants.CONTAINER_TYPE_RESPONSE) {
+                val tailLength = readInt32(dataBytes, tailOffset)
+                if (tailLength == 12 && tailOffset + tailLength == dataBytes.size) {
+                    val tailTid = readInt32(dataBytes, tailOffset + 8)
+                    if (expectedTid == 0 || tailTid == 0 || tailTid == expectedTid) {
+                        responseCode = readInt16(dataBytes, tailOffset + 6)
+                        AppLogger.d("extractDataAndResponse: found Response at tail code=${String.format(Locale.US, "0x%04X", responseCode)}")
+                        dataBytes = dataBytes.copyOf(tailOffset)
+                    } else {
+                        AppLogger.d("extractDataAndResponse: tail Response TID mismatch tid=$tailTid expected=$expectedTid, keep dataBytes as-is")
+                    }
+                }
+            }
+        }
+        if (responseCode == (-1).toShort()) {
+            AppLogger.d("extractDataAndResponse: no Response found in ${rawBytes.size} bytes, containers=$containerCount discardedTid=$discardedTidMismatch")
+        }
+        return dataBytes to responseCode
+    }
+
+    /**
+     * Little-endian 32 位整数读取（不再依赖 ByteBuffer.wrap 的 arrayOffset 行为）。
+     */
+    private fun readInt32(buf: ByteArray, index: Int): Int =
+        ((buf[index].toInt() and 0xFF)) or
+            ((buf[index + 1].toInt() and 0xFF) shl 8) or
+            ((buf[index + 2].toInt() and 0xFF) shl 16) or
+            ((buf[index + 3].toInt() and 0xFF) shl 24)
+
+    /**
+     * Little-endian 16 位整数读取（不再依赖 ByteBuffer.wrap 的 arrayOffset 行为）。
+     */
+    private fun readInt16(buf: ByteArray, index: Int): Short =
+        (((buf[index].toInt() and 0xFF)) or
+            ((buf[index + 1].toInt() and 0xFF) shl 8)).toShort()
+
+    /**
+     * 按 512 字节包读取一次 USB bulk 传输，直到遇到短包或零长度包。
+     * 只读取一个传输阶段（Data 或 Response），不跨阶段阻塞，避免 D5200 等
+     * 老机身在 Data 阶段结束后长时间等待 Response 而触发 USB 断开。
      */
     private suspend fun readAllBulkPackets(conn: UsbDeviceConnection, inEp: UsbEndpoint, timeoutMs: Int): ByteArray = withContext(Dispatchers.IO) {
         val packetBuffer = ByteArray(USB_BULK_MAX_PACKET_SIZE)
@@ -559,6 +713,7 @@ class UsbCameraConnection @Inject constructor(
         val inEp = bulkInEndpoint ?: throw IllegalStateException("Input endpoint not found")
 
         val commandBytes = command.encode()
+        val expectedTid = command.transactionId
         AppLogger.logUsb("OUT", commandBytes)
         // #region debug-point B:ptp-data-command
         AppLogger.report("B", "UsbCameraConnection.kt:sendCommandWithDataInternal", "PTP data command", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "tid" to command.transactionId.toString(), "params" to command.parameters.joinToString()))
@@ -571,80 +726,58 @@ class UsbCameraConnection @Inject constructor(
                 throw IllegalStateException("bulkTransfer OUT failed: $written")
             }
 
-            val rawBytes = readAllBulkPackets(conn, inEp, timeoutMs)
+            // 先读取 Data 阶段（短包结束），避免长时间阻塞导致老机身断开。
+            val dataPhase = readAllBulkPackets(conn, inEp, timeoutMs)
+            // 仅当 dataPhase 末尾为 Data 容器（无 Response 紧跟）时再追读一次 Response，
+            // 避免误读下个命令的响应导致 TID 错乱。
+            val needMoreResponse = dataPhase.isNotEmpty() && !endsWithResponse(dataPhase)
+            val responsePhase = if (needMoreResponse) {
+                runCatching { readAllBulkPackets(conn, inEp, 200) }.getOrDefault(ByteArray(0))
+            } else ByteArray(0)
+            val rawBytes = dataPhase + responsePhase
+
             AppLogger.d("bulkTransfer IN total returned: ${rawBytes.size}")
             AppLogger.logUsb("IN", rawBytes, rawBytes.size)
 
-            var responseCode: Short = -1
-            val result = ByteArrayOutputStream(rawBytes.size)
-            var offset = 0
-
-            while (offset + 12 <= rawBytes.size) {
-                val bb = ByteBuffer.wrap(rawBytes, offset, rawBytes.size - offset)
-                bb.order(ByteOrder.LITTLE_ENDIAN)
-                val containerLength = bb.getInt(0)
-                val containerType = bb.getShort(4)
-
-                if (containerLength < 12 || offset + containerLength > rawBytes.size) {
-                    // 容器长度异常，剩余数据作为原始 payload 保留
-                    result.write(rawBytes, offset, rawBytes.size - offset)
-                    break
-                }
-
-                when (containerType) {
-                    PtpConstants.CONTAINER_TYPE_RESPONSE -> {
-                        responseCode = bb.getShort(6)
-                        offset += containerLength
-                        break
-                    }
-                    PtpConstants.CONTAINER_TYPE_DATA -> {
-                        // 保留首个数据容器完整头部，后续 decodeDataPayload 自行剥离
-                        result.write(rawBytes, offset, containerLength)
-                        offset += containerLength
-                    }
-                    else -> {
-                        // 未知容器，跳过
-                        offset += containerLength
-                    }
-                }
-            }
-
-            var dataBytes = result.toByteArray()
-
-            // 兼容：响应容器可能粘在最后一个数据包尾部（已被上面的循环处理）
-            if (responseCode == (-1).toShort() && dataBytes.size >= 12) {
-                val tailOffset = dataBytes.size - 12
-                val bb = ByteBuffer.wrap(dataBytes, tailOffset, 12)
-                bb.order(ByteOrder.LITTLE_ENDIAN)
-                val containerType = bb.getShort(4)
-                if (containerType == PtpConstants.CONTAINER_TYPE_RESPONSE) {
-                    responseCode = bb.getShort(6)
-                    dataBytes = dataBytes.copyOf(tailOffset)
-                }
-            }
+            val (dataBytes, responseCode) = extractDataAndResponse(rawBytes, expectedTid)
             // #region debug-point B:ptp-data-response
             AppLogger.report("B", "UsbCameraConnection.kt:sendCommandWithDataInternal", "PTP data response", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "responseCode" to String.format(Locale.US, "0x%04X", responseCode), "bytes" to dataBytes.size.toString()))
             // #endregion
             return dataBytes to responseCode
         }
 
-        val (data, responseCode) = runCatching { transferOnce() }.getOrElse { firstError ->
-            val failures = consecutiveBulkFailures.incrementAndGet()
-            if (failures >= 3) {
-                AppLogger.w("sendCommandWithDataInternal: consecutive failures=$failures, attempting USB endpoint recovery")
-                if (recoverUsbEndpoint()) {
-                    consecutiveBulkFailures.set(0)
-                    return@getOrElse transferOnce()
+        val (data, responseCode) = ptpLock.withLock {
+            runCatching { transferOnce() }.getOrElse { firstError ->
+                val failures = consecutiveBulkFailures.incrementAndGet()
+                if (failures >= 3) {
+                    AppLogger.w("sendCommandWithDataInternal: consecutive failures=$failures, attempting USB endpoint recovery")
+                    if (recoverUsbEndpoint()) {
+                        consecutiveBulkFailures.set(0)
+                        return@withLock transferOnce()
+                    }
                 }
-            }
-            delay(50)
-            runCatching { transferOnce() }.getOrElse { throw firstError }
+                delay(50)
+                runCatching { transferOnce() }.getOrElse { throw firstError }
+            }.also { consecutiveBulkFailures.set(0) }
         }
-        consecutiveBulkFailures.set(0)
         if (responseCode != PtpConstants.RESPONSE_OK && responseCode.toInt() != -1) {
             AppLogger.report("B", "UsbCameraConnection.kt:sendCommandWithDataInternal", "Non-OK response", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "responseCode" to String.format(Locale.US, "0x%04X", responseCode)))
         }
         data
+    }
+
+    /**
+     * 检查 dataPhase 末尾是否已经包含一个 Response 容器（Data+Response 粘包）。
+     * 仅看最后 12 字节，避免被前置 Data 容器干扰。
+     */
+    private fun endsWithResponse(dataPhase: ByteArray): Boolean {
+        if (dataPhase.size < 12) return false
+        val offset = dataPhase.size - 12
+        val length = readInt32(dataPhase, offset)
+        // 长度必须覆盖到 dataPhase 末尾，且容器类型为 Response
+        if (offset + length != dataPhase.size) return false
+        val type = readInt16(dataPhase, offset + 4)
+        return type == PtpConstants.CONTAINER_TYPE_RESPONSE
     }
 
     override suspend fun getDeviceInfo(): String {
@@ -671,7 +804,20 @@ class UsbCameraConnection @Inject constructor(
         val data = sendCommandWithDataInternal(
             PtpCommand(PtpConstants.OPERATION_DEVICE_PROP_VALUE_GET, nextTransactionId(), intArrayOf(code.toInt()))
         )
-        val payload = PtpCommand.decodeDataPayload(data)
+        var payload = PtpCommand.decodeDataPayload(data)
+        // 部分老机身（如 Nikon D5200）GetDevicePropValue 只返回 Response 而不带 Data，
+        // 此时回退到 GetDevicePropDesc，从描述符中读取 Current Value。
+        if (payload.isEmpty()) {
+            AppLogger.report("C", "UsbCameraConnection.kt:getDeviceProperty", "Empty data, fallback to descriptor", mapOf("code" to String.format(Locale.US, "0x%04X", code)))
+            val descPayload = getDevicePropertyDesc(code)
+            val descValue = parseCurrentValueFromDescriptor(descPayload)
+            if (descValue != null) {
+                // #region debug-point C:property-get-result
+                AppLogger.report("C", "UsbCameraConnection.kt:getDeviceProperty", "Property value from descriptor", mapOf("code" to String.format(Locale.US, "0x%04X", code), "value" to descValue.toString()))
+                // #endregion
+                return descValue
+            }
+        }
         val value = if (payload.isEmpty()) null else {
             val buffer = ByteBuffer.wrap(payload)
             buffer.order(ByteOrder.LITTLE_ENDIAN)
@@ -725,6 +871,42 @@ class UsbCameraConnection @Inject constructor(
             4 -> bb.putInt(value)
         }
         return bb.array()
+    }
+
+    /**
+     * 从 GetDevicePropDesc 返回的描述符 payload（已去掉 12 字节 Data 头）中解析当前值。
+     * 描述符结构：DevicePropCode(2) + DataType(2) + GetSet(1) + FactoryDefault + CurrentValue + ...
+     */
+    private fun parseCurrentValueFromDescriptor(desc: ByteArray): Int? {
+        if (desc.size < 5) return null
+        return try {
+            val bb = ByteBuffer.wrap(desc).order(ByteOrder.LITTLE_ENDIAN)
+            val propCode = bb.getShort().toInt() and 0xFFFF
+            val dataType = bb.getShort().toInt() and 0xFFFF
+            bb.get() // GetSet
+            val valueSize = when (dataType) {
+                0x0001, 0x0002 -> 1 // INT8 / UINT8
+                0x0003, 0x0004 -> 2 // INT16 / UINT16
+                0x0005, 0x0006 -> 4 // INT32 / UINT32
+                0x0007, 0x0008 -> 8 // INT64 / UINT64
+                else -> {
+                    AppLogger.d("parseCurrentValueFromDescriptor: unsupported data type 0x${dataType.toString(16)} for 0x${propCode.toString(16)}")
+                    return null
+                }
+            }
+            if (bb.remaining() < valueSize * 2) return null
+            bb.position(bb.position() + valueSize) // skip factory default
+            when (valueSize) {
+                1 -> bb.get().toInt() and 0xFF
+                2 -> bb.getShort().toInt() and 0xFFFF
+                4 -> bb.getInt()
+                8 -> bb.getLong().toInt()
+                else -> null
+            }
+        } catch (e: Exception) {
+            AppLogger.d("parseCurrentValueFromDescriptor failed: ${e.message}")
+            null
+        }
     }
 
     override suspend fun getDevicePropertyDesc(code: Short): ByteArray {
