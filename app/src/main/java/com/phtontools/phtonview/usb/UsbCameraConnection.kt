@@ -1158,7 +1158,12 @@ class UsbCameraConnection @Inject constructor(
             0x04CB, // Fuji
             0x04DA, // Panasonic
             0x040A, // Kodak
-            0x0E8D  // Some Chinese brands
+            0x0E8D, // Some Chinese brands
+            0x07B4, // Olympus / OM System
+            0x05CA, // Ricoh / Pentax
+            0x1A98, // Leica
+            0x1005, // Sigma
+            0x1E57  // Tamron
         )
     }
 }

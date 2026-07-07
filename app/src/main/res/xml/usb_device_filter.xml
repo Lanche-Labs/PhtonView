@@ -1,6 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- USB 设备过滤器：尼康相机（VID: 0x04B0），包含 D5200（PID: 0x2111） -->
+<!-- USB 设备过滤器：多品牌 PTP/MTP 相机 -->
 <resources>
+    <!-- Nikon (0x04B0) -->
     <usb-device vendor-id="1200" product-id="8465" />
     <usb-device vendor-id="1200" />
+    <!-- Canon (0x04A9) -->
+    <usb-device vendor-id="1193" />
+    <!-- Sony (0x054C) -->
+    <usb-device vendor-id="1356" />
+    <!-- Fujifilm (0x04CB) -->
+    <usb-device vendor-id="1227" />
+    <!-- Panasonic (0x04DA) -->
+    <usb-device vendor-id="1242" />
+    <!-- Olympus / OM System (0x07B4) -->
+    <usb-device vendor-id="1972" />
+    <!-- Ricoh / Pentax (0x05CA) -->
+    <usb-device vendor-id="1482" />
+    <!-- Leica (0x1A98) -->
+    <usb-device vendor-id="6808" />
+    <!-- Sigma (0x1005) -->
+    <usb-device vendor-id="4101" />
+    <!-- Tamron (0x1E57) -->
+    <usb-device vendor-id="7767" />
+    <!-- Kodak (0x040A) -->
+    <usb-device vendor-id="1034" />
 </resources>
