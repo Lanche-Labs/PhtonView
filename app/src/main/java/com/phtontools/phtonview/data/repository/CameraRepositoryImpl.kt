@@ -51,6 +51,7 @@ class CameraRepositoryImpl @Inject constructor(
     private var bulbJob: Job? = null
     private var connectionStateJob: Job? = null
     private var connectionStateTarget: CameraConnection? = null
+    private var eventLoopJob: Job? = null
 
     /**
      * 根据相机型号/能力选择使用标准 0x500D 还是尼康 0xD100 快门属性，
@@ -197,9 +198,13 @@ class CameraRepositoryImpl @Inject constructor(
                             AppLogger.report("J", "CameraRepositoryImpl.kt:collectConnectionState", "Brand init failed, fallback", mapOf("error" to (it.message ?: "unknown")))
                             preferredShutterProperty = PtpConstants.DEVICE_PROP_EXPOSURE_TIME
                         }
-                        // Auto-start live view by default after the camera is connected.
-                        if (!_liveViewEnabled.value) {
-                            startLiveView()
+                        // 不再连接成功后自动开启实时取景，避免尼康等机身在 PC 模式下
+                        // 被强制切到取景状态而导致功能不可用；由用户手动开启。
+                        _liveViewEnabled.value = false
+
+                        // 对需要主动轮询事件的品牌启动事件循环，防止事件积压导致后续命令无响应
+                        if (brandStrategy.eventPollOperation != null) {
+                            startEventLoop()
                         }
                         _connectionState.value
                     }
@@ -221,6 +226,9 @@ class CameraRepositoryImpl @Inject constructor(
             PtpConstants.VENDOR_EXTENSION_SONY -> CameraBrand.Sony
             PtpConstants.VENDOR_EXTENSION_FUJI -> CameraBrand.Fuji
             PtpConstants.VENDOR_EXTENSION_PANASONIC -> CameraBrand.Panasonic
+            PtpConstants.VENDOR_EXTENSION_OLYMPUS,
+            PtpConstants.VENDOR_EXTENSION_OLYMPUS_OMD -> CameraBrand.Olympus
+            PtpConstants.VENDOR_EXTENSION_KODAK -> CameraBrand.Kodak
             else -> CameraBrand.Generic
         }
     }
@@ -268,6 +276,12 @@ class CameraRepositoryImpl @Inject constructor(
             upper.contains("FUJI") || upper.contains("FUJIFILM") -> CameraBrand.Fuji
             upper.contains("LUMIX") || upper.contains("PANASONIC") -> CameraBrand.Panasonic
             upper.contains("OLYMPUS") || upper.startsWith("E-") || upper.startsWith("EM") -> CameraBrand.Olympus
+            upper.contains("PENTAX") || upper.startsWith("K-") || upper.startsWith("KP") || upper.startsWith("K3") || upper.startsWith("K5") || upper.startsWith("K7") || upper.startsWith("KS") -> CameraBrand.Pentax
+            upper.contains("RICOH") || upper.startsWith("GR") -> CameraBrand.Ricoh
+            upper.contains("LEICA") || upper.startsWith("M") && upper.length >= 2 && upper[1].isDigit() -> CameraBrand.Leica
+            upper.contains("SIGMA") || upper.startsWith("FP") -> CameraBrand.Sigma
+            upper.contains("TAMRON") -> CameraBrand.Tamron
+            upper.contains("KODAK") -> CameraBrand.Kodak
             else -> CameraBrand.Generic
         }
     }
@@ -465,6 +479,7 @@ class CameraRepositoryImpl @Inject constructor(
 
     override fun disconnect() {
         stopLiveViewInternal()
+        stopEventLoop()
         intervalometerJob?.cancel()
         bulbJob?.cancel()
         connectionStateJob?.cancel()
@@ -504,31 +519,47 @@ class CameraRepositoryImpl @Inject constructor(
                 return
             }
 
-            for (startOp in candidates) {
+            // 品牌特定前置：Olympus OMD 需要先设置 LiveViewModeOM 属性
+            if (brandStrategy.brand == CameraBrand.Olympus) {
                 runCatching {
-                    // 尼康需先切 PC 模式并尝试设置录制介质
-                    if (brandStrategy.brand == CameraBrand.Nikon) {
-                        brandStrategy.changeCameraModeOperation?.let { conn.sendCommand(it, 1) }
-                        waitForDeviceReady()
+                    conn.setDeviceProperty(PtpConstants.DEVICE_PROP_OLYMPUS_LiveViewModeOM, 0x04000300)
+                    AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Olympus live view mode set", emptyMap())
+                }
+            }
 
-                        brandStrategy.liveViewStatusProperty?.let { prop ->
-                            val lvStatus = conn.getDeviceProperty(prop)
-                            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view status", mapOf("status" to (lvStatus?.toString() ?: "null")))
+            for ((startOp, startParams) in candidates) {
+                runCatching {
+                    // 尼康/佳能需先切 PC 模式并尝试设置录制介质
+                    brandStrategy.changeCameraModeOperation?.let { op ->
+                        val (code, _) = conn.sendCommand(op, 1)
+                        // libgphoto2：ChangeCameraModeFailed 不一定致命，继续尝试
+                        if (code != PtpConstants.RESPONSE_OK &&
+                            code != PtpConstants.NIKON_RESPONSE_CHANGE_CAMERA_MODE_FAILED
+                        ) {
+                            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Change camera mode rejected", mapOf("code" to String.format(Locale.US, "0x%04X", code)))
+                            return@runCatching
                         }
-                        brandStrategy.liveViewProhibitProperty?.let { prop ->
-                            val prohibit = conn.getDeviceProperty(prop)
-                            if (prohibit != null && prohibit != 0) {
-                                AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view prohibited", mapOf("condition" to String.format(Locale.US, "0x%08X", prohibit)))
-                            }
+                    }
+                    waitForDeviceReady()
+
+                    brandStrategy.liveViewStatusProperty?.let { prop ->
+                        val lvStatus = conn.getDeviceProperty(prop)
+                        AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view status", mapOf("status" to (lvStatus?.toString() ?: "null")))
+                    }
+                    brandStrategy.liveViewProhibitProperty?.let { prop ->
+                        val prohibit = conn.getDeviceProperty(prop)
+                        if (prohibit != null && prohibit != 0) {
+                            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view prohibited", mapOf("condition" to String.format(Locale.US, "0x%08X", prohibit)))
                         }
-                        brandStrategy.recordingMediaProperty?.let { prop ->
-                            runCatching { conn.setDeviceProperty(prop, 1) }
-                        }
+                    }
+                    brandStrategy.recordingMediaProperty?.let { prop ->
+                        runCatching { conn.setDeviceProperty(prop, 1) }
                     }
 
                     // 同一个启动 opcode 重复尝试 3 次，给相机足够准备时间
                     repeat(3) { attempt ->
-                        val (code, _) = conn.sendCommand(startOp)
+                        val params = startParams.toList().toIntArray()
+                        val (code, _) = conn.sendCommand(startOp, *params)
                         AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view start attempt", mapOf("attempt" to (attempt + 1).toString(), "op" to String.format(Locale.US, "0x%04X", startOp), "responseCode" to String.format(Locale.US, "0x%04X", code)))
                         if (code == PtpConstants.RESPONSE_OK) {
                             started = true
@@ -536,7 +567,7 @@ class CameraRepositoryImpl @Inject constructor(
                         }
                         delay(100)
                     }
-                    if (brandStrategy.brand == CameraBrand.Nikon) waitForDeviceReady()
+                    waitForDeviceReady()
                 }.onFailure {
                     // #region debug-point F:liveview-start-error
                     AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveView", "Live view start error", mapOf("op" to String.format(Locale.US, "0x%04X", startOp), "error" to (it.message ?: "unknown")))
@@ -567,20 +598,24 @@ class CameraRepositoryImpl @Inject constructor(
             val conn = currentConnection ?: return
             if (conn.connectionType == ConnectionType.USB) {
                 runCatching {
-                    brandStrategy.liveViewStopOperation?.let {
-                        val (stopCode, _) = conn.sendCommand(it)
+                    brandStrategy.liveViewStopOperation?.let { stopOp ->
+                        // Panasonic 使用同一个 opcode，参数 0x0d000011 表示停止
+                        val stopParams = if (brandStrategy.brand == CameraBrand.Panasonic) intArrayOf(0x0d000011) else IntArray(0)
+                        val (stopCode, _) = conn.sendCommand(stopOp, *stopParams)
                         AppLogger.d("stopLiveView: live view stop response 0x${String.format(Locale.US, "%04X", stopCode)}")
                     }
-                    if (brandStrategy.brand == CameraBrand.Nikon) {
-                        waitForDeviceReady(conn)
-                        // Return the camera to normal mode so it no longer shows
-                        // "Connecting to PC" on its screen.
-                        brandStrategy.changeCameraModeOperation?.let { op ->
-                            val (code, _) = conn.sendCommand(op, 0)
-                            AppLogger.d("stopLiveView: PC mode exit response 0x${String.format(Locale.US, "%04X", code)}")
-                        }
-                        waitForDeviceReady(conn)
+                    // Fuji 的 OpenCapture 需要在停止时调用 TerminateOpenCapture
+                    if (brandStrategy.brand == CameraBrand.Fuji) {
+                        runCatching { conn.sendCommand(PtpConstants.OPERATION_TERMINATE_OPEN_CAPTURE) }
                     }
+                    waitForDeviceReady(conn)
+                    // Return the camera to normal mode so it no longer shows
+                    // "Connecting to PC" on its screen.
+                    brandStrategy.changeCameraModeOperation?.let { op ->
+                        val (code, _) = conn.sendCommand(op, 0)
+                        AppLogger.d("stopLiveView: PC mode exit response 0x${String.format(Locale.US, "%04X", code)}")
+                    }
+                    waitForDeviceReady(conn)
                 }.onFailure {
                     AppLogger.report("F", "CameraRepositoryImpl.kt:stopLiveView", "Stop live view error", mapOf("error" to (it.message ?: "unknown")))
                 }
@@ -1013,25 +1048,42 @@ class CameraRepositoryImpl @Inject constructor(
         if (!ensureConnected()) return
         val conn = currentConnection ?: return
         runCatching {
-            if (brandStrategy.brand == CameraBrand.Nikon) {
-                // Ensure PC control mode before capture; older Nikon bodies need this.
-                brandStrategy.changeCameraModeOperation?.let { conn.sendCommand(it, 1) }
-                waitForDeviceReady()
+            // Ensure PC control mode before capture; older Nikon/Canon bodies need this.
+            brandStrategy.changeCameraModeOperation?.let { conn.sendCommand(it, 1) }
+            waitForDeviceReady()
 
-                // Nikon: InitiateCaptureRecInMedia (0x9207) requires two params:
-                // param1 = AF mode: 0xFFFFFFFF (no AF), 0xFFFFFFFE (with AF)
-                // param2 = target: 0 (card), 1 (SDRAM)
-                val afParam = if (_focusMode.value == FocusMode.AF) 0xFFFFFFFE.toInt() else 0xFFFFFFFF.toInt()
-                val targetParam = if (_cameraSettings.value.storageTarget == StorageTarget.Camera) 1 else 0
-                val (code, _) = conn.sendCommand(brandStrategy.captureOperation, afParam, targetParam)
-                if (code != PtpConstants.RESPONSE_OK) {
-                    AppLogger.report("G", "CameraRepositoryImpl.kt:doCaptureImage", "Nikon capture fallback", mapOf("responseCode" to String.format(Locale.US, "0x%04X", code)))
-                    conn.sendCommand(PtpConstants.OPERATION_INITIATE_CAPTURE)
+            val (code, _) = when (brandStrategy.brand) {
+                CameraBrand.Nikon -> {
+                    // Nikon: InitiateCaptureRecInMedia (0x9207) requires two params:
+                    // param1 = AF mode: 0xFFFFFFFF (no AF), 0xFFFFFFFE (with AF)
+                    // param2 = target: 0 (card), 1 (SDRAM)
+                    val afParam = if (_focusMode.value == FocusMode.AF) 0xFFFFFFFE.toInt() else 0xFFFFFFFF.toInt()
+                    val targetParam = if (_cameraSettings.value.storageTarget == StorageTarget.Camera) 1 else 0
+                    conn.sendCommand(brandStrategy.captureOperation, afParam, targetParam)
                 }
-                waitForDeviceReady()
-                return@runCatching
+                CameraBrand.Canon -> {
+                    // Canon EOS: prefer RemoteReleaseOn/Off for a clean shutter press
+                    brandStrategy.afDriveOperation?.let { conn.sendCommand(it) }
+                    conn.sendCommand(PtpConstants.CANON_EOS_OPERATION_REMOTE_RELEASE_ON, 1)
+                }
+                CameraBrand.Panasonic -> {
+                    // Panasonic: 0x9404 InitiateCapture, param 0x03000019 for still capture
+                    conn.sendCommand(brandStrategy.captureOperation, 0x03000019)
+                }
+                else -> {
+                    conn.sendCommand(brandStrategy.captureOperation)
+                }
             }
-            conn.sendCommand(brandStrategy.captureOperation)
+            if (code != PtpConstants.RESPONSE_OK && brandStrategy.brand != CameraBrand.Canon) {
+                AppLogger.report("G", "CameraRepositoryImpl.kt:doCaptureImage", "Capture primary failed, fallback", mapOf("responseCode" to String.format(Locale.US, "0x%04X", code)))
+                conn.sendCommand(PtpConstants.OPERATION_INITIATE_CAPTURE)
+            }
+            if (brandStrategy.brand == CameraBrand.Canon) {
+                // Release the shutter after a short press
+                delay(100)
+                conn.sendCommand(PtpConstants.CANON_EOS_OPERATION_REMOTE_RELEASE_OFF, 1)
+            }
+            waitForDeviceReady()
         }.onFailure {
             AppLogger.report("G", "CameraRepositoryImpl.kt:doCaptureImage", "Capture error", mapOf("error" to (it.message ?: "unknown")))
             runCatching { conn.sendCommand(PtpConstants.OPERATION_INITIATE_CAPTURE) }
@@ -1667,17 +1719,21 @@ class CameraRepositoryImpl @Inject constructor(
     }
 
     /**
-     * Build a list of candidate live view start operations. The brand strategy
-     * comes first; redundant fallbacks are appended so we can try multiple
-     * methods if the primary opcode is rejected.
+     * Build a list of candidate live view start operations with their parameters.
+     * The brand strategy comes first; redundant fallbacks are appended so we can
+     * try multiple methods if the primary opcode is rejected.
      */
-    private fun liveViewStartCandidates(): List<Short> {
-        val candidates = mutableListOf<Short>()
-        brandStrategy.liveViewStartOperation?.let { candidates.add(it) }
-        if (brandStrategy.brand == CameraBrand.Nikon) {
-            candidates.add(PtpConstants.NIKON_OPERATION_START_LIVEVIEW)
+    private fun liveViewStartCandidates(): List<Pair<Short, IntArray>> {
+        val candidates = mutableListOf<Pair<Short, IntArray>>()
+        brandStrategy.liveViewStartOperation?.let {
+            candidates.add(it to brandStrategy.liveViewStartParams)
         }
-        return candidates.distinct()
+        // Cross-brand fallbacks for tethering apps that identify the wrong brand
+        candidates.add(PtpConstants.NIKON_OPERATION_START_LIVEVIEW to IntArray(0))
+        candidates.add(PtpConstants.CANON_EOS_OPERATION_INITIATE_VIEWFINDER to IntArray(0))
+        candidates.add(PtpConstants.PANASONIC_OPERATION_LIVEVIEW to intArrayOf(0x0d000010))
+        candidates.add(PtpConstants.OPERATION_INITIATE_OPEN_CAPTURE to intArrayOf(0, 0))
+        return candidates.distinctBy { it.first }
     }
 
     /**
@@ -1690,18 +1746,67 @@ class CameraRepositoryImpl @Inject constructor(
         brandStrategy.liveViewGetOperation?.let { candidates.add(it) }
         when (brandStrategy.brand) {
             CameraBrand.Nikon -> candidates.add(PtpConstants.NIKON_OPERATION_GET_LIVEVIEW_IMAGE)
+            CameraBrand.Canon -> candidates.add(PtpConstants.CANON_EOS_OPERATION_GET_VIEWFINDER_DATA)
             CameraBrand.Sony -> candidates.add(PtpConstants.SONY_OPERATION_GET_LIVEVIEW_IMAGE)
-            CameraBrand.Fuji -> candidates.add(PtpConstants.FUJI_OPERATION_GET_LIVEVIEW_IMAGE)
+            CameraBrand.Fuji -> candidates.add(PtpConstants.FUJI_OPERATION_GET_CAPTURE_PREVIEW)
+            CameraBrand.Panasonic -> candidates.add(PtpConstants.PANASONIC_OPERATION_LIVEVIEW_IMAGE)
+            CameraBrand.Olympus -> candidates.add(PtpConstants.OLYMPUS_OPERATION_GET_LIVEVIEW_IMAGE)
             else -> { /* no generic fallback */ }
         }
         return candidates.distinct()
     }
 
     /**
-     * Poll Nikon DeviceReady (0x90C8) until the camera reports OK or the timeout
+     * 启动品牌特定事件轮询循环。Nikon/Canon EOS 等老机身在 PC 模式下会积压事件，
+     * 不及时读取会导致命令被 busy 或进入“正在连接 PC”的假死状态。
+     * 循环定期调用品牌策略中的 eventPollOperation 清空事件队列，对事件内容只做日志。
+     */
+    private fun startEventLoop() {
+        val pollOp = brandStrategy.eventPollOperation ?: return
+        eventLoopJob?.cancel()
+        eventLoopJob = scope.launch {
+            while (isActive && ensureConnected()) {
+                runCatching {
+                    val conn = currentConnection ?: return@runCatching
+                    val data = conn.sendCommandWithData(pollOp)
+                    AppLogger.report(
+                        "N",
+                        "CameraRepositoryImpl.kt:startEventLoop",
+                        "EVENT_POLL",
+                        mapOf(
+                            "brand" to brandStrategy.brand.name,
+                            "op" to String.format(Locale.US, "0x%04X", pollOp),
+                            "bytes" to data.size.toString()
+                        )
+                    )
+                }.onFailure {
+                    AppLogger.report(
+                        "N",
+                        "CameraRepositoryImpl.kt:startEventLoop",
+                        "EVENT_POLL error",
+                        mapOf(
+                            "brand" to brandStrategy.brand.name,
+                            "op" to String.format(Locale.US, "0x%04X", pollOp),
+                            "error" to (it.message ?: "unknown")
+                        )
+                    )
+                }
+                delay(800)
+            }
+        }
+    }
+
+    private fun stopEventLoop() {
+        eventLoopJob?.cancel()
+        eventLoopJob = null
+    }
+
+    /**
+     * Poll device-ready command until the camera reports OK or the timeout
      * expires. This mirrors libgphoto2's nikon_wait_busy and is required after
      * starting live view, changing modes, or triggering capture on cameras like
-     * the D5200.
+     * the D5200. If the brand strategy has no deviceReadyOperation, this is a
+     * simple delay to avoid hammering the bus.
      */
     private suspend fun waitForDeviceReady(
         conn: CameraConnection? = currentConnection,
@@ -1709,12 +1814,15 @@ class CameraRepositoryImpl @Inject constructor(
         timeoutMs: Long = 2000
     ) {
         conn ?: return
+        val readyOp = brandStrategy.deviceReadyOperation
         val end = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < end) {
-            val (code, _) = runCatching {
-                conn.sendCommand(PtpConstants.NIKON_OPERATION_DEVICE_READY)
-            }.getOrDefault(PtpConstants.RESPONSE_GENERAL_ERROR to IntArray(0))
-            if (code == PtpConstants.RESPONSE_OK) return
+            if (readyOp != null) {
+                val (code, _) = runCatching {
+                    conn.sendCommand(readyOp)
+                }.getOrDefault(PtpConstants.RESPONSE_GENERAL_ERROR to IntArray(0))
+                if (code == PtpConstants.RESPONSE_OK) return
+            }
             delay(waitMs.coerceAtLeast(20))
         }
     }

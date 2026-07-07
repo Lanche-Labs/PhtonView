@@ -14,7 +14,8 @@ sealed class ConnectionState {
  * 相机品牌（不再由用户选择，统一兼容）。
  */
 enum class CameraBrand {
-    Generic, Nikon, Canon, Sony, Fuji, Panasonic, Olympus;
+    Generic, Nikon, Canon, Sony, Fuji, Panasonic, Olympus,
+    Pentax, Ricoh, Leica, Sigma, Tamron, Kodak;
 
     companion object {
         fun fromOrdinal(ordinal: Int): CameraBrand = entries.getOrElse(ordinal) { Generic }

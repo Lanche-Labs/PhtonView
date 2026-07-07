@@ -404,14 +404,13 @@ class UsbCameraConnection @Inject constructor(
     /**
      * 在指定连接/端点上发送 CloseSession，不依赖当前 connection 字段。
      */
-    private fun closeSessionOnConnection(conn: UsbDeviceConnection, outEp: UsbEndpoint, inEp: UsbEndpoint) {
+    private suspend fun closeSessionOnConnection(conn: UsbDeviceConnection, outEp: UsbEndpoint, inEp: UsbEndpoint) {
         try {
             val command = PtpCommand(PtpConstants.OPERATION_CLOSE_SESSION, nextTransactionId())
             val commandBytes = command.encode()
             val written = conn.bulkTransfer(outEp, commandBytes, commandBytes.size, PtpConstants.DEFAULT_TIMEOUT_MS)
             if (written == commandBytes.size) {
-                val buffer = ByteArray(512)
-                conn.bulkTransfer(inEp, buffer, buffer.size, PtpConstants.DEFAULT_TIMEOUT_MS)
+                readAllBulkPackets(conn, inEp, PtpConstants.DEFAULT_TIMEOUT_MS)
             }
         } catch (_: Exception) { }
     }
@@ -473,17 +472,17 @@ class UsbCameraConnection @Inject constructor(
                 throw IllegalStateException("bulkTransfer OUT failed: $written")
             }
 
-            val responseBuffer = ByteArray(512)
-            val length = conn.bulkTransfer(inEp, responseBuffer, responseBuffer.size, PtpConstants.DEFAULT_TIMEOUT_MS)
-            AppLogger.d("bulkTransfer IN returned: $length")
-            if (length <= 0) {
+            // 使用完整包读取，避免多包响应被截断（Nikon D5200 等老机身常见）
+            val responseBytes = readAllBulkPackets(conn, inEp, PtpConstants.DEFAULT_TIMEOUT_MS)
+            AppLogger.d("bulkTransfer IN total returned: ${responseBytes.size}")
+            if (responseBytes.size < 12) {
                 // #region debug-point B:ptp-response-empty
-                AppLogger.report("B", "UsbCameraConnection.kt:sendCommandInternal", "PTP response empty", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "length" to length.toString()))
+                AppLogger.report("B", "UsbCameraConnection.kt:sendCommandInternal", "PTP response empty", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "length" to responseBytes.size.toString()))
                 // #endregion
                 throw IllegalStateException("Failed to read response")
             }
-            AppLogger.logUsb("IN", responseBuffer, length)
-            return PtpCommand.decodeResponse(responseBuffer.copyOf(length))
+            AppLogger.logUsb("IN", responseBytes, responseBytes.size)
+            return extractResponseContainer(responseBytes)
         }
 
         val result = runCatching { transferOnce() }.getOrElse { firstError ->
@@ -506,6 +505,54 @@ class UsbCameraConnection @Inject constructor(
         result
     }
 
+    /**
+     * 从一次 bulk 读取结果中定位并解码 PTP Response 容器。
+     * 某些相机会在响应前附带事件容器或粘包数据，这里遍历所有容器找到类型为 0x0003 的响应。
+     */
+    private fun extractResponseContainer(rawBytes: ByteArray): Pair<Short, IntArray> {
+        var offset = 0
+        while (offset + 12 <= rawBytes.size) {
+            val bb = ByteBuffer.wrap(rawBytes, offset, rawBytes.size - offset)
+            bb.order(ByteOrder.LITTLE_ENDIAN)
+            val containerLength = bb.getInt(0)
+            val containerType = bb.getShort(4)
+            if (containerLength < 12 || offset + containerLength > rawBytes.size) {
+                //  malformed container, decode the first valid-looking response at offset
+                return PtpCommand.decodeResponse(rawBytes.copyOfRange(offset, rawBytes.size.coerceAtMost(offset + 512)))
+            }
+            if (containerType == PtpConstants.CONTAINER_TYPE_RESPONSE) {
+                return PtpCommand.decodeResponse(rawBytes.copyOfRange(offset, offset + containerLength))
+            }
+            offset += containerLength
+        }
+        // 兜底：按原始数据解码
+        return PtpCommand.decodeResponse(rawBytes)
+    }
+
+    /**
+     * 严格按 512 字节包读取一次完整的 USB bulk 传输，直到遇到短包或零长度包。
+     * PTP/MTP 规范要求以短包/ZLP 标识传输结束，否则同一 PTP 容器可能被截断。
+     */
+    private suspend fun readAllBulkPackets(conn: UsbDeviceConnection, inEp: UsbEndpoint, timeoutMs: Int): ByteArray = withContext(Dispatchers.IO) {
+        val packetBuffer = ByteArray(USB_BULK_MAX_PACKET_SIZE)
+        val result = ByteArrayOutputStream(16384)
+        while (true) {
+            val length = conn.bulkTransfer(inEp, packetBuffer, packetBuffer.size, timeoutMs)
+            if (length < 0) {
+                // 超时或端点错误，结束读取
+                break
+            }
+            if (length > 0) {
+                result.write(packetBuffer, 0, length)
+            }
+            // 短包（<512）或零长度包（ZLP）表示本次传输结束
+            if (length < USB_BULK_MAX_PACKET_SIZE) {
+                break
+            }
+        }
+        result.toByteArray()
+    }
+
     private suspend fun sendCommandWithDataInternal(command: PtpCommand, timeoutMs: Int = PtpConstants.DEFAULT_TIMEOUT_MS): ByteArray = withContext(Dispatchers.IO) {
         val conn = connection ?: throw IllegalStateException("USB not connected")
         val outEp = bulkOutEndpoint ?: throw IllegalStateException("Output endpoint not found")
@@ -517,9 +564,6 @@ class UsbCameraConnection @Inject constructor(
         AppLogger.report("B", "UsbCameraConnection.kt:sendCommandWithDataInternal", "PTP data command", mapOf("op" to String.format(Locale.US, "0x%04X", command.operationCode), "tid" to command.transactionId.toString(), "params" to command.parameters.joinToString()))
         // #endregion
 
-        // ponytail: 复用 bulk 读取 buffer，避免循环内重复分配 16 KB。
-        val readBuffer = ByteArray(16384)
-
         suspend fun transferOnce(): Pair<ByteArray, Short> {
             val written = conn.bulkTransfer(outEp, commandBytes, commandBytes.size, timeoutMs)
             AppLogger.d("bulkTransfer OUT returned: $written")
@@ -527,58 +571,47 @@ class UsbCameraConnection @Inject constructor(
                 throw IllegalStateException("bulkTransfer OUT failed: $written")
             }
 
-            // 使用 ByteArrayOutputStream 避免 MutableList<Byte> 装箱和中间数组分配
-            val result = ByteArrayOutputStream(65536)
+            val rawBytes = readAllBulkPackets(conn, inEp, timeoutMs)
+            AppLogger.d("bulkTransfer IN total returned: ${rawBytes.size}")
+            AppLogger.logUsb("IN", rawBytes, rawBytes.size)
+
             var responseCode: Short = -1
-            var dataLengthRemaining = -1
-            var isFirstDataChunk = true
+            val result = ByteArrayOutputStream(rawBytes.size)
+            var offset = 0
 
-            while (true) {
-                // 增大单次读取缓冲，减少 USB 传输往返次数
-                val length = conn.bulkTransfer(inEp, readBuffer, readBuffer.size, timeoutMs)
-                AppLogger.d("bulkTransfer IN chunk returned: $length")
-                if (length <= 0) break
-                AppLogger.logUsb("IN", readBuffer, length)
+            while (offset + 12 <= rawBytes.size) {
+                val bb = ByteBuffer.wrap(rawBytes, offset, rawBytes.size - offset)
+                bb.order(ByteOrder.LITTLE_ENDIAN)
+                val containerLength = bb.getInt(0)
+                val containerType = bb.getShort(4)
 
-                if (length >= 12) {
-                    val bb = ByteBuffer.wrap(readBuffer, 0, length)
-                    bb.order(ByteOrder.LITTLE_ENDIAN)
-                    val containerLength = bb.getInt(0)
-                    val containerType = bb.getShort(4)
-                    if (containerType == PtpConstants.CONTAINER_TYPE_RESPONSE) {
-                        responseCode = bb.getShort(6)
-                        break
-                    }
-                    if (containerType == PtpConstants.CONTAINER_TYPE_DATA && isFirstDataChunk) {
-                        // 首个数据容器包：保留完整头部，供上层 decodeDataPayload 自行剥离
-                        dataLengthRemaining = containerLength - length
-                        result.write(readBuffer, 0, length)
-                        isFirstDataChunk = false
-                        if (dataLengthRemaining <= 0) {
-                            // 数据已在单包内传完，继续读取响应容器
-                            continue
-                        }
-                        continue
-                    }
+                if (containerLength < 12 || offset + containerLength > rawBytes.size) {
+                    // 容器长度异常，剩余数据作为原始 payload 保留
+                    result.write(rawBytes, offset, rawBytes.size - offset)
+                    break
                 }
 
-                // 仍在接收数据容器后续字节（不含头部，直接追加）
-                if (dataLengthRemaining > 0) {
-                    val take = minOf(length, dataLengthRemaining)
-                    result.write(readBuffer, 0, take)
-                    dataLengthRemaining -= take
-                    if (dataLengthRemaining <= 0) {
-                        // 数据传完，下一轮应该是响应容器
-                        continue
+                when (containerType) {
+                    PtpConstants.CONTAINER_TYPE_RESPONSE -> {
+                        responseCode = bb.getShort(6)
+                        offset += containerLength
+                        break
                     }
-                } else {
-                    result.write(readBuffer, 0, length)
+                    PtpConstants.CONTAINER_TYPE_DATA -> {
+                        // 保留首个数据容器完整头部，后续 decodeDataPayload 自行剥离
+                        result.write(rawBytes, offset, containerLength)
+                        offset += containerLength
+                    }
+                    else -> {
+                        // 未知容器，跳过
+                        offset += containerLength
+                    }
                 }
             }
 
             var dataBytes = result.toByteArray()
 
-            // 兼容：响应容器可能粘在最后一个数据包尾部
+            // 兼容：响应容器可能粘在最后一个数据包尾部（已被上面的循环处理）
             if (responseCode == (-1).toShort() && dataBytes.size >= 12) {
                 val tailOffset = dataBytes.size - 12
                 val bb = ByteBuffer.wrap(dataBytes, tailOffset, 12)
@@ -745,11 +778,10 @@ class UsbCameraConnection @Inject constructor(
         data.copyInto(dataContainer, 12)
         conn.bulkTransfer(outEp, dataContainer, dataContainer.size, PtpConstants.DEFAULT_TIMEOUT_MS)
 
-        // Response phase
-        val responseBuffer = ByteArray(512)
-        val length = conn.bulkTransfer(inEp, responseBuffer, responseBuffer.size, PtpConstants.DEFAULT_TIMEOUT_MS)
-        if (length <= 0) throw IllegalStateException("Failed to read response")
-        PtpCommand.decodeResponse(responseBuffer.copyOf(length))
+        // Response phase: read complete response container(s)
+        val responseBytes = readAllBulkPackets(conn, inEp, PtpConstants.DEFAULT_TIMEOUT_MS)
+        if (responseBytes.size < 12) throw IllegalStateException("Failed to read response")
+        extractResponseContainer(responseBytes)
     }
 
     override suspend fun listPhotos(folder: String): List<PhotoItem> {
@@ -1147,7 +1179,9 @@ class UsbCameraConnection @Inject constructor(
         scope.cancel()
     }
 
-    companion object {
+    private companion object {
+        const val USB_BULK_MAX_PACKET_SIZE = 512
+
         private const val ACTION_USB_PERMISSION = "com.phtontools.phtonview.USB_PERMISSION"
 
         // Known PTP / MTP camera vendor IDs
