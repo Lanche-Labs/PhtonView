@@ -60,7 +60,8 @@ class CameraViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UiMode.PRO)
 
     val cameraStatus: StateFlow<CameraStatus> = repository.cameraStatus
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), CameraStatus())
+    val flashCapabilities: StateFlow<FlashCapabilities> = repository.flashCapabilities
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), FlashCapabilities())
 
     val intervalometer: StateFlow<IntervalometerSettings> = repository.intervalometer
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), IntervalometerSettings())

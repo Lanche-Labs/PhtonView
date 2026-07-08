@@ -21,6 +21,7 @@ interface CameraRepository {
     val focusPeakingEnabled: StateFlow<Boolean>
     val detectedUsbDevice: StateFlow<String?>
     val cameraStatus: StateFlow<CameraStatus>
+    val flashCapabilities: StateFlow<FlashCapabilities>
     val intervalometer: StateFlow<IntervalometerSettings>
     val bulbSettings: StateFlow<BulbSettings>
     val timerSettings: StateFlow<TimerSettings>

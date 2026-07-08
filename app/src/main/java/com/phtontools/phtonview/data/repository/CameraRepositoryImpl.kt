@@ -68,6 +68,13 @@ class CameraRepositoryImpl @Inject constructor(
      */
     private var brandStrategy: BrandStrategy = GenericStrategy
 
+    /**
+     * 当前设备 GetDeviceInfo 报告的 supported DeviceProperties 列表（issue #99）。
+     * D5200 等老机身不报告 0xD064/0xD065（私有闪光灯），仅报告标准 0x501C FlashMode。
+     * 在 setFlashMode/setFlashCompensation 写入前必须先检查列表，避免静默失败。
+     */
+    private var supportedDeviceProperties: Set<Short> = emptySet()
+
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     override val connectionState: StateFlow<ConnectionState> = _connectionState
 
@@ -103,6 +110,9 @@ class CameraRepositoryImpl @Inject constructor(
 
     private val _cameraStatus = MutableStateFlow(CameraStatus())
     override val cameraStatus: StateFlow<CameraStatus> = _cameraStatus
+
+    private val _flashCapabilities = MutableStateFlow(FlashCapabilities())
+    override val flashCapabilities: StateFlow<FlashCapabilities> = _flashCapabilities
 
     private val _intervalometer = MutableStateFlow(IntervalometerSettings())
     override val intervalometer: StateFlow<IntervalometerSettings> = _intervalometer
@@ -852,8 +862,26 @@ class CameraRepositoryImpl @Inject constructor(
                     dropCount++
                 }
             }
-            // Clear the frame when the loop exits so the UI doesn't stick on the last frame.
+            // 退出路径（issue #95/97 修复）：
+            // **绝对不要**在帧循环退出时调用 exitPcMode()。
+            // stopLiveView 才是 exitPcMode 的**唯一所有者**：只有它
+            // 显式调用 stopLiveViewInternal（发 0x9202 关闭取景）后才
+            // 应当 exitPcMode。
+            //
+            // 之前 build 08 在帧循环退出时也调 exitPcMode，会引发两类问题：
+            // 1) liveview 期间用户在 UI 点 stopLiveView → 帧循环退出
+            //    → 此处再 exitPcMode() → pcRefCount 减到 0 后 stopLiveView
+            //    又 exitPcMode 一次 → ChangeCameraMode(0) 发两次
+            // 2) 帧循环因连续失败退出时，**实际 USB 端点已坏**，此时
+            //    exitPcMode 内部 sendCommand 调 bulkTransfer OUT 拿到 -1
+            //    → PTP 状态机错乱 → 后续 connect 反复失败（issue #97 日志
+            //    显示 3ms 内 connect/disconnect 反复横跳）
+            //
+            // 此处**只清理状态**（_liveViewFrame/_liveViewEnabled），
+            // 把 PC 模式管理完全交给 stopLiveView。如果 stopLiveView
+            // 因异常路径未执行，disconnect() 会兜底 resetPcModeState()。
             _liveViewFrame.value = null
+            _liveViewEnabled.value = false
         }
     }
 
@@ -1035,39 +1063,107 @@ class CameraRepositoryImpl @Inject constructor(
         // 写入会直接返回 0xA001 InvalidParameter，导致闪光灯控制"没反应"。
         // digiCamControl 对 Nikon 使用 0xD064 FlashMode (UINT16)，枚举值与标准不同，
         // 因此需要根据品牌路由到不同的属性码 + 不同的编码函数。
+        //
+        // 进一步：Nikon 私有属性 (0xD064/0xD065) 写入**必须**在 PC 控制模式
+        // (0x90C2 ChangeCameraMode=1) 下进行，否则相机返回 0xA001 InvalidParameter
+        // 静默失败。digiCamControl 的 NikonPtpCodec 就是先 ChangeCameraMode(1)
+        // 再写私有属性，然后 ChangeCameraMode(0) 退出。
         val brand = _cameraSettings.value.brand
         when (brand) {
             CameraBrand.Nikon -> {
-                runCatching {
-                    applyPtpProperty(
-                        PtpConstants.DEVICE_PROP_NIKON_FLASH_MODE,
-                        PtpValueMapper.nikonFlashModeToPtp(mode)
-                    )
+                // 关键（issue #95/97）：实时取景期间**不要**再 enter/exitPcMode。
+                // 实时取景已经在 startLiveView 中 enterPcMode 过了，pcRefCount=1。
+                // 如果这里再 enter → pcRefCount=2 → stopLiveView 调一次 exitPcMode
+                // 只会 decrement 到 1 而不真的发 ChangeCameraMode(0) → 相机
+                // 永远卡在 PC 模式。再加上 liveview 期间 setFlashMode 与帧循环抢
+                // ptpLock，bulkTransfer OUT 偶发 -1，状态机立刻崩。
+                //
+                // 进一步（issue #99）：D5200 等老机身不支持 Nikon 私有 0xD064 FlashMode，
+                // 只支持标准 0x501C FlashMode。如果硬写 0xD064，相机会返回
+                // 0xA002 InvalidValue 静默失败，看上去闪光灯"用不了"。
+                // 根据相机 GetDeviceInfo 报告的 supported properties 智能路由：
+                //   - 0xD064 在列表中 → 用 0xD064 + nikon enum
+                //   - 不在列表中 → 回退到 0x501C + 标准 enum
+                val useNikon = supportedDeviceProperties.contains(PtpConstants.DEVICE_PROP_NIKON_FLASH_MODE)
+                AppLogger.report("D", "CameraRepositoryImpl.kt:setFlashMode", "Flash mode routing", mapOf("brand" to "Nikon", "useNikonPrivate" to useNikon.toString()))
+                if (useNikon && _liveViewEnabled.value) {
+                    runCatching {
+                        applyPtpProperty(
+                            PtpConstants.DEVICE_PROP_NIKON_FLASH_MODE,
+                            PtpValueMapper.nikonFlashModeToPtp(mode)
+                        )
+                    }.onFailure {
+                        AppLogger.w("setFlashMode: Nikon 0xD064 (liveview) failed: ${it.message}")
+                    }
+                } else if (useNikon) {
+                    val acquired = enterPcMode()
+                    runCatching {
+                        applyPtpProperty(
+                            PtpConstants.DEVICE_PROP_NIKON_FLASH_MODE,
+                            PtpValueMapper.nikonFlashModeToPtp(mode)
+                        )
+                    }.onFailure {
+                        AppLogger.w("setFlashMode: Nikon 0xD064 failed: ${it.message}")
+                    }
+                    if (acquired) runCatching { exitPcMode() }
+                } else {
+                    // D5200 等老机身：直接写标准 0x501C
+                    runCatching {
+                        applyPtpProperty(
+                            PtpConstants.DEVICE_PROP_FLASH_MODE,
+                            PtpValueMapper.flashModeToPtp(mode)
+                        )
+                    }.onFailure {
+                        AppLogger.w("setFlashMode: standard 0x501C failed: ${it.message}")
+                    }
                 }
             }
             else -> {
-                applyPtpProperty(
-                    PtpConstants.DEVICE_PROP_FLASH_MODE,
-                    PtpValueMapper.flashModeToPtp(mode)
-                )
+                runCatching {
+                    applyPtpProperty(
+                        PtpConstants.DEVICE_PROP_FLASH_MODE,
+                        PtpValueMapper.flashModeToPtp(mode)
+                    )
+                }
             }
         }
     }
 
     override suspend fun setFlashCompensation(ev: Float) {
         _cameraSettings.value = _cameraSettings.value.copy(flashCompensation = ev)
-        // 关键：Nikon 私有 FlashExposureCompensation (0xD065) 单位是 1/8 EV（INT16），
-        // 与标准 0x5010 ExposureCompensation 的 1/1000 EV 不同。
-        // 之前用 evToPtp (1/1000 EV) 写 0xD124 (Nikon 早期 MTP)，单位不匹配导致闪光灯补偿
-        // 实际不生效。现按品牌路由到正确的属性码 + 编码函数。
+        // 关键（issue #95/97）：见 setFlashMode 注释，liveview 中直接写，不 enter/exitPcMode。
+        // 关键（issue #99）：D5200 不支持 Nikon 私有 0xD065 FlashExposureCompensation。
+        // 智能路由：有 0xD065 → 用 0xD065 (INT16 1/8 EV)；否则用 0xD124 早期 Nikon MTP。
         val brand = _cameraSettings.value.brand
         when (brand) {
             CameraBrand.Nikon -> {
-                runCatching {
-                    applyPtpProperty(
-                        PtpConstants.DEVICE_PROP_NIKON_FLASH_EXPOSURE_COMP,
-                        PtpValueMapper.nikonFlashCompToPtp(ev)
-                    )
+                val useNikon = supportedDeviceProperties.contains(PtpConstants.DEVICE_PROP_NIKON_FLASH_EXPOSURE_COMP)
+                if (useNikon && _liveViewEnabled.value) {
+                    runCatching {
+                        applyPtpProperty(
+                            PtpConstants.DEVICE_PROP_NIKON_FLASH_EXPOSURE_COMP,
+                            PtpValueMapper.nikonFlashCompToPtp(ev)
+                        )
+                    }.onFailure {
+                        AppLogger.w("setFlashCompensation: Nikon 0xD065 (liveview) failed: ${it.message}")
+                    }
+                } else if (useNikon) {
+                    val acquired = enterPcMode()
+                    runCatching {
+                        applyPtpProperty(
+                            PtpConstants.DEVICE_PROP_NIKON_FLASH_EXPOSURE_COMP,
+                            PtpValueMapper.nikonFlashCompToPtp(ev)
+                        )
+                    }.onFailure {
+                        AppLogger.w("setFlashCompensation: Nikon 0xD065 failed: ${it.message}")
+                    }
+                    if (acquired) runCatching { exitPcMode() }
+                } else {
+                    runCatching {
+                        applyPtpProperty(0xD124.toShort(), PtpValueMapper.evToPtp(ev))
+                    }.onFailure {
+                        AppLogger.w("setFlashCompensation: standard 0xD124 failed: ${it.message}")
+                    }
                 }
             }
             else -> {
@@ -1098,15 +1194,20 @@ class CameraRepositoryImpl @Inject constructor(
             return
         }
         val conn = currentConnection ?: return
-        val success = runCatching {
+        // 记录 PTP 响应码（issue #93 调试用）：0x2001=OK, 0xA001=InvalidParameter,
+        // 0xA002=InvalidValue, 0xA003=OperationNotSupported 等。
+        // UsbCameraConnection.setDeviceProperty 内部返回 true/false，WiFi 路径可能不同
+        val responseCode = runCatching {
             conn.setDeviceProperty(code, value)
         }.getOrDefault(false)
         // #region debug-point D:property-apply-result
-        AppLogger.report("D", "CameraRepositoryImpl.kt:applyPtpProperty", "Property apply result", mapOf("code" to String.format(Locale.US, "0x%04X", code), "success" to success.toString()))
+        AppLogger.report("D", "CameraRepositoryImpl.kt:applyPtpProperty", "Property apply result", mapOf("code" to String.format(Locale.US, "0x%04X", code), "success" to responseCode.toString()))
         // #endregion
 
-        if (!success) {
-            // 快门属性失败时回退到品牌策略中的备选快门属性
+        if (!responseCode) {
+            // 失败兜底：
+            // 1. 快门属性失败时回退到品牌策略中的备选快门属性
+            // 2. 其他属性提示用户相机不支持
             val fallbackCode = if (code == brandStrategy.primaryShutterProperty || code == brandStrategy.fallbackShutterProperty) {
                 if (code == brandStrategy.primaryShutterProperty) brandStrategy.fallbackShutterProperty else brandStrategy.primaryShutterProperty
             } else null
@@ -1754,42 +1855,79 @@ class CameraRepositoryImpl @Inject constructor(
     }
 
     /**
-     * Parse DeviceInfo once and return (manufacturer, model, firmwareVersion).
+     * Parse DeviceInfo once and return (manufacturer, model, firmwareVersion, supportedProperties).
      * ponytail: one PTP round-trip instead of two separate fetch functions.
+     * issue #99: 同时解析 DevicePropertiesSupported 数组，让 setFlashMode 知道设备是否
+     * 支持 0xD064/0xD065 私有闪光灯属性，否则回退到标准 0x501C。
      */
-    private suspend fun parseDeviceInfoStrings(conn: CameraConnection): Triple<String, String, String> {
+    private suspend fun parseDeviceInfoStrings(conn: CameraConnection): Array<String> {
         return runCatching {
             val data = conn.sendCommandWithData(PtpConstants.OPERATION_GET_DEVICE_INFO)
-            if (data.size < 12) return@runCatching Triple("Unknown", "Unknown", "Unknown")
+            if (data.size < 12) return@runCatching arrayOf("Unknown", "Unknown", "Unknown")
             val payload = PtpCommand.decodeDataPayload(data)
-            if (payload.size < 12) return@runCatching Triple("Unknown", "Unknown", "Unknown")
+            if (payload.size < 12) return@runCatching arrayOf("Unknown", "Unknown", "Unknown")
             val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
-            if (buffer.remaining() < 12) return@runCatching Triple("Unknown", "Unknown", "Unknown")
+            if (buffer.remaining() < 12) return@runCatching arrayOf("Unknown", "Unknown", "Unknown")
             buffer.getShort() // StandardVersion
-            if (buffer.remaining() < 4) return@runCatching Triple("Unknown", "Unknown", "Unknown")
+            if (buffer.remaining() < 4) return@runCatching arrayOf("Unknown", "Unknown", "Unknown")
             buffer.getInt() // VendorExtensionID
-            if (buffer.remaining() < 2) return@runCatching Triple("Unknown", "Unknown", "Unknown")
+            if (buffer.remaining() < 2) return@runCatching arrayOf("Unknown", "Unknown", "Unknown")
             buffer.getShort() // VendorExtensionVersion
             PtpCommand.readPtpString(buffer) // vendor extension desc
-            if (buffer.remaining() < 2) return@runCatching Triple("Unknown", "Unknown", "Unknown")
+            if (buffer.remaining() < 2) return@runCatching arrayOf("Unknown", "Unknown", "Unknown")
             buffer.getShort() // FunctionalMode
             // 关键：Nikon D5200 等设备的 DeviceInfo 数组计数是 UINT32，标准 PTP 是 UINT16。
             // 之前的 `buffer.position() + buffer.getInt() * 2` 写法会让 getInt() 把 position
             // 推进 4 字节，再 position() 又拿到新位置，结果多跳 4 字节，导致后续
             // manufacturer/model/version 字符串读偏，显示成 "Unknown"。
             // 修复：先 getInt() 拿到 count，再单独推进 count*2 字节。
+            var deviceProperties: Set<Short> = emptySet()
             repeat(5) { idx ->
-                if (buffer.remaining() < 4) return@runCatching Triple("Unknown", "Unknown", "Unknown")
+                if (buffer.remaining() < 4) return@runCatching arrayOf("Unknown", "Unknown", "Unknown")
                 val count = buffer.getInt()
-                val bytesToSkip = count * 2
-                if (bytesToSkip < 0 || bytesToSkip > buffer.remaining()) {
-                    return@runCatching Triple("Unknown", "Unknown", "Unknown")
+                if (count < 0 || count > 256) {
+                    return@runCatching arrayOf("Unknown", "Unknown", "Unknown")
                 }
-                buffer.position(buffer.position() + bytesToSkip)
+                val bytesToSkip = count * 2
+                if (bytesToSkip > buffer.remaining()) {
+                    return@runCatching arrayOf("Unknown", "Unknown", "Unknown")
+                }
+                // idx=2 是 DevicePropertiesSupported，记录相机实际支持的属性码
+                if (idx == 2) {
+                    val start = buffer.position()
+                    deviceProperties = buildSet {
+                        for (i in 0 until count) {
+                            if (buffer.remaining() < 2) break
+                            add(buffer.getShort())
+                        }
+                    }
+                    AppLogger.report(
+                        "K",
+                        "CameraRepositoryImpl.kt:parseDeviceInfoStrings",
+                        "Supported device properties",
+                        mapOf(
+                            "count" to count.toString(),
+                            "hasFlash" to deviceProperties.contains(PtpConstants.DEVICE_PROP_FLASH_MODE).toString(),
+                            "hasNikonFlash" to deviceProperties.contains(PtpConstants.DEVICE_PROP_NIKON_FLASH_MODE).toString(),
+                            "hasNikonFlashComp" to deviceProperties.contains(PtpConstants.DEVICE_PROP_NIKON_FLASH_EXPOSURE_COMP).toString()
+                        )
+                    )
+                    // 已读完 DevicePropertiesSupported；不需再推进
+                } else {
+                    buffer.position(buffer.position() + bytesToSkip)
+                }
             }
             val manufacturer = PtpCommand.readPtpString(buffer)
             val model = PtpCommand.readPtpString(buffer)
             val version = PtpCommand.readPtpString(buffer)
+            supportedDeviceProperties = deviceProperties
+            // issue #101：报告闪光灯能力，让 UI 决定是否显示"手动弹起闪光灯"提示。
+            // canRemotePopup 标志：机身支持 0xD064（典型 D7100+），可远程配置闪光灯模式。
+            // D5200/D3200/D7000 等老机身不支持 0xD064，闪光灯必须用户手动弹起。
+            _flashCapabilities.value = FlashCapabilities(
+                canRemotePopup = deviceProperties.contains(PtpConstants.DEVICE_PROP_NIKON_FLASH_MODE),
+                writableFlashMode = deviceProperties.contains(PtpConstants.DEVICE_PROP_FLASH_MODE)
+            )
             AppLogger.report(
                 "K",
                 "CameraRepositoryImpl.kt:parseDeviceInfoStrings",
@@ -1800,18 +1938,15 @@ class CameraRepositoryImpl @Inject constructor(
                     "version" to version
                 )
             )
-            Triple(manufacturer, model, version)
-        }.getOrDefault(Triple("Unknown", "Unknown", "Unknown"))
+            arrayOf(manufacturer, model, version)
+        }.getOrDefault(arrayOf("Unknown", "Unknown", "Unknown"))
     }
 
-    private suspend fun parseFirmwareVersion(conn: CameraConnection): String {
-        val (_, model, version) = parseDeviceInfoStrings(conn)
-        return version.ifBlank { model.ifBlank { "Unknown" } }
-    }
+    private suspend fun parseFirmwareVersion(conn: CameraConnection): String =
+        parseDeviceInfoStrings(conn).getOrNull(2)?.ifBlank { parseDeviceInfoStrings(conn).getOrNull(1) ?: "Unknown" } ?: "Unknown"
 
-    private suspend fun parseManufacturer(conn: CameraConnection): String {
-        return parseDeviceInfoStrings(conn).first
-    }
+    private suspend fun parseManufacturer(conn: CameraConnection): String =
+        parseDeviceInfoStrings(conn).getOrNull(0) ?: "Unknown"
 
     private fun formatBytes(bytes: Long): String {
         if (bytes <= 0) return "未知"

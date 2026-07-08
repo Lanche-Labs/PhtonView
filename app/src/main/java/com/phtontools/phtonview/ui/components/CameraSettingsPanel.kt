@@ -64,6 +64,8 @@ fun CameraSettingsPanel(
     timerSettings: TimerSettings,
     aebSettings: AebSettings,
     liveViewEnabled: Boolean,
+    // issue #101：闪光灯能力，UI 决定是否显示"手动弹起闪光灯"提示
+    canRemotePopupFlash: Boolean = false,
     onFocusModeChange: (FocusMode) -> Unit,
     onAfModeChange: (AfMode) -> Unit,
     onAfAreaModeChange: (AfAreaMode) -> Unit,
@@ -238,6 +240,18 @@ fun CameraSettingsPanel(
                         valueRange = -2f..2f,
                         steps = 7
                     )
+                }
+                // issue #101：老机身（如 D5200）闪光灯是机械手动弹起，APP 无法远程弹起。
+                // 当用户选了非 Off 闪光模式，且机身**不能**远程配置闪光灯时显示提示。
+                if (settings.flashMode != FlashMode.Off && !canRemotePopupFlash) {
+                    SectionItem {
+                        Text(
+                            text = stringResource(id = R.string.flash_manual_popup_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
                 }
             }
 

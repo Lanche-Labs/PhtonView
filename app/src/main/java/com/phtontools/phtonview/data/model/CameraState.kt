@@ -153,6 +153,18 @@ data class CameraStatus(
 )
 
 /**
+ * 闪光灯能力报告（issue #99 + #101）：
+ * - `canRemotePopup = true`：机身支持 Nikon 私有 0xD064 FlashMode（典型：D7100+），
+ *   APP 可通过 PTP 远程配置闪光灯模式。
+ * - `canRemotePopup = false`：D5200/D3200/D7000 等老机身，机身闪光灯是机械手动弹起，
+ *   选闪光模式前必须用户先按机身按钮弹起闪光灯。APP 应显示提示。
+ */
+data class FlashCapabilities(
+    val canRemotePopup: Boolean = false,
+    val writableFlashMode: Boolean = false
+)
+
+/**
  * 完整相机设置。
  */
 data class CameraSettings(

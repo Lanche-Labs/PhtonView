@@ -37,6 +37,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -147,6 +148,8 @@ fun CameraScreen(
                     timerSettings = timerSettings,
                     aebSettings = aebSettings,
                     liveViewEnabled = liveViewEnabled,
+                    // issue #101：把闪光灯能力透传给 Panel，UI 决定是否显示手动弹起提示
+                    canRemotePopupFlash = viewModel.flashCapabilities.collectAsState().value.canRemotePopup,
                     onFocusModeChange = viewModel::setFocusMode,
                     onAfModeChange = viewModel::setAfMode,
                     onAfAreaModeChange = viewModel::setAfAreaMode,

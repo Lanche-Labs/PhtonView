@@ -903,8 +903,14 @@ private fun ConnectionSection(
                         selected = selectedPreset == preset,
                         onClick = {
                             selectedPreset = preset
-                            if (preset.defaultIp.isNotBlank()) {
-                                wifiAddress = preset.defaultIp
+                            // issue #99：用户不应再手动输入 IP/端口。点击品牌预设后
+                            // APP 自动用该品牌的 defaultIp 配对（pairWifi 内部会
+                            // 尝试所有 candidatePorts 找可用连接）。savedWifiAddress
+                            // 保留是为了已经成功配对过的设备优先尝试。
+                            if (!savedWifiAddress.isNullOrBlank()) {
+                                onPairWifi(savedWifiAddress)
+                            } else if (preset.defaultIp.isNotBlank()) {
+                                onPairWifi(preset.defaultIp)
                             }
                         }
                     )
@@ -918,24 +924,8 @@ private fun ConnectionSection(
                 modifier = Modifier.padding(top = 8.dp)
             )
 
-            androidx.compose.material3.OutlinedTextField(
-                value = wifiAddress,
-                onValueChange = { wifiAddress = it },
-                label = { Text(stringResource(id = R.string.wifi_address_label)) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                singleLine = true,
-                trailingIcon = {
-                    TextButton(
-                        onClick = { if (wifiAddress.isNotBlank()) onPairWifi(wifiAddress) },
-                        enabled = wifiAddress.isNotBlank()
-                    ) {
-                        Text(stringResource(id = R.string.wifi_pair))
-                    }
-                }
-            )
-
+            // issue #99：已自动配对，不再要求用户输入 IP。
+            // 显示当前配对状态供用户确认。
             if (!savedWifiAddress.isNullOrBlank()) {
                 Text(
                     text = stringResource(id = R.string.wifi_saved_address, savedWifiAddress),

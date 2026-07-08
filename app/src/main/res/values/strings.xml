@@ -120,6 +120,8 @@
     <string name="wb_custom">Custom</string>
     <string name="flash_red_eye">Red-Eye</string>
     <string name="flash_rear_sync">Rear Sync</string>
+    <!-- issue: D5200 等老机身闪光灯是机械手动弹起，APP 无法远程弹起 -->
+    <string name="flash_manual_popup_hint">此机型需手动按机身侧按钮弹起闪光灯，否则闪光功能不会生效</string>
 
     <!-- Advanced capture summaries -->
     <string name="burst_summary">Capture multiple frames</string>
