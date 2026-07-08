@@ -192,6 +192,37 @@ object PtpValueMapper {
         FlashMode.RearSync -> 6  // External sync (closest standard value)
     }
 
+    /**
+     * Nikon 私有 FlashMode (0xD064) 编码，参考 digiCamControl 的 NikonPtpCodec。
+     * 注意 Nikon 枚举值与标准 PTP 0x501C 不一致，需要单独编码。
+     */
+    fun nikonFlashModeToPtp(mode: FlashMode): Int = when (mode) {
+        FlashMode.Off -> 0       // iTTL Off
+        FlashMode.Auto -> 1      // iTTL Auto
+        FlashMode.On -> 2        // iTTL On (fill)
+        FlashMode.RedEye -> 3    // iTTL Auto Red-eye
+        FlashMode.SlowSync -> 4  // Slow sync
+        FlashMode.RearSync -> 5  // Rear sync
+    }
+
+    fun nikonPtpToFlashMode(raw: Int): FlashMode = when (raw) {
+        0 -> FlashMode.Off
+        1 -> FlashMode.Auto
+        2 -> FlashMode.On
+        3 -> FlashMode.RedEye
+        4 -> FlashMode.SlowSync
+        5 -> FlashMode.RearSync
+        else -> FlashMode.Off
+    }
+
+    /**
+     * Nikon 私有 FlashExposureCompensation (0xD065) 编码，INT16 1/8 EV。
+     * 与 evToPtp 1/1000 EV 不同，必须单独处理避免换算错误。
+     */
+    fun nikonFlashCompToPtp(ev: Float): Int = (ev * 8f).toInt().coerceIn(-30, 30)
+
+    fun nikonPtpToFlashComp(raw: Int): Float = raw / 8f
+
     fun shootingModeToPtp(mode: ShootingMode): Int = when (mode) {
         ShootingMode.M -> 1
         ShootingMode.P -> 2

@@ -706,84 +706,197 @@ class CameraRepositoryImpl @Inject constructor(
             // 提升实时取景线程优先级，减少被调度器打断的概率
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
 
-            // 复用 Options 减少 GC 压力；RGB_565 比 ARGB_8888 解码更快，且实时取景预览够看
-            val decodeOptions = BitmapFactory.Options().apply {
-                inPreferredConfig = Bitmap.Config.RGB_565
-            }
-            var frameCount = 0
-            var dropCount = 0
-            var lastLogTime = System.nanoTime()
-            var lastErrorTime = 0L
-            var consecutiveFrameFailures = 0
-            val targetIntervalNs = 16_666_667L // 60fps
             val getCandidates = liveViewGetCandidates()
             if (getCandidates.isEmpty()) {
                 AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "No live view get candidates", mapOf("brand" to brandStrategy.brand.name))
                 _liveViewFrame.value = null
                 return@launch
             }
-            while (isActive && _liveViewEnabled.value && _connectionState.value is ConnectionState.Connected) {
-                val loopStart = System.nanoTime()
-                var captured = false
-                try {
-                    val conn = currentConnection ?: break
+
+            // ===== Producer-Consumer 流水线（接近监视器速率） =====
+            // 关键：单线程串行（取图 + 解码 + 渲染）一帧约 30-50ms（最高 20-30fps），
+            // 永远到不了 60fps。改为：
+            //  - Producer（Dispatchers.IO）：专门负责 USB 取图 + PTP 解析，把 JPEG bytes
+            //    推入 capacity=1 的 Channel（CONFLATED/DROP_OLDEST），新帧覆盖旧帧
+            //    实现"取图永远不停、解码总是处理最新帧"
+            //  - Consumer（Dispatchers.Default）：从 Channel 拉 JPEG，复用 Bitmap 解码
+            //    后发布到 _liveViewFrame。解码与取图完全并行，CPU/IO 流水线重叠。
+            val frameChannel = kotlinx.coroutines.channels.Channel<ByteArray>(
+                capacity = 1,
+                onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
+            )
+            val producerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            val consumerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val consecutiveFailures = java.util.concurrent.atomic.AtomicInteger(0)
+            val stopped = java.util.concurrent.atomic.AtomicBoolean(false)
+
+            // ----- Producer：USB 取图循环 -----
+            val producerJob = producerScope.launch {
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
+                var lastLogTime = System.nanoTime()
+                var frameCount = 0
+                while (isActive && _liveViewEnabled.value && !stopped.get() &&
+                    _connectionState.value is ConnectionState.Connected
+                ) {
+                    val conn = currentConnection
+                    if (conn == null) {
+                        delay(16)
+                        continue
+                    }
+                    var frameData: ByteArray? = null
                     if (conn.connectionType == ConnectionType.USB) {
                         // 依次尝试所有候选取图 opcode，有一个成功就继续解析
-                        var frameData: ByteArray? = null
                         for (getOp in getCandidates) {
-                            val data = if (conn is UsbCameraConnection) {
-                                conn.sendCommandWithData(getOp, timeoutMs = 300, params = intArrayOf())
-                            } else {
-                                conn.sendCommandWithData(getOp)
+                            val data = try {
+                                if (conn is UsbCameraConnection) {
+                                    // 实时取景快速路径：50ms 超时（单帧必须 16ms 内完成，
+                                    // 50ms 已足够覆盖一次 USB 往返）。expectRawPayload=true
+                                    // 跳过 PTP 容器 early-exit 防止半截 JPEG。
+                                    conn.sendCommandWithData(
+                                        getOp,
+                                        timeoutMs = 50,
+                                        expectRawPayload = true,
+                                        params = intArrayOf()
+                                    )
+                                } else {
+                                    conn.sendCommandWithData(getOp)
+                                }
+                            } catch (e: Exception) {
+                                null
                             }
-                            if (data.size > 12) {
+                            if (data != null && data.size > 12) {
                                 frameData = data
                                 break
                             }
                         }
-                        val data = frameData ?: continue
-                        val jpegData = extractLiveViewJpeg(data)
-                        if (jpegData.isEmpty()) continue
-                        val bitmap = BitmapFactory.decodeByteArray(jpegData, 0, jpegData.size, decodeOptions)
-                        bitmap?.let {
-                            _liveViewFrame.value = it
-                            captured = true
-                            consecutiveFrameFailures = 0
+                    } else {
+                        // WiFi 走标准路径
+                        for (getOp in getCandidates) {
+                            val data = try { conn.sendCommandWithData(getOp) } catch (e: Exception) { null }
+                            if (data != null && data.size > 12) {
+                                frameData = data
+                                break
+                            }
                         }
-
+                    }
+                    if (frameData == null) {
+                        consecutiveFailures.incrementAndGet()
+                        if (consecutiveFailures.get() >= 20) {
+                            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Producer consecutive failures >=20, stopping", emptyMap())
+                            stopped.set(true)
+                            _liveViewEnabled.value = false
+                            break
+                        }
+                        delay(8)
+                        continue
+                    }
+                    val jpegData = extractLiveViewJpeg(frameData)
+                    if (jpegData.isEmpty()) {
+                        consecutiveFailures.incrementAndGet()
+                        if (consecutiveFailures.get() >= 20) {
+                            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Producer empty jpeg x20, stopping", emptyMap())
+                            stopped.set(true)
+                            _liveViewEnabled.value = false
+                            break
+                        }
+                        delay(8)
+                        continue
+                    }
+                    // 成功：推入 channel（CONFLATED：新帧覆盖旧帧）
+                    val result = frameChannel.trySend(jpegData)
+                    if (result.isSuccess) {
+                        consecutiveFailures.set(0)
                         frameCount++
                         val now = System.nanoTime()
                         if (now - lastLogTime >= 5_000_000_000L) {
-                            val avgMs = ((now - lastLogTime) / 1_000_000.0) / frameCount.coerceAtLeast(1)
-                            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Live view frames", mapOf("frames" to frameCount.toString(), "dropped" to dropCount.toString(), "avgIntervalMs" to String.format(Locale.US, "%.2f", avgMs)))
+                            val fps = frameCount.toDouble() / ((now - lastLogTime) / 1_000_000_000.0)
+                            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Producer fps", mapOf("fps" to String.format(Locale.US, "%.1f", fps), "frames" to frameCount.toString()))
                             frameCount = 0
-                            dropCount = 0
                             lastLogTime = now
                         }
                     }
-                } catch (e: Exception) {
-                    consecutiveFrameFailures++
-                    val now = System.nanoTime()
-                    if (now - lastErrorTime >= 1_000_000_000L) {
-                        AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Live view frame error", mapOf("error" to (e.message ?: "unknown"), "consecutiveFailures" to consecutiveFrameFailures.toString()))
-                        lastErrorTime = now
-                    }
-                    if (settingsManager.debugMode) e.printStackTrace()
-                    // 连续大量帧失败说明连接或相机状态已异常，退出循环避免空转
-                    if (consecutiveFrameFailures >= 60) {
-                        AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Too many frame failures, stopping", emptyMap())
-                        _liveViewEnabled.value = false
+                }
+            }
+
+            // ----- Consumer：JPEG 解码循环 -----
+            val consumerJob = consumerScope.launch {
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
+                // 复用 Bitmap：分配一张与典型实时取景分辨率（640x480 RGB_565）匹配的
+                // Bitmap，每帧通过 inBitmap 让 BitmapFactory 复用同一块内存，
+                // 避免每帧 new Bitmap 触发 GC（60fps = 60 alloc/sec，不复用会卡顿）。
+                // 尺寸不匹配时 BitmapFactory 会自动新建并释放 inBitmap，无需我们手动管理。
+                val decodeOptions = BitmapFactory.Options().apply {
+                    inPreferredConfig = Bitmap.Config.RGB_565
+                    inMutable = true
+                }
+                var reusableBitmap: Bitmap? = null
+                var frameCount = 0
+                var dropCount = 0
+                var lastLogTime = System.nanoTime()
+                while (isActive && _liveViewEnabled.value && !stopped.get()) {
+                    val jpegData = try {
+                        frameChannel.receive()
+                    } catch (e: Exception) {
                         break
                     }
+                    val candidate = reusableBitmap
+                    decodeOptions.inBitmap = if (candidate != null && !candidate.isRecycled) candidate else null
+                    val bitmap = try {
+                        BitmapFactory.decodeByteArray(jpegData, 0, jpegData.size, decodeOptions)
+                    } catch (e: Exception) {
+                        null
+                    }
+                    if (bitmap == null) {
+                        decodeOptions.inBitmap = null
+                        consecutiveFailures.incrementAndGet()
+                        dropCount++
+                        if (consecutiveFailures.get() >= 20) {
+                            stopped.set(true)
+                            _liveViewEnabled.value = false
+                            break
+                        }
+                        continue
+                    }
+                    if (bitmap !== decodeOptions.inBitmap) {
+                        // 尺寸变化导致新建：替换 reusable
+                        val old = reusableBitmap
+                        reusableBitmap = bitmap
+                        if (old != null && old !== bitmap && !old.isRecycled) {
+                            old.recycle()
+                        }
+                    }
+                    decodeOptions.inBitmap = bitmap
+                    _liveViewFrame.value = bitmap
+                    frameCount++
+                    val now = System.nanoTime()
+                    if (now - lastLogTime >= 5_000_000_000L) {
+                        val fps = frameCount.toDouble() / ((now - lastLogTime) / 1_000_000_000.0)
+                        AppLogger.report(
+                            "F",
+                            "CameraRepositoryImpl.kt:startLiveViewLoop",
+                            "Consumer fps",
+                            mapOf(
+                                "fps" to String.format(Locale.US, "%.1f", fps),
+                                "frames" to frameCount.toString(),
+                                "dropped" to dropCount.toString()
+                            )
+                        )
+                        frameCount = 0
+                        dropCount = 0
+                        lastLogTime = now
+                    }
                 }
-                val elapsedNs = System.nanoTime() - loopStart
-                val delayNs = targetIntervalNs - elapsedNs
-                if (delayNs > 0) {
-                    delay(delayNs / 1_000_000)
-                } else if (captured) {
-                    // 已落后超过一帧，跳过下一次等待以追赶，但累计丢帧数便于观察
-                    dropCount++
-                }
+                reusableBitmap?.takeIf { !it.isRecycled }?.recycle()
+            }
+
+            try {
+                producerJob.join()
+                consumerJob.cancel()
+                consumerJob.join()
+            } finally {
+                producerScope.cancel()
+                consumerScope.cancel()
+                frameChannel.close()
             }
             // Clear the frame when the loop exits so the UI doesn't stick on the last frame.
             _liveViewFrame.value = null
@@ -964,13 +1077,51 @@ class CameraRepositoryImpl @Inject constructor(
 
     override suspend fun setFlashMode(mode: FlashMode) {
         _cameraSettings.value = _cameraSettings.value.copy(flashMode = mode)
-        applyPtpProperty(PtpConstants.DEVICE_PROP_FLASH_MODE, PtpValueMapper.flashModeToPtp(mode))
+        // 关键：标准 PTP 0x501C FlashMode 在 Nikon D5200 等老机身**根本不支持**，
+        // 写入会直接返回 0xA001 InvalidParameter，导致闪光灯控制"没反应"。
+        // digiCamControl 对 Nikon 使用 0xD064 FlashMode (UINT16)，枚举值与标准不同，
+        // 因此需要根据品牌路由到不同的属性码 + 不同的编码函数。
+        val brand = _cameraSettings.value.brand
+        when (brand) {
+            CameraBrand.Nikon -> {
+                runCatching {
+                    applyPtpProperty(
+                        PtpConstants.DEVICE_PROP_NIKON_FLASH_MODE,
+                        PtpValueMapper.nikonFlashModeToPtp(mode)
+                    )
+                }
+            }
+            else -> {
+                applyPtpProperty(
+                    PtpConstants.DEVICE_PROP_FLASH_MODE,
+                    PtpValueMapper.flashModeToPtp(mode)
+                )
+            }
+        }
     }
 
     override suspend fun setFlashCompensation(ev: Float) {
         _cameraSettings.value = _cameraSettings.value.copy(flashCompensation = ev)
-        // Flash compensation is often vendor-specific; try standard property 0xD124.
-        applyPtpProperty(0xD124.toShort(), PtpValueMapper.evToPtp(ev))
+        // 关键：Nikon 私有 FlashExposureCompensation (0xD065) 单位是 1/8 EV（INT16），
+        // 与标准 0x5010 ExposureCompensation 的 1/1000 EV 不同。
+        // 之前用 evToPtp (1/1000 EV) 写 0xD124 (Nikon 早期 MTP)，单位不匹配导致闪光灯补偿
+        // 实际不生效。现按品牌路由到正确的属性码 + 编码函数。
+        val brand = _cameraSettings.value.brand
+        when (brand) {
+            CameraBrand.Nikon -> {
+                runCatching {
+                    applyPtpProperty(
+                        PtpConstants.DEVICE_PROP_NIKON_FLASH_EXPOSURE_COMP,
+                        PtpValueMapper.nikonFlashCompToPtp(ev)
+                    )
+                }
+            }
+            else -> {
+                runCatching {
+                    applyPtpProperty(0xD124.toShort(), PtpValueMapper.evToPtp(ev))
+                }
+            }
+        }
     }
 
     override suspend fun setStorageTarget(target: StorageTarget) {
@@ -1580,8 +1731,26 @@ class CameraRepositoryImpl @Inject constructor(
             safeReadProperty(conn, PtpConstants.DEVICE_PROP_FOCUS_MODE, "对焦模式")?.let {
                 result["对焦模式"] = focusModeName(it)
             }
-            safeReadProperty(conn, PtpConstants.DEVICE_PROP_FLASH_MODE, "闪光灯")?.let {
-                result["闪光灯"] = flashModeName(it)
+            // 闪光灯：Nikon 走 0xD064 私有属性 + nikonPtpToFlashMode，
+            // 其他品牌走标准 0x501C + 标准名称映射。
+            val isNikon = _cameraSettings.value.brand == CameraBrand.Nikon
+            val flashCode = if (isNikon) {
+                PtpConstants.DEVICE_PROP_NIKON_FLASH_MODE
+            } else {
+                PtpConstants.DEVICE_PROP_FLASH_MODE
+            }
+            safeReadProperty(conn, flashCode, "闪光灯")?.let { raw ->
+                result["闪光灯"] = if (isNikon) {
+                    PtpValueMapper.nikonPtpToFlashMode(raw).name
+                } else {
+                    flashModeName(raw)
+                }
+            }
+            if (isNikon) {
+                safeReadProperty(conn, PtpConstants.DEVICE_PROP_NIKON_FLASH_EXPOSURE_COMP, "闪光补偿")?.let { raw ->
+                    val ev = PtpValueMapper.nikonPtpToFlashComp(raw)
+                    result["闪光补偿"] = String.format(Locale.US, "%+.1f EV", ev)
+                }
             }
             safeReadProperty(conn, PtpConstants.DEVICE_PROP_EXPOSURE_PROGRAM_MODE, "曝光程序")?.let {
                 result["曝光程序"] = exposureProgramName(it)
@@ -1982,12 +2151,14 @@ class CameraRepositoryImpl @Inject constructor(
      * 不及时读取会导致命令被 busy 或进入"正在连接 PC"的假死状态。
      *
      * 关键：Nikon 等老机身（典型如 D5200）对事件轮询频率非常敏感——
-     * 每 800ms 轮询一次会让机身一直显示"正在连接 PC"，并占用大量 USB 带宽，
-     * 进而让用户感知的曝光补偿等属性读写出错。因此：
+     * 每 800ms 轮询一次会让机身一直显示"正在连接 PC"，并占用大量 USB 带宽。
+     * 因此：
      * 1. 空闲间隔设为 3 秒（仅在 B 门/连拍/取景全部停止时才使用）
-     * 2. 进入 B 门/连拍/取景状态时切换到 200ms 短间隔轮询（不带数据，仅命令），
-     *    以便及时把机身状态变化的事件取出，避免积压后被相机当 busy 拒收
-     * 3. 仅在已连接且未处于活动状态时执行完整轮询，最大限度减少与其它 PTP 命令冲突
+     * 2. 活动期（B 门/连拍/取景）**只 delay 不发送命令**——
+     *    一旦调用 sendCommand(pollOp) 就会和实时取景帧循环抢 ptpLock Mutex，
+     *    帧循环每 200ms 卡一次，连续失败累计触发退出导致实时取景"卡死"。
+     *    实时取景本身已经把 USB 总线跑满，相机会主动把事件推到 bulk 端点；
+     *    帧循环读数据时事件会跟随数据一起返回，无需独立轮询。
      */
     private fun startEventLoop() {
         val pollOp = brandStrategy.eventPollOperation ?: return
@@ -1996,13 +2167,9 @@ class CameraRepositoryImpl @Inject constructor(
             while (isActive && ensureConnected()) {
                 val active = isBulbInProgress || _burstRunning.value || _liveViewEnabled.value
                 if (active) {
-                    // 活动期短间隔（200ms）无数据轮询，仅把事件队列清空
-                    // 使用 sendCommand 而非 sendCommandWithData，
-                    // 避免与正在进行的取景/拍摄 Data 阶段粘包造成数据错乱
-                    runCatching {
-                        val conn = currentConnection ?: return@runCatching
-                        conn.sendCommand(pollOp)
-                    }
+                    // 活动期不发送任何命令，仅延时让出 CPU。
+                    // 事件会跟随实时取景/拍摄数据流一并回到主线程，由 extractDataAndResponse
+                    // 顺带处理（TID 不匹配的事件容器会被丢弃，不会污染主命令响应）。
                     delay(200)
                     continue
                 }

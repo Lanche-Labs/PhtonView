@@ -459,15 +459,19 @@ class UsbCameraConnection @Inject constructor(
     }
 
     override suspend fun sendCommandWithData(code: Short, vararg params: Int): ByteArray {
-        return sendCommandWithDataInternal(PtpCommand(code, nextTransactionId(), params), PtpConstants.DEFAULT_TIMEOUT_MS)
+        return sendCommandWithDataInternal(PtpCommand(code, nextTransactionId(), params), PtpConstants.DEFAULT_TIMEOUT_MS, expectRawPayload = false)
     }
 
     /**
      * Send a command and read the data phase with a custom timeout.
      * Used by live view to avoid long stalls when the loop is cancelled.
+     *
+     * @param expectRawPayload 设为 true 时跳过 readAllBulkPackets 的 PTP 容器长度
+     *  early-exit 检查，用于实时取景等二进制 JPEG payload 读取，避免 JPEG 字节
+     *  碰巧被误判为 PTP 容器导致只读到半帧就退出。
      */
-    suspend fun sendCommandWithData(code: Short, timeoutMs: Int, vararg params: Int): ByteArray {
-        return sendCommandWithDataInternal(PtpCommand(code, nextTransactionId(), params), timeoutMs)
+    suspend fun sendCommandWithData(code: Short, timeoutMs: Int, expectRawPayload: Boolean = false, vararg params: Int): ByteArray {
+        return sendCommandWithDataInternal(PtpCommand(code, nextTransactionId(), params), timeoutMs, expectRawPayload = expectRawPayload)
     }
 
     override fun nextTransactionId(): Int = transactionId++
@@ -687,7 +691,7 @@ class UsbCameraConnection @Inject constructor(
      * 只读取一个传输阶段（Data 或 Response），不跨阶段阻塞，避免 D5200 等
      * 老机身在 Data 阶段结束后长时间等待 Response 而触发 USB 断开。
      */
-    private suspend fun readAllBulkPackets(conn: UsbDeviceConnection, inEp: UsbEndpoint, timeoutMs: Int): ByteArray = withContext(Dispatchers.IO) {
+    private suspend fun readAllBulkPackets(conn: UsbDeviceConnection, inEp: UsbEndpoint, timeoutMs: Int, expectRawPayload: Boolean = false): ByteArray = withContext(Dispatchers.IO) {
         val packetBuffer = ByteArray(USB_BULK_MAX_PACKET_SIZE)
         val result = ByteArrayOutputStream(16384)
         while (true) {
@@ -703,11 +707,45 @@ class UsbCameraConnection @Inject constructor(
             if (length < USB_BULK_MAX_PACKET_SIZE) {
                 break
             }
+            // 关键修复：实时取景的 JPEG 长度常常正好是 512 的整数倍，
+            // 相机不会发送 short packet 作为结束标记，循环会一直等到 timeoutMs
+            // （默认 300ms）才退出，导致每帧都额外等 300ms，实时取景卡顿。
+            //
+            // **但要避免 liveview 误判**——JPEG 字节内容碰巧（FFD8 开头、第 4-5 字节
+            // 是 0x0001~0x0004 容器类型、第 0-3 字节是合理 length）会被错误地当成合法
+            // PTP 容器提前退出，导致只读到半帧 JPEG 后 BitmapFactory 解码失败、累计
+            // consecutiveFrameFailures 触发 liveview 退出。
+            //
+            // 解决：仅当调用方明确知道这是 PTP 命令响应（expectRawPayload = false）
+            // 时才使用容器长度 early-exit；liveview frame pulling 等二进制 payload
+            // 读取时传 expectRawPayload = true 跳过此检查。
+            if (expectRawPayload) {
+                continue
+            }
+            val cur = result.toByteArray()
+            if (cur.size >= 12) {
+                val containerLength = readInt32(cur, 0)
+                val containerType = readInt16(cur, 4)
+                val isKnownType = containerType == PtpConstants.CONTAINER_TYPE_DATA ||
+                    containerType == PtpConstants.CONTAINER_TYPE_RESPONSE ||
+                    containerType == PtpConstants.CONTAINER_TYPE_EVENT ||
+                    containerType == PtpConstants.CONTAINER_TYPE_COMMAND
+                if (isKnownType && containerLength in 12..(cur.size + USB_BULK_MAX_PACKET_SIZE)) {
+                    if (cur.size >= containerLength) {
+                        // 已收集到完整容器，相机可能因 JPEG 凑齐 512 倍数而不再发 short packet
+                        break
+                    }
+                }
+            }
         }
         result.toByteArray()
     }
 
-    private suspend fun sendCommandWithDataInternal(command: PtpCommand, timeoutMs: Int = PtpConstants.DEFAULT_TIMEOUT_MS): ByteArray = withContext(Dispatchers.IO) {
+    private suspend fun sendCommandWithDataInternal(
+        command: PtpCommand,
+        timeoutMs: Int = PtpConstants.DEFAULT_TIMEOUT_MS,
+        expectRawPayload: Boolean = false
+    ): ByteArray = withContext(Dispatchers.IO) {
         val conn = connection ?: throw IllegalStateException("USB not connected")
         val outEp = bulkOutEndpoint ?: throw IllegalStateException("Output endpoint not found")
         val inEp = bulkInEndpoint ?: throw IllegalStateException("Input endpoint not found")
@@ -727,7 +765,9 @@ class UsbCameraConnection @Inject constructor(
             }
 
             // 先读取 Data 阶段（短包结束），避免长时间阻塞导致老机身断开。
-            val dataPhase = readAllBulkPackets(conn, inEp, timeoutMs)
+            // 实时取景读取 JPEG 时传 expectRawPayload=true，跳过 PTP 容器长度
+            // early-exit 检查，避免 JPEG 字节碰巧被误判为容器导致半截退出。
+            val dataPhase = readAllBulkPackets(conn, inEp, timeoutMs, expectRawPayload)
             // 仅当 dataPhase 末尾为 Data 容器（无 Response 紧跟）时再追读一次 Response，
             // 避免误读下个命令的响应导致 TID 错乱。
             val needMoreResponse = dataPhase.isNotEmpty() && !endsWithResponse(dataPhase)
@@ -797,6 +837,15 @@ class UsbCameraConnection @Inject constructor(
         }.getOrDefault(ByteArray(0))
     }
 
+    /**
+     * Read a PTP device property.
+     *
+     * 关键：必须按属性的**声明数据宽度和符号性**解析，而不是按 payload 实际长度。
+     * 历史 bug：0x5010 ExposureCompensation 是 INT16 1/1000 EV，相机在 -3..+3 范围内
+     * 回读 -1（0xFFFF）时，原来的 `buffer.getShort().toInt() and 0xFFFF` 错误地
+     * 把 0xFFFF 当作 UINT16 解析成 65535，再 / 1000f = +65.5 EV，UI 显示"+60 多"溢出。
+     * 修复：根据属性码的固定表（与 encodePropertyValue 对称）决定按 INT8/UINT8/INT16/UINT16/INT32/UINT32 解析。
+     */
     override suspend fun getDeviceProperty(code: Short): Int? {
         // #region debug-point C:property-get
         AppLogger.report("C", "UsbCameraConnection.kt:getDeviceProperty", "Getting property", mapOf("code" to String.format(Locale.US, "0x%04X", code)))
@@ -819,20 +868,92 @@ class UsbCameraConnection @Inject constructor(
             }
         }
         val value = if (payload.isEmpty()) null else {
-            val buffer = ByteBuffer.wrap(payload)
-            buffer.order(ByteOrder.LITTLE_ENDIAN)
-            when (payload.size) {
-                1 -> buffer.get().toInt() and 0xFF
-                2 -> buffer.getShort().toInt() and 0xFFFF
-                4 -> buffer.getInt()
-                else -> buffer.getInt()
-            }
+            // 按属性码的固定宽度+符号表解析（与 encodePropertyValue 对称），
+            // 而非按 payload.size，避免 Nikon 等老机身返回的 payload 长度与
+            // 实际属性数据宽度不一致时（如 padding/对齐）被错读。
+            parseTypedPropertyValue(code, payload)
         }
         // #region debug-point C:property-get-result
-        AppLogger.report("C", "UsbCameraConnection.kt:getDeviceProperty", "Property value", mapOf("code" to String.format(Locale.US, "0x%04X", code), "value" to value.toString(), "payloadSize" to payload.size.toString()))
+        AppLogger.report("C", "UsbCameraConnection.kt:getDeviceProperty", "Property value", mapOf("code" to String.format(Locale.US, "0x%04X", code), "value" to (value?.toString() ?: "null"), "payloadSize" to payload.size.toString()))
         // #endregion
         return value
     }
+
+    /**
+     * 按属性码声明的数据类型（宽度 + 符号）解析 payload。
+     * 关键：把已知 INT16 属性的 0xFFFF 解析为 -1 而不是 65535，
+     * 避免 0x5010 ExposureCompensation 把负值错算成 +65535 / 1000f = +65.5 EV。
+     */
+    private fun parseTypedPropertyValue(code: Short, payload: ByteArray): Int? {
+        if (payload.isEmpty()) return null
+        val spec = propertyTypeSpecs[code.toInt() and 0xFFFF]
+        val width: Int
+        val signed: Boolean
+        if (spec != null) {
+            width = spec.first
+            signed = spec.second
+        } else {
+            // 未知属性：回退到按 payload 长度推断（保留历史行为），尽量用 INT 类型以减少溢出误读
+            width = when {
+                payload.size == 1 -> 1
+                payload.size == 2 -> 2
+                payload.size == 4 -> 4
+                else -> 4
+            }
+            signed = when (width) {
+                1, 2, 4 -> true
+                else -> true
+            }
+        }
+        val bb = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
+        return try {
+            when (width) {
+                1 -> if (signed) bb.get().toInt() else (bb.get().toInt() and 0xFF)
+                2 -> if (signed) bb.getShort().toInt() else (bb.getShort().toInt() and 0xFFFF)
+                4 -> if (signed) bb.getInt() else bb.getInt()
+                8 -> bb.getInt()
+                else -> bb.getInt()
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * 属性码 → (字节宽度, 是否有符号) 的固定映射表。
+     * 与 [encodePropertyValue] 保持一致；新增属性时务必同时更新两个映射。
+     * 规则参考 digiCamControl 的 NikonPtpCodec 与 PIMA15740 PTP 规范：
+     *  - 标准 PTP 属性多为 INT16/UINT16，少数 INT32/UINT32（如 ExposureTime）
+     *  - Nikon 私有 0xD124 FlashExposureCompensation 为 INT16 1/8 EV
+     */
+    private val propertyTypeSpecs: Map<Int, Pair<Int, Boolean>> = mapOf(
+        0x5001 to (1 to false), // BatteryLevel        UINT8
+        0x5002 to (1 to false), // FunctionalMode      UINT8
+        0x5003 to (4 to false), // ImageSize           UINT32
+        0x5004 to (4 to false), // CompressionSetting  UINT32
+        0x5005 to (2 to false), // WhiteBalance        UINT16
+        0x5007 to (2 to false), // FNumber             UINT16 (raw 1/100 f-stop)
+        0x500B to (2 to false), // ExposureMeteringMode UINT16
+        0x500D to (4 to false), // ExposureTime        UINT32 (1/10000 s 或 1/10 s)
+        0x500E to (2 to false), // ExposureProgramMode UINT16
+        0x500F to (2 to false), // ExposureISO         UINT16
+        0x5010 to (2 to true),  // ExposureCompensation **INT16 1/1000 EV** （修复点：有符号）
+        0x5011 to (1 to false), // ExposureBiasCompensation UINT8
+        0x5013 to (1 to false), // FocusMode           UINT8
+        0x5014 to (4 to false), // FocusMeteringMode   UINT32
+        0x501A to (2 to false), // FocusMode2          UINT16
+        0x501C to (2 to false), // FlashMode           UINT16
+        0xD024 to (2 to true),  // Nikon ExposureCompensation (alt)  INT16
+        0xD100 to (4 to false), // Nikon ShutterSpeed   UINT32
+        0xD10B to (1 to false), // Nikon RecordingMedia UINT8
+        0xD124 to (2 to true),  // Nikon FlashExposureCompensation **INT16 1/8 EV** （有符号）
+        0xD138 to (2 to false), // Nikon ShootingMode   UINT16
+        0xD1A2 to (1 to false), // Nikon LiveViewStatus UINT8
+        0xD1A4 to (4 to false), // Nikon LiveViewProhibitCondition UINT32
+        0xD400 to (4 to false), // Nikon ShotsRemaining UINT32
+        0xD064 to (2 to false), // Nikon FlashMode      UINT16
+        0xD065 to (2 to true)   // Nikon FlashExposureCompensation (Nikon MTP 私有) INT16
+    )
 
     override suspend fun setDeviceProperty(code: Short, value: Int): Boolean {
         return setDevicePropertyValue(code, encodePropertyValue(code, value))
@@ -876,6 +997,11 @@ class UsbCameraConnection @Inject constructor(
     /**
      * 从 GetDevicePropDesc 返回的描述符 payload（已去掉 12 字节 Data 头）中解析当前值。
      * 描述符结构：DevicePropCode(2) + DataType(2) + GetSet(1) + FactoryDefault + CurrentValue + ...
+     *
+     * 关键：必须按 DataType 决定符号性（INT* vs UINT*）来解析。
+     * 历史 bug：line 982 之前固定 `bb.getShort().toInt() and 0xFFFF` 把 INT16 负值
+     * 错算成正 UINT16（例如 0xFFFF 解析成 65535），导致 0x5010 ExposureCompensation
+     * 回读 -1 EV 时被显示成 +65.5 EV（用户报告"+60 多"溢出的根因之一）。
      */
     private fun parseCurrentValueFromDescriptor(desc: ByteArray): Int? {
         if (desc.size < 5) return null
@@ -884,11 +1010,15 @@ class UsbCameraConnection @Inject constructor(
             val propCode = bb.getShort().toInt() and 0xFFFF
             val dataType = bb.getShort().toInt() and 0xFFFF
             bb.get() // GetSet
-            val valueSize = when (dataType) {
-                0x0001, 0x0002 -> 1 // INT8 / UINT8
-                0x0003, 0x0004 -> 2 // INT16 / UINT16
-                0x0005, 0x0006 -> 4 // INT32 / UINT32
-                0x0007, 0x0008 -> 8 // INT64 / UINT64
+            val (valueSize, signed) = when (dataType) {
+                0x0001 -> 1 to true   // INT8
+                0x0002 -> 1 to false  // UINT8
+                0x0003 -> 2 to true   // INT16
+                0x0004 -> 2 to false  // UINT16
+                0x0005 -> 4 to true   // INT32
+                0x0006 -> 4 to false  // UINT32
+                0x0007 -> 8 to true   // INT64
+                0x0008 -> 8 to false  // UINT64
                 else -> {
                     AppLogger.d("parseCurrentValueFromDescriptor: unsupported data type 0x${dataType.toString(16)} for 0x${propCode.toString(16)}")
                     return null
@@ -897,10 +1027,10 @@ class UsbCameraConnection @Inject constructor(
             if (bb.remaining() < valueSize * 2) return null
             bb.position(bb.position() + valueSize) // skip factory default
             when (valueSize) {
-                1 -> bb.get().toInt() and 0xFF
-                2 -> bb.getShort().toInt() and 0xFFFF
-                4 -> bb.getInt()
-                8 -> bb.getLong().toInt()
+                1 -> if (signed) bb.get().toInt() else (bb.get().toInt() and 0xFF)
+                2 -> if (signed) bb.getShort().toInt() else (bb.getShort().toInt() and 0xFFFF)
+                4 -> if (signed) bb.getInt() else bb.getInt() // 32 位无符号与 Int 等价
+                8 -> if (signed) bb.getLong().toInt() else (bb.getLong() and 0x7FFFFFFFFFFFFFFFL).toInt()
                 else -> null
             }
         } catch (e: Exception) {

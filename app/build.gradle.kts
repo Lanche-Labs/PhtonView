@@ -20,7 +20,21 @@ val today = LocalDate.now()
 val versionMajor = today.year % 100
 val versionMinor = today.monthValue
 val versionPatch = today.dayOfMonth
-val versionBuild = versionProps.getProperty("versionBuild", "01").toInt().coerceIn(0, 99)
+
+// 读取上次构建的日期（YYYY-MM-DD）。如果跨天（今天 != 上次构建日期），
+// 把 versionBuild 重置为 01，避免"过一天还接着昨天的 22"导致版本号变成
+// 26.07.08.22 这种与日期不匹配、看起来像"跳号"的版本。
+val lastBuildDate = versionProps.getProperty("versionDate", "")
+val currentDateStr = today.toString()
+var rawBuild = versionProps.getProperty("versionBuild", "01").toInt().coerceIn(0, 99)
+if (lastBuildDate != currentDateStr) {
+    rawBuild = 1
+    versionProps.setProperty("versionDate", currentDateStr)
+    versionProps.setProperty("versionBuild", rawBuild.toString().padStart(2, '0'))
+    versionFile.outputStream().use { versionProps.store(it, "PhtonView Version") }
+    println("Date changed ($lastBuildDate -> $currentDateStr), reset versionBuild to 01")
+}
+val versionBuild = rawBuild
 
 val versionNameString = String.format(
     "%02d.%02d.%02d.%02d",

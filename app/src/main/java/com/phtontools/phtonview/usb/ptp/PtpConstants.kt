@@ -202,6 +202,12 @@ object PtpConstants {
     const val DEVICE_PROP_NIKON_AF_MODE: Short = 0xD161.toShort()
     const val DEVICE_PROP_NIKON_AF_MODE_AT_LIVE_VIEW: Short = 0xD061.toShort()
     const val DEVICE_PROP_NIKON_AF_AREA_MODE: Short = 0xD163.toShort()
+    // 闪光灯：Nikon D5200 等老机身**不支持**标准 PTP 0x501C FlashMode，
+    // 写标准属性会直接返回 0xA001 InvalidParameter；digiCamControl 对 Nikon 使用：
+    //  - 0xD064 FlashMode         UINT16（0=关闭, 1=自动, 2=强制闪光, 3=防红眼, 4=慢速同步, 5=后帘同步）
+    //  - 0xD065 FlashExposureComp INT16 1/8 EV
+    const val DEVICE_PROP_NIKON_FLASH_MODE: Short = 0xD064.toShort()
+    const val DEVICE_PROP_NIKON_FLASH_EXPOSURE_COMP: Short = 0xD065.toShort()
 
     // 对象格式
     const val OBJECT_FORMAT_ASSOCIATION: Short = 0x3001
