@@ -735,6 +735,16 @@ class CameraRepositoryImpl @Inject constructor(
                 android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
                 var lastLogTime = System.nanoTime()
                 var frameCount = 0
+                // 实时取景启动期（前 10 帧）相机需要 200-500ms 出第一帧，
+                // 用 50ms 短超时立刻会因 20 次连续失败退出实时取景。改为：
+                //  - 启动期（warmupFrames 内）超时 500ms，给相机充足时间出图
+                //  - 稳态期超时 100ms（单帧超时 100ms = 最多 10fps 失败降级）
+                //  - 连续失败阈值 40 次（4 秒内无响应再退出，给用户留足反应时间）
+                val warmupFrames = 10
+                var warmupCount = 0
+                val coldTimeoutMs = 500
+                val hotTimeoutMs = 100
+                val maxConsecutiveFailures = 40
                 while (isActive && _liveViewEnabled.value && !stopped.get() &&
                     _connectionState.value is ConnectionState.Connected
                 ) {
@@ -743,18 +753,24 @@ class CameraRepositoryImpl @Inject constructor(
                         delay(16)
                         continue
                     }
+                    val timeoutMs = if (warmupCount < warmupFrames) coldTimeoutMs else hotTimeoutMs
                     var frameData: ByteArray? = null
                     if (conn.connectionType == ConnectionType.USB) {
                         // 依次尝试所有候选取图 opcode，有一个成功就继续解析
                         for (getOp in getCandidates) {
                             val data = try {
                                 if (conn is UsbCameraConnection) {
-                                    // 实时取景快速路径：50ms 超时（单帧必须 16ms 内完成，
-                                    // 50ms 已足够覆盖一次 USB 往返）。expectRawPayload=true
-                                    // 跳过 PTP 容器 early-exit 防止半截 JPEG。
-                                    conn.sendCommandWithData(
+                                    // 实时取景快速路径：避开通用 sendCommandWithData 的
+                                    // ptpLock 争抢与 Response 容器解析开销，
+                                    // 直接单次 bulkTransfer IN 读取 JPEG。
+                                    // expectRawPayload=true 跳过 PTP 容器 early-exit
+                                    // 防止半截 JPEG。
+                                    conn.readLiveViewFrameFast(
                                         getOp,
-                                        timeoutMs = 50,
+                                        timeoutMs = timeoutMs
+                                    ) ?: conn.sendCommandWithData(
+                                        getOp,
+                                        timeoutMs = timeoutMs,
                                         expectRawPayload = true,
                                         params = intArrayOf()
                                     )
@@ -781,8 +797,8 @@ class CameraRepositoryImpl @Inject constructor(
                     }
                     if (frameData == null) {
                         consecutiveFailures.incrementAndGet()
-                        if (consecutiveFailures.get() >= 20) {
-                            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Producer consecutive failures >=20, stopping", emptyMap())
+                        if (consecutiveFailures.get() >= maxConsecutiveFailures) {
+                            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Producer consecutive failures >=$maxConsecutiveFailures, stopping", mapOf("warmupCount" to warmupCount.toString()))
                             stopped.set(true)
                             _liveViewEnabled.value = false
                             break
@@ -793,8 +809,8 @@ class CameraRepositoryImpl @Inject constructor(
                     val jpegData = extractLiveViewJpeg(frameData)
                     if (jpegData.isEmpty()) {
                         consecutiveFailures.incrementAndGet()
-                        if (consecutiveFailures.get() >= 20) {
-                            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Producer empty jpeg x20, stopping", emptyMap())
+                        if (consecutiveFailures.get() >= maxConsecutiveFailures) {
+                            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Producer empty jpeg x$maxConsecutiveFailures, stopping", mapOf("warmupCount" to warmupCount.toString(), "rawSize" to frameData.size.toString()))
                             stopped.set(true)
                             _liveViewEnabled.value = false
                             break
@@ -806,11 +822,12 @@ class CameraRepositoryImpl @Inject constructor(
                     val result = frameChannel.trySend(jpegData)
                     if (result.isSuccess) {
                         consecutiveFailures.set(0)
+                        warmupCount++
                         frameCount++
                         val now = System.nanoTime()
                         if (now - lastLogTime >= 5_000_000_000L) {
                             val fps = frameCount.toDouble() / ((now - lastLogTime) / 1_000_000_000.0)
-                            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Producer fps", mapOf("fps" to String.format(Locale.US, "%.1f", fps), "frames" to frameCount.toString()))
+                            AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "Producer fps", mapOf("fps" to String.format(Locale.US, "%.1f", fps), "frames" to frameCount.toString(), "phase" to if (warmupCount <= warmupFrames) "warmup" else "steady"))
                             frameCount = 0
                             lastLogTime = now
                         }

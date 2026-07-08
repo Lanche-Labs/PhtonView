@@ -476,6 +476,91 @@ class UsbCameraConnection @Inject constructor(
 
     override fun nextTransactionId(): Int = transactionId++
 
+    /**
+     * 实时取景专用快速路径：直接 bulkTransfer 写 12 字节 command，单次 bulkTransfer
+     * 读响应（不读 Response 容器），绕过 ptpLock 与 sendCommandWithDataInternal 的
+     * 多包累积+容器解析开销。
+     *
+     * **安全性**：调用方必须保证此时 event loop 已暂停（_liveViewEnabled=true 时
+     * startEventLoop 只 delay 不发送命令），且无其他并发 PTP 命令（实时取景阶段
+     * 用户不能同时调整参数）。这两个前提下，跳过 ptpLock 不会引入 USB 总线竞争。
+     *
+     * **数据格式**：Nikon D5200 GetLiveViewFrame 返回的 Data 容器结构为
+     *   12 字节 PTP Data 头
+     *   + 4 字节 dataLength
+     *   + 8 字节 (unknown)
+     *   + 4 字节 FFD8 (JPEG SOI)
+     *   + JPEG 数据
+     *   + 12 字节 PTP Response 头
+     * readLiveViewFrameFast 读取完整 Data 容器并返回原始字节（包含 12 字节 Data 头），
+     * 由 extractLiveViewJpeg 进一步解析。
+     *
+     * @return 完整 Data 容器字节，失败返回 null
+     */
+    suspend fun readLiveViewFrameFast(opCode: Short, timeoutMs: Int): ByteArray? = withContext(Dispatchers.IO) {
+        val conn = connection ?: return@withContext null
+        val outEp = bulkOutEndpoint ?: return@withContext null
+        val inEp = bulkInEndpoint ?: return@withContext null
+        val command = PtpCommand(opCode, nextTransactionId())
+        val commandBytes = command.encode()
+        val written = try {
+            conn.bulkTransfer(outEp, commandBytes, commandBytes.size, timeoutMs)
+        } catch (e: Exception) {
+            return@withContext null
+        }
+        if (written != commandBytes.size) return@withContext null
+        // 循环读取直到累积到 PTP Data 容器头声明的完整长度，或 timeoutMs 内无新数据
+        val result = ByteArrayOutputStream(16384)
+        val packetBuffer = ByteArray(USB_BULK_MAX_PACKET_SIZE)
+        var lastReadTime = System.nanoTime()
+        var headerLength: Int? = null
+        val timeoutNs = timeoutMs.toLong() * 1_000_000L
+        while (true) {
+            val length = try {
+                conn.bulkTransfer(inEp, packetBuffer, packetBuffer.size, timeoutMs)
+            } catch (e: Exception) {
+                break
+            }
+            if (length < 0) {
+                // -1 = LIBUSB_ERROR_TIMEOUT，无新数据
+                val now = System.nanoTime()
+                if (now - lastReadTime > timeoutNs && result.size() > 0) {
+                    // 已经等够一帧超时，相机不再发数据，认为本帧结束
+                    break
+                }
+                if (result.size() == 0) return@withContext null
+                // 还没到 timeout，继续等
+                continue
+            }
+            if (length > 0) {
+                result.write(packetBuffer, 0, length)
+                lastReadTime = System.nanoTime()
+            }
+            if (length < USB_BULK_MAX_PACKET_SIZE) {
+                // 短包 = 本次传输结束
+                break
+            }
+            // 已读到 PTP Data 容器头？
+            if (headerLength == null && result.size() >= 12) {
+                val cur = result.toByteArray()
+                val containerLength = readInt32(cur, 0)
+                val containerType = readInt16(cur, 4)
+                if (containerType == PtpConstants.CONTAINER_TYPE_DATA && containerLength in 12..(32 * 1024 * 1024)) {
+                    headerLength = containerLength
+                }
+            }
+            // 头长度已知 + 累积到完整容器 → 直接结束（相机不会发 short packet）
+            val hl = headerLength
+            if (hl != null && result.size() >= hl) {
+                break
+            }
+        }
+        val out = result.toByteArray()
+        if (out.size < 12) return@withContext null
+        // 关键：不进行 PTP 容器长度 early-exit（这是 raw payload，不是 PTP 命令响应）
+        out
+    }
+
     private suspend fun sendCommandInternal(command: PtpCommand): Pair<Short, IntArray> = withContext(Dispatchers.IO) {
         val conn = connection ?: throw IllegalStateException("USB not connected")
         val outEp = bulkOutEndpoint ?: throw IllegalStateException("Output endpoint not found")
