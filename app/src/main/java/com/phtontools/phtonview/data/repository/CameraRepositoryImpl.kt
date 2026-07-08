@@ -719,17 +719,21 @@ class CameraRepositoryImpl @Inject constructor(
             // 提升实时取景线程优先级，减少被调度器打断的概率
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
 
-            // RGB_565 减少带宽 + inMutable 支持 inBitmap 复用
+            // RGB_565 减少内存与解码时间
             val decodeOptions = BitmapFactory.Options().apply {
                 inPreferredConfig = Bitmap.Config.RGB_565
-                inMutable = true
             }
             var frameCount = 0
             var dropCount = 0
             var lastLogTime = System.nanoTime()
             var lastErrorTime = 0L
             var consecutiveFrameFailures = 0
-            var reusableBitmap: Bitmap? = null
+            // 关键（issue #87）：**不要使用 inBitmap 复用**。
+            // inBitmap 复用时 BitmapFactory.decodeByteArray 返回的是同一 Bitmap 对象引用，
+            // MutableStateFlow 通过 `equals` 判定新值与旧值相同就**不会发射**，
+            // 导致 UI 不刷新（必须点击屏幕触发 invalidate 才更新）。
+            // 30fps 下每帧分配新 Bitmap 的 GC 压力在 ART 下完全可以接受，
+            // 相比"不刷新"是不可见的。
             val getCandidates = liveViewGetCandidates()
             if (getCandidates.isEmpty()) {
                 AppLogger.report("F", "CameraRepositoryImpl.kt:startLiveViewLoop", "No live view get candidates", mapOf("brand" to brandStrategy.brand.name))
@@ -748,7 +752,6 @@ class CameraRepositoryImpl @Inject constructor(
                         for (getOp in getCandidates) {
                             val data = try {
                                 if (usb != null) {
-                                    // 内部 sendCommandWithData 接受 timeoutMs + expectRawPayload
                                     usb.sendCommandWithData(getOp, timeoutMs = 300, expectRawPayload = true, params = intArrayOf())
                                 } else {
                                     conn.sendCommandWithData(getOp)
@@ -792,17 +795,13 @@ class CameraRepositoryImpl @Inject constructor(
                             }
                             continue
                         }
-                        // 单线程下 inBitmap 复用绝对安全：同一线程解码并发布，
-                        // 不存在旧 Bitmap 还未渲染就被回收的竞态
-                        val candidate = reusableBitmap
-                        decodeOptions.inBitmap = if (candidate != null && !candidate.isRecycled) candidate else null
+                        // 每帧分配新 Bitmap（**不使用 inBitmap**）
                         val bitmap = try {
                             BitmapFactory.decodeByteArray(jpegData, 0, jpegData.size, decodeOptions)
                         } catch (e: Exception) {
                             null
                         }
                         if (bitmap == null) {
-                            decodeOptions.inBitmap = null
                             consecutiveFrameFailures++
                             val now = System.nanoTime()
                             if (now - lastErrorTime >= 1_000_000_000L) {
@@ -816,11 +815,7 @@ class CameraRepositoryImpl @Inject constructor(
                             }
                             continue
                         }
-                        if (bitmap !== decodeOptions.inBitmap) {
-                            // 尺寸变化导致新建：替换 reusable（**单线程不回收旧**，让 GC 处理）
-                            reusableBitmap = bitmap
-                        }
-                        decodeOptions.inBitmap = bitmap
+                        // 直接赋值新 Bitmap 实例 → StateFlow 必然发射
                         _liveViewFrame.value = bitmap
                         captured = true
                         consecutiveFrameFailures = 0
@@ -849,7 +844,7 @@ class CameraRepositoryImpl @Inject constructor(
                     }
                 }
                 val elapsedNs = System.nanoTime() - loopStart
-                val targetIntervalNs = 33_333_333L // 30fps 目标（不激进）
+                val targetIntervalNs = 33_333_333L // 30fps 目标
                 val delayNs = targetIntervalNs - elapsedNs
                 if (delayNs > 0) {
                     delay(delayNs / 1_000_000)
