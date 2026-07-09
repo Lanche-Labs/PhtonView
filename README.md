@@ -72,4 +72,4 @@ cd PhtonView
 | libusb | LGPL-2.1+ | The libusb Project and contributors |
 | libltdl | LGPL-2.0-or-later WITH Libtool-exception | Free Software Foundation, Inc. |
 
-> 详细的许可证声明、版权信息及各协议全文，请参见项目根目录的 [NOTICE](NOTICE) 文件及 [LICENSES/](LICENSES/) 目录。
+> 详细的许可证声明、版权信息及各协议全文，请参见项目 [LICENSES/](LICENSES/) 目录。
