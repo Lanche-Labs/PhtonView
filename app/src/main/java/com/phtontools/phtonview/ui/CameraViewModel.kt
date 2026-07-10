@@ -8,6 +8,7 @@ import com.phtontools.phtonview.data.local.UiMode
 import com.phtontools.phtonview.data.model.*
 import com.phtontools.phtonview.data.repository.CameraRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -97,11 +98,24 @@ class CameraViewModel @Inject constructor(
         // 不在初始化时立即连接，避免首次进入主界面时因无设备而异常
         viewModelScope.launch {
             delay(800)
-            repository.connect()
+            connectInternal()
         }
     }
 
-    fun connect() = viewModelScope.launch { repository.connect() }
+    /** 连接任务（issue #107：防止 init 与用户主动点击抢同一 USB 端点）。 */
+    private var connectJob: Job? = null
+
+    fun connect() {
+        // 取消旧 connect 任务，避免多协程同时跑 connect() 流程抢同一 USB 端点
+        // 导致扫描/枚举/打开 PTP 会话的命令交错、超时。
+        connectJob?.cancel()
+        connectJob = viewModelScope.launch { connectInternal() }
+    }
+
+    private suspend fun connectInternal() {
+        repository.connect()
+    }
+
     fun disconnect() = repository.disconnect()
     fun clearError() = repository.clearError()
 

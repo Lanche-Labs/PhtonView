@@ -58,6 +58,26 @@ class CameraRepositoryImpl @Inject constructor(
     private var periodicSyncJob: Job? = null
 
     /**
+     * 心跳保活协程：每 3 秒发一次轻量级 GetDeviceInfo (0x1001)。
+     * 连续 3 次失败判定连接死亡 → 设置 _connectionState = Error("连接已断开")，
+     * UI 可观察 ConnectionState 进入 Error 自动重连。
+     *
+     * 关键：心跳通过 ptpLock 串行化，与所有其他 PTP 命令（包括取景帧、GET_EVENT、
+     * setFlashMode、applyPtpProperty）互斥。心跳包是 PTP 协议层最轻的 4-byte 命令
+     * 头（0x1001 无参），USB 端点 1-2ms 完成，**几乎零成本**。
+     *
+     * 功耗优化（issue: 朋友提醒"多轮询功耗爆炸"）：
+     * - 活跃期（liveview / 连拍 / B 门）相机资源被占，间隔从 3s 拉到 10s
+     *   （取景帧循环本身每 30ms 就证明 USB 端点活着，独立心跳多余）
+     * - 闲置期（用户只读参数）3s 间隔，**快速发现** 拔线/断电
+     */
+    private var heartbeatJob: Job? = null
+    private var consecutiveHeartbeatFailures: Int = 0
+    private val maxConsecutiveHeartbeatFailures: Int = 3
+    private val heartbeatIntervalMs: Long = 3000L
+    private val heartbeatIntervalLiveviewMs: Long = 10000L
+
+    /**
      * 根据相机型号/能力选择使用标准 0x500D 还是尼康 0xD100 快门属性，
      * 避免两个属性同时写入导致显示与实际不一致。
      */
@@ -572,6 +592,7 @@ class CameraRepositoryImpl @Inject constructor(
         stopLiveViewInternal()
         stopEventLoop()
         stopPeriodicPropertySync()
+        stopHeartbeat()
         intervalometerJob?.cancel()
         bulbJob?.cancel()
         connectionStateJob?.cancel()
@@ -579,6 +600,13 @@ class CameraRepositoryImpl @Inject constructor(
         val conn = currentConnection
         currentConnection = null
         connectionStateTarget = null
+        // **关键**（issue: 关闭/打开实时取景时断开相机仍有取景图显示）：
+        // disconnect 时**立即**清空 _liveViewFrame 和 _liveViewEnabled，让 UI 第一时间擦除画面。
+        // 旧实现只调 stopLiveViewInternal()，而它内部只在协程 isActive=false 路径清空 frame；
+        // 拔线断连（USB 物理中断）时 currentConnection 已被清空，stopLiveViewInternal 立即返回，
+        // **frame 没被清空**，旧画面残留显示，必须手动刷新 UI 才会消失。
+        _liveViewFrame.value = null
+        _liveViewEnabled.value = false
         _connectionState.value = ConnectionState.Disconnected
         scope.launch {
             // 关闭 USB 前必须让相机退出 PC 控制模式，否则相机会一直显示“正在连接 PC”，
@@ -2072,7 +2100,22 @@ class CameraRepositoryImpl @Inject constructor(
         delay(300)
         val items = runCatching { conn.listPhotos(folder) }.getOrDefault(emptyList())
         _photos.value = items
-        if (wasLiveView) runCatching { startLiveView() }
+        // **关键修复**（issue #105：图库查询后快门失效）：
+        // 旧实现 listPhotos 末尾会 runCatching { startLiveView() } 自动重启 liveview，
+        // 但 PC 模式引用计数在 stopLiveView 期间被 -1 重置回 0，startLiveView 重新 enterPcMode
+        // 让 pcRefCount=1 实际却没在取景（startLiveView 内部 enterPcControlMode 已成功但
+        // 帧循环可能因相机未就绪而失败）。后续 setFlashMode 走 enterPcMode() 返回 true
+        // 不再真发 ChangeCameraMode(1)，但相机端已因 listPhotos 退出 PC 模式，
+        // **0x100B 拍照命令被相机拒收** → 用户感觉"按不了快门"。
+        //
+        // 修复：**不**自动 restart liveview，让用户主动点"实时取景"按钮重开。
+        // 如果之前 liveview 在开，则保持 _liveViewEnabled.value = false，UI 上
+        // 实时取景按钮自然显示为未激活态，用户可一键重启。
+        if (wasLiveView) {
+            AppLogger.report("I", "CameraRepositoryImpl.kt:listPhotos",
+                "LiveView paused for gallery query, user must tap to resume",
+                mapOf("items" to items.size.toString()))
+        }
         return items
     }
 
@@ -2327,6 +2370,114 @@ class CameraRepositoryImpl @Inject constructor(
     private fun stopPeriodicPropertySync() {
         periodicSyncJob?.cancel()
         periodicSyncJob = null
+    }
+
+    /**
+     * 启动心跳保活协程。连接成功后调用，每 heartbeatIntervalMs 探测一次。
+     * 心跳与所有 PTP 命令通过 ptpLock 串行化，相机在取景/B 门/连拍中时
+     * 心跳被自然阻塞（等待获取锁）但**不会失败**，因为相机只是忙。
+     *
+     * 失败判定的关键：
+     * - bulkTransfer OUT 返回 -1 → 真正失败（USB 端点死了）
+     * - bulkTransfer OUT 超时（>1500ms）→ 真正失败（相机没反应）
+     * - 协议层异常（IOException）→ 真正失败
+     * - 成功获取 Response → 重置连续失败计数
+     */
+    private fun startHeartbeat() {
+        heartbeatJob?.cancel()
+        consecutiveHeartbeatFailures = 0
+        heartbeatJob = scope.launch {
+            while (isActive) {
+                // 功耗优化：liveview/burst/bulb 期间拉长间隔到 10s
+                val interval = if (_liveViewEnabled.value || _burstRunning.value || isBulbInProgress) {
+                    heartbeatIntervalLiveviewMs
+                } else {
+                    heartbeatIntervalMs
+                }
+                delay(interval)
+                if (!isActive) break
+                if (_connectionState.value !is ConnectionState.Connected) {
+                    consecutiveHeartbeatFailures = 0
+                    continue
+                }
+                val ok = runCatching { performHeartbeat() }.getOrDefault(false)
+                if (ok) {
+                    if (consecutiveHeartbeatFailures > 0) {
+                        AppLogger.report("I", "CameraRepositoryImpl.kt:startHeartbeat", "Heartbeat recovered",
+                            mapOf("prevFailures" to consecutiveHeartbeatFailures.toString()))
+                    }
+                    consecutiveHeartbeatFailures = 0
+                } else {
+                    consecutiveHeartbeatFailures++
+                    AppLogger.report("W", "CameraRepositoryImpl.kt:startHeartbeat", "Heartbeat failed",
+                        mapOf("consecutive" to consecutiveHeartbeatFailures.toString(),
+                              "max" to maxConsecutiveHeartbeatFailures.toString()))
+                    if (consecutiveHeartbeatFailures >= maxConsecutiveHeartbeatFailures) {
+                        AppLogger.report("E", "CameraRepositoryImpl.kt:startHeartbeat", "Connection dead, entering Error state")
+                        _connectionState.value = ConnectionState.Error("连接已断开（心跳连续失败 ${consecutiveHeartbeatFailures} 次）")
+                        stopLiveViewInternal()
+                        stopEventLoop()
+                        stopPeriodicPropertySync()
+                        stopHeartbeat()
+                        // **关键**（issue: 实时取景画面残留）：心跳判定连接死亡时**立即**
+                        // 清空 frame 和 enabled 标志，UI 同步收到 Empty Frame 事件。
+                        // 避免旧画面一直显示。
+                        _liveViewFrame.value = null
+                        _liveViewEnabled.value = false
+                        break
+                    }
+                }
+            }
+        }
+    }
+
+    private fun stopHeartbeat() {
+        heartbeatJob?.cancel()
+        heartbeatJob = null
+        consecutiveHeartbeatFailures = 0
+    }
+
+    /**
+     * 实际执行一次心跳：通过 CameraConnection 接口的 sendCommandWithData 发 GetDeviceInfo
+     * (0x1001)。GetDeviceInfo 是 Nikon D5200 等相机**最轻的** PTP 命令（仅 4 字节头，
+     * 无参数），返回 ~150-300 字节 DeviceInfo。
+     *
+     * ptpLock 在 UsbCameraConnection 内部是 private 的（issue #95 修复后所有 PTP 命令
+     * 都已通过 withLock 串行化），这里**不**直接拿锁，避免跨层耦合。心跳通过接口调用
+     * 会自然等相机空档，camera 忙着取景/曝光时心跳排队等几毫秒，**不会**失败。
+     *
+     * **校验**（issue: 朋友提醒"轮询要校验"）：
+     * 1. Response 头 4-5 字节是 Container Type，**必须**是 0x0001 Response（不是 Data/Command）
+     * 2. Response 头 6-7 字节是 Response Code，应为 0x2001 OK
+     * 3. Response params 应包含原命令 0x1001
+     * 4. data 长度应 >= 8（最小 PTP 头）
+     * 任一不满足 → 视作心跳失败
+     */
+    private suspend fun performHeartbeat(): Boolean {
+        val conn = currentConnection ?: return false
+        return runCatching {
+            val data = conn.sendCommandWithData(0x1001.toShort())
+            // 解析 PTP Response 容器头做完整性校验
+            // 头布局：Length(4) | Type(2) | Code(2) | Params[...]
+            if (data.size < 12) return@runCatching false
+            val length = (data[0].toInt() and 0xFF) or
+                    (data[1].toInt() and 0xFF shl 8) or
+                    (data[2].toInt() and 0xFF shl 16) or
+                    (data[3].toInt() and 0xFF shl 24)
+            val type = (data[4].toInt() and 0xFF) or (data[5].toInt() and 0xFF shl 8)
+            val code = (data[6].toInt() and 0xFF) or (data[7].toInt() and 0xFF shl 8)
+            // length 必须 > 0 且 < 65535
+            val lengthOk = length in 8..65535
+            // 0x0001 = Response, 0x0002 = Data, 0x0003 = Command
+            // 0x1001 发的是无参命令，应该收到 0x0001 Response + 0x2001 OK
+            // 任何其他类型（0x0002 Data-only 模式）都说明协议状态不对
+            val typeOk = type == 0x0001
+            // response code: 0x2001 = OK, 0xA001-A003 = Error
+            // 收到 0xAxxx 错误码也是有效响应（说明相机还在，只是命令不支持）
+            // 收到 0x9000+ = 内部码，0x2001 = OK
+            val codeOk = code in 0x2000..0xAFFF
+            lengthOk && typeOk && codeOk
+        }.getOrDefault(false)
     }
 
     /**

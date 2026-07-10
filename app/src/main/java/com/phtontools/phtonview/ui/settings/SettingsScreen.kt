@@ -1,6 +1,7 @@
 package com.phtontools.phtonview.ui.settings
 
 import android.app.Activity
+import android.os.Build
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -12,6 +13,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,13 +28,23 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Analytics
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Cable
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Policy
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.filled.Wifi
@@ -87,7 +99,7 @@ import com.phtontools.phtonview.util.UxImprovementManager
 import kotlinx.coroutines.launch
 
 private enum class SettingsPage {
-    Main, Theme, Language, UiMode, Credits, Update, Privacy, License
+    Main, Theme, Language, UiMode, Credits, Update, Privacy, License, About
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -144,6 +156,7 @@ fun SettingsScreen(
         SettingsPage.Update -> stringResource(id = R.string.check_update)
         SettingsPage.Privacy -> stringResource(id = R.string.privacy_policy)
         SettingsPage.License -> stringResource(id = R.string.license)
+        SettingsPage.About -> stringResource(id = R.string.about)
     }
     Scaffold(
         topBar = {
@@ -209,6 +222,7 @@ fun SettingsScreen(
                     onCreditsClick = { currentPage = SettingsPage.Credits },
                     onPrivacyClick = { currentPage = SettingsPage.Privacy },
                     onLicenseClick = { currentPage = SettingsPage.License },
+                    onAboutClick = { currentPage = SettingsPage.About },
                     onCheckUpdate = checkUpdate,
                     onConnectionTypeChange = {
                         viewModel.setConnectionType(it)
@@ -311,6 +325,10 @@ fun SettingsScreen(
                 SettingsPage.License -> LicensePage(
                     modifier = Modifier.padding(padding)
                 )
+
+                SettingsPage.About -> AboutPage(
+                    modifier = Modifier.padding(padding)
+                )
             }
         }
     }
@@ -334,6 +352,7 @@ private fun MainSettingsContent(
     onCreditsClick: () -> Unit,
     onPrivacyClick: () -> Unit,
     onLicenseClick: () -> Unit,
+    onAboutClick: () -> Unit,
     onCheckUpdate: () -> Unit,
     onConnectionTypeChange: (ConnectionType) -> Unit,
     onConnect: () -> Unit,
@@ -415,7 +434,7 @@ private fun MainSettingsContent(
             title = stringResource(id = R.string.app_name),
             summary = String.format(stringResource(id = R.string.version_format), BuildConfig.VERSION_NAME) +
                     " · " + stringResource(id = R.string.developer_team),
-            onClick = {}
+            onClick = onAboutClick
         )
         SettingsItem(
             icon = Icons.Default.People,
@@ -543,6 +562,194 @@ private fun UiModePage(
             }
             HorizontalDivider(modifier = Modifier.padding(start = 56.dp))
         }
+    }
+}
+
+@Composable
+private fun AboutPage(
+    modifier: Modifier = Modifier
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val packageName = remember { context.packageName }
+    val versionCode = remember { BuildConfig.VERSION_CODE }
+    val versionName = remember { BuildConfig.VERSION_NAME }
+    // compileSdk / minSdk 通过 BuildConfig 暴露（由 build.gradle.kts 注入）。
+    // 没有显式 field 时，BuildConfig.VERSION_NAME 与 VERSION_CODE 已经携带主要版本信息，
+    // 其余 SDK 等级从 Build 读运行时值。
+    val targetSdk = remember { context.applicationInfo.targetSdkVersion }
+    val androidApi = remember { Build.VERSION.SDK_INT }
+    val androidRelease = remember { Build.VERSION.RELEASE }
+    val sectionCard: @Composable (String, @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) -> Unit = { title, content ->
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            content()
+        }
+    }
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        sectionCard(stringResource(id = R.string.about_app_info)) {
+            InfoRow(stringResource(id = R.string.about_package_name), packageName)
+            InfoRow(stringResource(id = R.string.about_version_name), versionName)
+            InfoRow(stringResource(id = R.string.about_version_code), versionCode.toString())
+            InfoRow(stringResource(id = R.string.about_target_sdk), targetSdk.toString())
+            InfoRow(stringResource(id = R.string.about_android_api), androidApi.toString())
+            InfoRow(stringResource(id = R.string.about_android_release), androidRelease)
+        }
+        sectionCard(stringResource(id = R.string.about_used_sdks)) {
+            SdkGroup(
+                title = stringResource(id = R.string.about_group_protocol),
+                sdks = listOf(
+                    UsedSdk("PTP / MTP", "PIMA 15740",
+                        stringResource(id = R.string.about_role_ptp),
+                        Icons.Default.PhotoCamera)
+                )
+            )
+            SdkGroup(
+                title = stringResource(id = R.string.about_group_camera_stack),
+                sdks = listOf(
+                    UsedSdk("libgphoto2", "2.5.x",
+                        stringResource(id = R.string.about_role_gphoto2),
+                        Icons.Default.CameraAlt),
+                    UsedSdk("libusb", "1.0 / 0.1",
+                        stringResource(id = R.string.about_role_libusb),
+                        Icons.Default.Cable),
+                    UsedSdk("libltdl", "—",
+                        stringResource(id = R.string.about_role_ltdl),
+                        Icons.Default.Memory),
+                    UsedSdk("libphtonview", "1.0",
+                        stringResource(id = R.string.about_role_phtonview),
+                        Icons.Default.Memory)
+                )
+            )
+            SdkGroup(
+                title = stringResource(id = R.string.about_group_app_stack),
+                sdks = listOf(
+                    UsedSdk("Kotlin stdlib", "1.9.22",
+                        stringResource(id = R.string.about_role_kotlin),
+                        Icons.Default.Code),
+                    UsedSdk("Jetpack Compose BOM", "2024.02.00",
+                        stringResource(id = R.string.about_role_compose_bom),
+                        Icons.Default.Brush),
+                    UsedSdk("AndroidX Core KTX", "1.12.0",
+                        stringResource(id = R.string.about_role_core_ktx),
+                        Icons.Default.Settings),
+                    UsedSdk("AndroidX Lifecycle", "2.7.0",
+                        stringResource(id = R.string.about_role_lifecycle),
+                        Icons.Default.Bolt),
+                    UsedSdk("Hilt", "2.50",
+                        stringResource(id = R.string.about_role_hilt),
+                        Icons.Default.Layers),
+                    UsedSdk("kotlinx.coroutines", "1.7.3",
+                        stringResource(id = R.string.about_role_coroutines),
+                        Icons.Default.Sync),
+                    UsedSdk("Material 3", "1.11.0",
+                        stringResource(id = R.string.about_role_material),
+                        Icons.Default.Palette),
+                    UsedSdk("Material Icons Extended", "—",
+                        stringResource(id = R.string.about_role_icons),
+                        Icons.Default.Palette),
+                    UsedSdk("AndroidX EXIF Interface", "1.3.7",
+                        stringResource(id = R.string.about_role_exif),
+                        Icons.Default.Storage)
+                )
+            )
+        }
+    }
+}
+
+private data class UsedSdk(
+    val name: String,
+    val version: String,
+    val role: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector
+)
+
+@Composable
+private fun SdkGroup(title: String, sdks: List<UsedSdk>) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+        )
+        sdks.forEach { sdk ->
+            SdkRow(sdk)
+        }
+    }
+}
+
+@Composable
+private fun SdkRow(sdk: UsedSdk) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Icon(
+            imageVector = sdk.icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp).padding(top = 2.dp)
+        )
+        Column(modifier = Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = sdk.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = sdk.version,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                )
+            }
+            Text(
+                text = sdk.role,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun InfoRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium
+        )
     }
 }
 

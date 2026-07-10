@@ -533,8 +533,15 @@ private fun LiveViewLayer(
     val scope = rememberCoroutineScope()
     var processedFrame by remember { mutableStateOf<Bitmap?>(null) }
 
+    // 关键（issue #102）：frame 变成 null（disconnect / 心跳断线）时必须**立即**
+    // 把 processedFrame 也清空。原实现 `val source = frame ?: return@LaunchedEffect`
+    // 只是退出协程，processedFrame 仍保留上一次的 Bitmap，UI 继续显示旧画面。
     LaunchedEffect(frame, peakingEnabled) {
-        val source = frame ?: return@LaunchedEffect
+        val source = frame
+        if (source == null) {
+            processedFrame = null
+            return@LaunchedEffect
+        }
         if (!peakingEnabled) {
             processedFrame = source
             return@LaunchedEffect
