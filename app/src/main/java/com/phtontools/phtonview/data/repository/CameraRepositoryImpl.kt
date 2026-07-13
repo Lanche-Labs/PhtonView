@@ -49,6 +49,12 @@ class CameraRepositoryImpl @Inject constructor(
         Thread(r, "PhtonView-LiveView")
     }.asCoroutineDispatcher()
     private val connectionLock = Mutex()
+    // **修复**（issue #110 连接风暴）：60 秒内 USB attach 事件重复触发 connect，
+    // 每次 connect 都会经过 switchConnection() 调 disconnect() 释放旧连接，
+    // 触发 PTP 协议中断 + 心跳断流 + UI 闪烁。加全局 in-progress 互斥：
+    // 已有 connect 协程在跑时，新触发的 connect 直接 return。
+    // 配套：connect() 在 finally 中复位，disconnect() 不影响此 flag（只阻止新 connect）。
+    @Volatile private var isConnectInProgress = false
     private var liveViewJob: Job? = null
     private var intervalometerJob: Job? = null
     private var bulbJob: Job? = null
@@ -541,6 +547,11 @@ class CameraRepositoryImpl @Inject constructor(
             // #endregion
             AppLogger.e("Repository connect failed", e)
             _connectionState.value = ConnectionState.Error("Connect failed: ${e.message}")
+        } finally {
+            // **修复**（issue #110）：无论如何释放 in-progress 锁，
+            // 让后续 connect() 可正常进入。注意 disconnect() 不改这个 flag，
+            // 只阻止"新 connect 并发"，不影响 disconnect 立即清理资源。
+            isConnectInProgress = false
         }
     }
 

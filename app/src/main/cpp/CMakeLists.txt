@@ -71,6 +71,19 @@ if(EXISTS ${GPHOTO2_ROOT}/include/gphoto2/gphoto2.h)
         ltdl_preload.cpp)
     target_include_directories(ltdl_preload PRIVATE ${GPHOTO2_ROOT}/include)
     target_link_libraries(ltdl_preload ${log-lib})
+    # **关键修复**（issue #104/#105/#111-#117）：
+    # Android NDK 默认 -fvisibility=hidden，ltdl_preload 导出的
+    # lt_libltdl_LTX_preloaded_symbols 在 strip 之后可能仅留在符号表中、而
+    # dlopen(RTLD_GLOBAL) 加载 ltdl_preload.so 后动态符号表不一定导出
+    # 全局可见的 preloaded_symbols。强制 -fvisibility=default + --export-dynamic
+    # + used 属性确保符号在 ltdl.so 解析时被 linker 看到。
+    target_compile_options(ltdl_preload PRIVATE
+        -fvisibility=default
+        -fno-lto
+        -DTARGET_LTDL_PRELOAD)
+    target_link_options(ltdl_preload PRIVATE
+        -Wl,--export-dynamic
+        -Wl,--no-gc-sections)
 
     target_link_libraries(phtonview
         gphoto2
