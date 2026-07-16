@@ -1,273 +1,268 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">PhtonView</string>
-    <string name="developer_team">Lanche-Labs</string>
-
-    <!-- Connection states -->
-    <string name="status_connected">Connected: %1$s</string>
-    <string name="status_connecting">Connecting…</string>
-    <string name="status_error">Error: %1$s</string>
-    <string name="error_title">Error</string>
-    <string name="status_disconnected">Disconnected</string>
-
-    <!-- Camera info -->
-    <string name="camera_info_format">EV %1$+.1f  %2$s  %3$s  ISO %4$d</string>
-    <string name="waiting_for_camera">Waiting for camera…</string>
-    <string name="camera_connected">Camera connected</string>
-    <string name="preparing_main">Preparing camera interface…</string>
-    <string name="live_view">Live View</string>
-
-    <!-- Focus -->
-    <string name="focus_mode_af">AF</string>
-    <string name="focus_mode_mf">MF</string>
-    <string name="focus">Focus</string>
-    <string name="af_single">AF-S</string>
-    <string name="af_continuous">AF-F</string>
-    <string name="magnification_format">Mag %1$.0fx</string>
-    <string name="focus_peaking">Peaking</string>
-    <string name="gallery">Gallery</string>
-    <string name="no_photos">No photos found on camera</string>
-    <string name="download_preview">Download &amp; Preview</string>
-    <string name="usb">USB</string>
-    <string name="wifi">Wi-Fi</string>
-
-    <!-- Exposure -->
-    <string name="metering_mode">Metering</string>
-    <string name="ev_comp_format">EV %+,.1f</string>
-    <string name="metering_matrix">Matrix</string>
-    <string name="metering_center">Center</string>
-    <string name="metering_spot">Spot</string>
-    <string name="metering_matrix_short">全局</string>
-    <string name="metering_center_short">区域</string>
-    <string name="metering_spot_short">点</string>
-
-    <!-- Capture Settings -->
-    <string name="iso">ISO</string>
-    <string name="aperture">Aperture</string>
-    <string name="shutter">Shutter</string>
-    <string name="image_format">Image Format</string>
-    <string name="image_size">Image Size</string>
-    <string name="burst_speed">Burst Speed</string>
-    <string name="burst_count">Burst Count</string>
-    <string name="capture_settings">Capture Settings</string>
-    <string name="reset_to_defaults">Reset to Defaults</string>
-
-    <!-- Capture -->
-    <string name="burst">Burst</string>
-    <string name="capture">Capture</string>
-    <string name="shooting_mode">Shooting Mode</string>
-    <string name="ev_comp">EV Compensation</string>
-    <string name="white_balance">White Balance</string>
-    <string name="flash_mode">Flash Mode</string>
-    <string name="flash_compensation">Flash Compensation</string>
-    <string name="storage_target">Storage Target</string>
-    <string name="advanced_capture">Advanced Capture</string>
-    <string name="bulb_duration">Bulb Duration: %d s</string>
-    <string name="timer_delay">Self-Timer: %d s</string>
-    <string name="intervalometer_info">Interval: %1$d s, Shots: %2$d</string>
-    <string name="aeb_info">AEB: %1$d shots, Step: %2$.1f EV</string>
-    <string name="presets">Shooting Presets</string>
-    <string name="camera_maintenance">Camera Maintenance</string>
-    <string name="fetch_status">Fetch Status</string>
-    <string name="sync_datetime">Sync Date/Time</string>
-    <string name="timer_2s">Timer</string>
-    <string name="bulb">Bulb</string>
-    <string name="interval">Interval</string>
-    <string name="aeb">AEB</string>
-
-    <!-- Focus / metering labels -->
-    <string name="focus_mf">MF</string>
-    <string name="focus_af">AF</string>
-    <string name="focus_mode">Focus Mode</string>
-    <string name="af_s">AF-S</string>
-    <string name="af_c">AF-C</string>
-    <string name="af_mode">AF Mode</string>
-    <string name="af_area_mode">AF Area</string>
-    <string name="af_area_single">Single</string>
-    <string name="af_area_zone">Zone</string>
-    <string name="af_area_tracking">Tracking</string>
-    <string name="af_area_face">Face</string>
-    <string name="focus_button">Focus</string>
-
-    <!-- White balance -->
-    <string name="wb_auto">Auto</string>
-    <string name="wb_daylight">Daylight</string>
-    <string name="wb_cloudy">Cloudy</string>
-    <string name="wb_shade">Shade</string>
-    <string name="wb_tungsten">Tungsten</string>
-    <string name="wb_fluorescent">Fluorescent</string>
-    <string name="wb_kelvin">Kelvin</string>
-
-    <!-- Flash -->
-    <string name="flash_off">Off</string>
-    <string name="flash_on">On</string>
-    <string name="flash_auto">Auto</string>
-    <string name="flash_slow_sync">Slow Sync</string>
-
-    <!-- Assist -->
-    <string name="off">Off</string>
-
-    <!-- Presets -->
-    <string name="preset_portrait">Portrait</string>
-    <string name="preset_landscape">Landscape</string>
-    <string name="preset_sports">Sports</string>
-    <string name="preset_night">Night</string>
-    <string name="preset_macro">Macro</string>
-    <string name="preset_studio">Studio</string>
-    <string name="preset_user1">User 1</string>
-    <string name="preset_user2">User 2</string>
-    <string name="wb_flash">Flash</string>
-    <string name="wb_custom">Custom</string>
-    <string name="flash_red_eye">Red-Eye</string>
-    <string name="flash_rear_sync">Rear Sync</string>
-    <!-- issue: D5200 等老机身闪光灯是机械手动弹起，APP 无法远程弹起 -->
-    <string name="flash_manual_popup_hint">此机型需手动按机身侧按钮弹起闪光灯，否则闪光功能不会生效</string>
-
-    <!-- Advanced capture summaries -->
-    <string name="burst_summary">Capture multiple frames</string>
-    <string name="bulb_summary">Long exposure timer</string>
-    <string name="timer_summary">Delayed single shot</string>
-    <string name="interval_summary">Time-lapse sequence</string>
-    <string name="aeb_summary">Auto exposure bracketing</string>
-
-    <!-- Splash -->
-    <string name="splash_subtitle">Professional Camera Remote</string>
-
-    <!-- Onboarding -->
-    <string name="onboarding_welcome">Welcome to PhtonView</string>
-    <string name="onboarding_desc">Professional remote control for your camera via USB or WiFi.</string>
-    <string name="onboarding_permission_title">USB Permission</string>
-    <string name="onboarding_permission_desc">PhtonView uses USB OTG to communicate with your camera. Please allow USB access when prompted.</string>
-    <string name="onboarding_theme_title">Choose Theme</string>
-    <string name="onboarding_theme_desc">Select a comfortable appearance for your workspace.</string>
-    <string name="onboarding_connection_title">Camera Setup</string>
-    <string name="onboarding_connection_desc">Set your preferred interface mode.</string>
-    <string name="onboarding_skip">Skip</string>
-    <string name="theme_system">System default</string>
-    <string name="theme_light">Light</string>
-    <string name="theme_dark">Dark</string>
-    <string name="onboarding_get_started">Get Started</string>
-    <string name="onboarding_next">Next</string>
-    <string name="multi_brand">Multi-Brand</string>
-    <string name="select_connection_type">Connection Type</string>
-    <string name="select_ui_mode">Interface Mode</string>
-    <string name="ui_mode_simple">Simple</string>
-    <string name="ui_mode_simple_desc">Essential controls only</string>
-    <string name="ui_mode_pro">Professional</string>
-    <string name="ui_mode_pro_desc">Full control panel</string>
-
-    <!-- Settings -->
-    <string name="settings">Settings</string>
-    <string name="theme">Theme</string>
-    <string name="language">Language</string>
-    <string name="about">About</string>
-    <string name="appearance">Appearance</string>
-    <string name="camera">Camera</string>
-    <string name="general">General</string>
-    <string name="check_update">Check for Updates</string>
-    <string name="latest_version">Up to date</string>
-    <string name="system_default">System default</string>
-    <string name="language_english">English</string>
-    <string name="language_chinese">简体中文</string>
-    <string name="language_japanese">日本語</string>
-    <string name="language_korean">한국어</string>
-    <string name="language_french">Français</string>
-    <string name="language_german">Deutsch</string>
-    <string name="language_spanish">Español</string>
-    <string name="language_russian">Русский</string>
-    <string name="debug_mode">Debug Mode</string>
-    <string name="debug_mode_summary">Output detailed USB/PTP logs to logcat</string>
-    <string name="wifi_experimental">WiFi Connection (Experimental)</string>
-    <string name="wifi_experimental_summary">Enable experimental WiFi camera connection</string>
-    <string name="connection">Connection</string>
-    <string name="connection_status">Status</string>
-    <string name="connect">Connect</string>
-    <string name="disconnect">Disconnect</string>
-    <string name="connection_hint_title">Connection</string>
-    <string name="usb_device_detected">USB camera detected: %1$s</string>
-    <string name="tap_to_connect_usb">Tap to connect via USB</string>
-    <string name="wifi_pair">WiFi Pair</string>
-    <string name="use_usb">Use USB</string>
-    <string name="use_wifi">Use WiFi</string>
-    <string name="wifi_pair_title">WiFi Camera Pairing</string>
-    <string name="wifi_pair_desc">Enter camera IP address and port. Example: 192.168.1.1:15740</string>
-    <string name="wifi_address_label">Camera IP:Port</string>
-    <string name="usb_connection_guide">USB Connection Guide</string>
-    <string name="usb_guide_title">How to connect via USB</string>
-    <string name="usb_guide_step_1">1. Use a USB OTG adapter/cable to connect the camera to your phone.</string>
-    <string name="usb_guide_step_2">2. Turn the camera on and set it to PC / Remote / MTP mode.</string>
-    <string name="usb_guide_step_3">3. Allow USB permission when the system dialog pops up.</string>
-    <string name="usb_guide_step_4">4. The app will detect the camera and you can tap "Connect USB".</string>
-    <string name="usb_guide_note">Note: Some phones require enabling OTG in system settings.</string>
-    <string name="wifi_pairing">WiFi Pairing</string>
-    <string name="wifi_pairing_summary">Select brand and enter camera IP</string>
-    <string name="wifi_select_brand">Camera Brand</string>
-    <string name="wifi_custom">Custom</string>
-    <string name="wifi_saved_address">Saved: %1$s</string>
-    <string name="brand_nikon">Nikon</string>
-    <string name="brand_nikon_wu">Nikon WU-1a/b</string>
-    <string name="brand_canon">Canon</string>
-    <string name="brand_sony">Sony</string>
-    <string name="brand_fuji">Fujifilm</string>
-    <string name="brand_panasonic">Panasonic</string>
-    <string name="brand_olympus">Olympus</string>
-    <string name="wifi_hint_nikon">1. Enable Wi-Fi on the camera.\n2. Connect your phone to the camera hotspot (e.g. NIKON_Z6_xxx).\n3. Default address is usually 192.168.1.1:15740.</string>
-    <string name="wifi_hint_nikon_wu">1. Insert the WU-1a/1b adapter and enable Wi-Fi on the camera.\n2. Connect your phone to the adapter hotspot (e.g. NIKON_WU_xxx).\n3. Default address is usually 192.168.1.100:15740.</string>
-    <string name="wifi_hint_canon">1. Enable Wi-Fi on the camera and start EOS Utility mode.\n2. Connect your phone to the camera hotspot.\n3. Default address is usually 192.168.1.1:15740.</string>
-    <string name="wifi_hint_sony">1. Enable PC Remote on the camera.\n2. Connect your phone to the camera hotspot (e.g. DIRECT-xxxx).\n3. Enter the camera IP shown on screen.</string>
-    <string name="wifi_hint_fuji">1. Enable tether shooting on the camera.\n2. Connect your phone to the camera hotspot.\n3. Enter the camera IP shown on screen.</string>
-    <string name="wifi_hint_panasonic">1. Enable tethering on the camera.\n2. Connect your phone to the camera hotspot.\n3. Enter the camera IP shown on screen.</string>
-    <string name="wifi_hint_olympus">1. Enable PC mode on the camera.\n2. Connect your phone to the camera hotspot.\n3. Enter the camera IP shown on screen.</string>
-    <string name="wifi_hint_custom">Enter the camera IP and port shown on screen or in the manual.</string>
-    <string name="version_format">Version %1$s</string>
-    <string name="credits">Credits</string>
-    <string name="credits_summary">Program by LanChe · UI design by 安信一・プロス (One Bucket)</string>
-    <string name="about_app_info">App Information</string>
-    <string name="about_package_name">Package name</string>
-    <string name="about_version_name">Version</string>
-    <string name="about_version_code">Version code</string>
-    <string name="about_target_sdk">Target SDK</string>
-    <string name="about_min_sdk">Min SDK</string>
-    <string name="about_android_api">Android API</string>
-    <string name="about_android_release">Android version</string>
-    <string name="about_used_sdks">Libraries / SDKs</string>
-    <string name="about_group_protocol">Protocol</string>
-    <string name="about_group_camera_stack">Camera control stack</string>
-    <string name="about_group_app_stack">Android &amp; app stack</string>
-    <string name="about_role_ptp">Camera control protocol (Picture Transfer Protocol)</string>
-    <string name="about_role_gphoto2">Open-source camera driver framework — supports &gt;2000 cameras</string>
-    <string name="about_role_libusb">USB bulk &amp; interrupt transfer</string>
-    <string name="about_role_ltdl">Dynamic library loader (gphoto2 dependencies)</string>
-    <string name="about_role_phtonview">PhtonView native bridge — glues gphoto2 to Android USB</string>
-    <string name="about_role_kotlin">Kotlin stdlib — coroutines &amp; language runtime</string>
-    <string name="about_role_compose_bom">Jetpack Compose BOM — UI framework</string>
-    <string name="about_role_core_ktx">AndroidX Core KTX — Kotlin extensions</string>
-    <string name="about_role_lifecycle">AndroidX Lifecycle — ViewModel &amp; runtime</string>
-    <string name="about_role_hilt">Hilt — dependency injection</string>
-    <string name="about_role_coroutines">kotlinx.coroutines — async streaming &amp; backpressure</string>
-    <string name="about_role_material">Material 3 — design system</string>
-    <string name="about_role_icons">Material Icons Extended — extended icon set</string>
-    <string name="about_role_exif">EXIF Interface — photo metadata reader</string>
-    <string name="select_param">Select %1$s</string>
-    <string name="tap_to_input">Tap value to input</string>
-    <string name="shutter_speed">Shutter Speed</string>
-
-    <!-- User Experience Improvement Program -->
-    <string name="ux_improvement_title">User Experience Improvement Program</string>
-    <string name="ux_improvement_desc">Help us improve PhtonView by automatically sending anonymous logs from app start to close. Logs are submitted as GitHub issues and may include device model and app version.</string>
-    <string name="ux_improvement_summary">Automatically submit anonymous session logs</string>
-    <string name="ux_improvement_agree">Agree</string>
-    <string name="ux_improvement_decline">Decline</string>
-    <string name="report_issue">Report Issue</string>
-    <string name="report_issue_summary">Manually upload current logs to GitHub issue</string>
-    <string name="report_issue_submitted">Issue submitted</string>
-    <string name="report_issue_failed">Failed to submit issue</string>
-
-    <!-- Privacy Policy -->
-    <string name="privacy_policy">Privacy Policy</string>
-    <string name="privacy_policy_summary">How we collect and use your data</string>
-
-    <!-- License -->
-    <string name="license">License</string>
-    <string name="license_summary">View LICENSE and COPYING</string>
+  <string name="app_name">PhtonView</string>
+  <string name="developer_team">Lanche-Labs</string>
+  <!-- Connection states -->
+  <string name="status_connected">Connected: %1$s</string>
+  <string name="status_connecting">Connecting…</string>
+  <string name="status_error">Error: %1$s</string>
+  <string name="error_title">Error</string>
+  <string name="status_disconnected">Disconnected</string>
+  <!-- Camera info -->
+  <string name="camera_info_format">EV %1$+.1f  %2$s  %3$s  ISO %4$d</string>
+  <string name="waiting_for_camera">Waiting for camera…</string>
+  <string name="camera_connected">Camera connected</string>
+  <string name="preparing_main">Preparing camera interface…</string>
+  <string name="live_view">Live View</string>
+  <!-- Focus -->
+  <string name="focus_mode_af">AF</string>
+  <string name="focus_mode_mf">MF</string>
+  <string name="focus">Focus</string>
+  <string name="af_single">AF-S</string>
+  <string name="af_continuous">AF-F</string>
+  <string name="magnification_format">Mag %1$.0fx</string>
+  <string name="focus_peaking">Peaking</string>
+  <string name="gallery">Gallery</string>
+  <string name="no_photos">No photos found on camera</string>
+  <string name="download_preview">Download &amp; Preview</string>
+  <string name="usb">USB</string>
+  <string name="wifi">Wi-Fi</string>
+  <!-- Exposure -->
+  <string name="metering_mode">Metering</string>
+  <string name="ev_comp_format">EV %+,.1f</string>
+  <string name="metering_matrix">Matrix</string>
+  <string name="metering_center">Center</string>
+  <string name="metering_spot">Spot</string>
+  <string name="metering_matrix_short">All</string>
+  <string name="metering_center_short">Ctr</string>
+  <string name="metering_spot_short">Spot</string>
+  <!-- Capture Settings -->
+  <string name="iso">ISO</string>
+  <string name="aperture">Aperture</string>
+  <string name="shutter">Shutter</string>
+  <string name="image_format">Image Format</string>
+  <string name="image_size">Image Size</string>
+  <string name="burst_speed">Burst Speed</string>
+  <string name="burst_count">Burst Count</string>
+  <string name="capture_settings">Capture Settings</string>
+  <string name="reset_to_defaults">Reset to Defaults</string>
+  <!-- Capture -->
+  <string name="burst">Burst</string>
+  <string name="capture">Capture</string>
+  <string name="shooting_mode">Shooting Mode</string>
+  <string name="ev_comp">EV Compensation</string>
+  <string name="white_balance">White Balance</string>
+  <string name="flash_mode">Flash Mode</string>
+  <string name="flash_compensation">Flash Compensation</string>
+  <string name="storage_target">Storage Target</string>
+  <string name="advanced_capture">Advanced Capture</string>
+  <string name="bulb_duration">Bulb Duration: %d s</string>
+  <string name="timer_delay">Self-Timer: %d s</string>
+  <string name="intervalometer_info">Interval: %1$d s, Shots: %2$d</string>
+  <string name="aeb_info">AEB: %1$d shots, Step: %2$.1f EV</string>
+  <string name="presets">Shooting Presets</string>
+  <string name="camera_maintenance">Camera Maintenance</string>
+  <string name="fetch_status">Fetch Status</string>
+  <string name="sync_datetime">Sync Date/Time</string>
+  <string name="timer_2s">Timer</string>
+  <string name="bulb">Bulb</string>
+  <string name="interval">Interval</string>
+  <string name="aeb">AEB</string>
+  <!-- Focus / metering labels -->
+  <string name="focus_mf">MF</string>
+  <string name="focus_af">AF</string>
+  <string name="focus_mode">Focus Mode</string>
+  <string name="af_s">AF-S</string>
+  <string name="af_c">AF-C</string>
+  <string name="af_mode">AF Mode</string>
+  <string name="af_area_mode">AF Area</string>
+  <string name="af_area_single">Single</string>
+  <string name="af_area_zone">Zone</string>
+  <string name="af_area_tracking">Tracking</string>
+  <string name="af_area_face">Face</string>
+  <string name="focus_button">Focus</string>
+  <!-- White balance -->
+  <string name="wb_auto">Auto</string>
+  <string name="wb_daylight">Daylight</string>
+  <string name="wb_cloudy">Cloudy</string>
+  <string name="wb_shade">Shade</string>
+  <string name="wb_tungsten">Tungsten</string>
+  <string name="wb_fluorescent">Fluorescent</string>
+  <string name="wb_kelvin">Kelvin</string>
+  <!-- Flash -->
+  <string name="flash_off">Off</string>
+  <string name="flash_on">On</string>
+  <string name="flash_auto">Auto</string>
+  <string name="flash_slow_sync">Slow Sync</string>
+  <!-- Assist -->
+  <string name="off">Off</string>
+  <!-- Presets -->
+  <string name="preset_portrait">Portrait</string>
+  <string name="preset_landscape">Landscape</string>
+  <string name="preset_sports">Sports</string>
+  <string name="preset_night">Night</string>
+  <string name="preset_macro">Macro</string>
+  <string name="preset_studio">Studio</string>
+  <string name="preset_user1">User 1</string>
+  <string name="preset_user2">User 2</string>
+  <string name="wb_flash">Flash</string>
+  <string name="wb_custom">Custom</string>
+  <string name="flash_red_eye">Red-Eye</string>
+  <string name="flash_rear_sync">Rear Sync</string>
+  <!-- issue: D5200 等老机身闪光灯是机械手动弹起，APP 无法远程弹起 -->
+  <string name="flash_manual_popup_hint">This model requires manually popping up the flash via the side button; otherwise the flash function will not take effect</string>
+  <!-- Advanced capture summaries -->
+  <string name="burst_summary">Capture multiple frames</string>
+  <string name="bulb_summary">Long exposure timer</string>
+  <string name="timer_summary">Delayed single shot</string>
+  <string name="interval_summary">Time-lapse sequence</string>
+  <string name="aeb_summary">Auto exposure bracketing</string>
+  <!-- Splash -->
+  <string name="splash_subtitle">Professional Camera Remote</string>
+  <!-- Onboarding -->
+  <string name="onboarding_welcome">Welcome to PhtonView</string>
+  <string name="onboarding_desc">Professional remote control for your camera via USB or WiFi.</string>
+  <string name="onboarding_permission_title">USB Permission</string>
+  <string name="onboarding_permission_desc">PhtonView uses USB OTG to communicate with your camera. Please allow USB access when prompted.</string>
+  <string name="onboarding_theme_title">Choose Theme</string>
+  <string name="onboarding_theme_desc">Select a comfortable appearance for your workspace.</string>
+  <string name="onboarding_connection_title">Camera Setup</string>
+  <string name="onboarding_connection_desc">Set your preferred interface mode.</string>
+  <string name="onboarding_skip">Skip</string>
+  <string name="theme_system">System default</string>
+  <string name="theme_light">Light</string>
+  <string name="theme_dark">Dark</string>
+  <string name="onboarding_get_started">Get Started</string>
+  <string name="onboarding_next">Next</string>
+  <string name="multi_brand">Multi-Brand</string>
+  <string name="select_connection_type">Connection Type</string>
+  <string name="select_ui_mode">Interface Mode</string>
+  <string name="ui_mode_simple">Simple</string>
+  <string name="ui_mode_simple_desc">Essential controls only</string>
+  <string name="ui_mode_pro">Professional</string>
+  <string name="ui_mode_pro_desc">Full control panel</string>
+  <!-- Settings -->
+  <string name="settings">Settings</string>
+  <string name="theme">Theme</string>
+  <string name="language">Language</string>
+  <string name="about">About</string>
+  <string name="appearance">Appearance</string>
+  <string name="camera">Camera</string>
+  <string name="general">General</string>
+  <string name="check_update">Check for Updates</string>
+  <string name="latest_version">Up to date</string>
+  <string name="system_default">System default</string>
+  <string name="language_english">English</string>
+  <string name="language_chinese">简体中文</string>
+  <string name="language_japanese">日本語</string>
+  <string name="language_korean">한국어</string>
+  <string name="language_french">Français</string>
+  <string name="language_german">Deutsch</string>
+  <string name="language_spanish">Español</string>
+  <string name="language_russian">Русский</string>
+  <string name="debug_mode">Debug Mode</string>
+  <string name="debug_mode_summary">Output detailed USB/PTP logs to logcat</string>
+  <string name="wifi_experimental">WiFi Connection (Experimental)</string>
+  <string name="wifi_experimental_summary">Enable experimental WiFi camera connection</string>
+  <string name="connection">Connection</string>
+  <string name="connection_status">Status</string>
+  <string name="connect">Connect</string>
+  <string name="disconnect">Disconnect</string>
+  <string name="connection_hint_title">Connection</string>
+  <string name="usb_device_detected">USB camera detected: %1$s</string>
+  <string name="tap_to_connect_usb">Tap to connect via USB</string>
+  <string name="wifi_pair">WiFi Pair</string>
+  <string name="use_usb">Use USB</string>
+  <string name="use_wifi">Use WiFi</string>
+  <string name="wifi_pair_title">WiFi Camera Pairing</string>
+  <string name="wifi_pair_desc">Enter camera IP address and port. Example: 192.168.1.1:15740</string>
+  <string name="wifi_address_label">Camera IP:Port</string>
+  <string name="usb_connection_guide">USB Connection Guide</string>
+  <string name="usb_guide_title">How to connect via USB</string>
+  <string name="usb_guide_step_1">1. Use a USB OTG adapter/cable to connect the camera to your phone.</string>
+  <string name="usb_guide_step_2">2. Turn the camera on and set it to PC / Remote / MTP mode.</string>
+  <string name="usb_guide_step_3">3. Allow USB permission when the system dialog pops up.</string>
+  <string name="usb_guide_step_4">4. The app will detect the camera and you can tap "Connect USB".</string>
+  <string name="usb_guide_note">Note: Some phones require enabling OTG in system settings.</string>
+  <string name="wifi_pairing">WiFi Pairing</string>
+  <string name="wifi_pairing_summary">Select brand and enter camera IP</string>
+  <string name="wifi_select_brand">Camera Brand</string>
+  <string name="wifi_custom">Custom</string>
+  <string name="wifi_saved_address">Saved: %1$s</string>
+  <string name="brand_nikon">Nikon</string>
+  <string name="brand_nikon_wu">Nikon WU-1a/b</string>
+  <string name="brand_canon">Canon</string>
+  <string name="brand_sony">Sony</string>
+  <string name="brand_fuji">Fujifilm</string>
+  <string name="brand_panasonic">Panasonic</string>
+  <string name="brand_olympus">Olympus</string>
+  <string name="wifi_hint_nikon">1. Enable Wi-Fi on the camera.\n2. Connect your phone to the camera hotspot (e.g. NIKON_Z6_xxx).\n3. Default address is usually 192.168.1.1:15740.</string>
+  <string name="wifi_hint_nikon_wu">1. Insert the WU-1a/1b adapter and enable Wi-Fi on the camera.\n2. Connect your phone to the adapter hotspot (e.g. NIKON_WU_xxx).\n3. Default address is usually 192.168.1.100:15740.</string>
+  <string name="wifi_hint_canon">1. Enable Wi-Fi on the camera and start EOS Utility mode.\n2. Connect your phone to the camera hotspot.\n3. Default address is usually 192.168.1.1:15740.</string>
+  <string name="wifi_hint_sony">1. Enable PC Remote on the camera.\n2. Connect your phone to the camera hotspot (e.g. DIRECT-xxxx).\n3. Enter the camera IP shown on screen.</string>
+  <string name="wifi_hint_fuji">1. Enable tether shooting on the camera.\n2. Connect your phone to the camera hotspot.\n3. Enter the camera IP shown on screen.</string>
+  <string name="wifi_hint_panasonic">1. Enable tethering on the camera.\n2. Connect your phone to the camera hotspot.\n3. Enter the camera IP shown on screen.</string>
+  <string name="wifi_hint_olympus">1. Enable PC mode on the camera.\n2. Connect your phone to the camera hotspot.\n3. Enter the camera IP shown on screen.</string>
+  <string name="wifi_hint_custom">Enter the camera IP and port shown on screen or in the manual.</string>
+  <string name="version_format">Version %1$s</string>
+  <string name="credits">Credits</string>
+  <string name="credits_summary">Program by LanChe · UI design by 安信一・プロス (One Bucket)</string>
+  <string name="about_app_info">App Information</string>
+  <string name="about_package_name">Package name</string>
+  <string name="about_version_name">Version</string>
+  <string name="about_version_code">Version code</string>
+  <string name="about_target_sdk">Target SDK</string>
+  <string name="about_min_sdk">Min SDK</string>
+  <string name="about_android_api">Android API</string>
+  <string name="about_android_release">Android version</string>
+  <string name="about_used_sdks">Libraries / SDKs</string>
+  <string name="about_group_protocol">Protocol</string>
+  <string name="about_group_camera_stack">Camera control stack</string>
+  <string name="about_group_app_stack">Android &amp; app stack</string>
+  <string name="about_role_ptp">Camera control protocol (Picture Transfer Protocol)</string>
+  <string name="about_role_gphoto2">Open-source camera driver framework — supports &gt;2000 cameras</string>
+  <string name="about_role_libusb">USB bulk &amp; interrupt transfer</string>
+  <string name="about_role_ltdl">Dynamic library loader (gphoto2 dependencies)</string>
+  <string name="about_role_phtonview">PhtonView native bridge — glues gphoto2 to Android USB</string>
+  <string name="about_role_kotlin">Kotlin stdlib — coroutines &amp; language runtime</string>
+  <string name="about_role_compose_bom">Jetpack Compose BOM — UI framework</string>
+  <string name="about_role_core_ktx">AndroidX Core KTX — Kotlin extensions</string>
+  <string name="about_role_lifecycle">AndroidX Lifecycle — ViewModel &amp; runtime</string>
+  <string name="about_role_hilt">Hilt — dependency injection</string>
+  <string name="about_role_coroutines">kotlinx.coroutines — async streaming &amp; backpressure</string>
+  <string name="about_role_material">Material 3 — design system</string>
+  <string name="about_role_icons">Material Icons Extended — extended icon set</string>
+  <string name="about_role_exif">EXIF Interface — photo metadata reader</string>
+  <string name="diagnostics">Connection diagnostics</string>
+  <string name="diagnostics_summary">USB / WiFi connection state, camera status, settings snapshot</string>
+  <!-- **迭代 #5**（a11y）：content description for TalkBack screen reader -->
+  <string name="cd_zoom_in">Zoom in</string>
+  <string name="cd_zoom_out">Zoom out</string>
+  <string name="cd_reset_zoom">Reset zoom</string>
+  <string name="cd_focus_peaking_toggle">Toggle focus peaking</string>
+  <string name="cd_close">Close</string>
+  <string name="cd_back">Back</string>
+  <!-- **迭代 #8**（设置项搜索栏） -->
+  <string name="search_settings">Search settings</string>
+  <string name="search_hint">Type to filter settings</string>
+  <string name="search_empty">No matching settings</string>
+  <string name="select_param">Select %1$s</string>
+  <string name="tap_to_input">Tap value to input</string>
+  <string name="shutter_speed">Shutter Speed</string>
+  <!-- User Experience Improvement Program -->
+  <string name="ux_improvement_title">User Experience Improvement Program</string>
+  <string name="ux_improvement_desc">Help us improve PhtonView by automatically sending anonymous logs from app start to close. Logs are submitted as GitHub issues and may include device model and app version.</string>
+  <string name="ux_improvement_summary">Automatically submit anonymous session logs</string>
+  <string name="ux_improvement_agree">Agree</string>
+  <string name="ux_improvement_decline">Decline</string>
+  <string name="report_issue">Report Issue</string>
+  <string name="report_issue_summary">Manually upload current logs to GitHub issue</string>
+  <string name="report_issue_submitted">Issue submitted</string>
+  <string name="report_issue_failed">Failed to submit issue</string>
+  <!-- Privacy Policy -->
+  <string name="privacy_policy">Privacy Policy</string>
+  <string name="privacy_policy_summary">How we collect and use your data</string>
+  <!-- License -->
+  <string name="license">License</string>
+  <string name="license_summary">View LICENSE and COPYING</string>
 </resources>

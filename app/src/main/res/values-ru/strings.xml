@@ -1,21 +1,15 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="app_name">PhtonView</string>
     <string name="developer_team">Lanche-Labs</string>
-
-    <!-- Состояния подключения -->
-    <string name="status_connected">Подключено：%1$s</string>
+    <string name="status_connected">Подключено: %1$s</string>
     <string name="status_connecting">Подключение…</string>
-    <string name="status_error">Ошибка：%1$s</string>
+    <string name="status_error">Ошибка: %1$s</string>
     <string name="status_disconnected">Отключено</string>
-
-    <!-- Информация о камере -->
     <string name="camera_info_format">Эксп %1$+.1f  Диафрагма %2$s  Выдержка %3$s  ISO %4$d</string>
     <string name="waiting_for_camera">Ожидание камеры…</string>
     <string name="preparing_main">Подготовка интерфейса…</string>
-    <string name="live_view">Live View</string>
-
-    <!-- Фокус -->
+    <string name="live_view">Видоискатель</string>
     <string name="focus_mode_af">AF</string>
     <string name="focus_mode_mf">MF</string>
     <string name="focus">Фокус</string>
@@ -23,22 +17,18 @@
     <string name="af_continuous">AF-C</string>
     <string name="magnification_format">Увеличение %1$.0fx</string>
     <string name="focus_peaking">Пикинг</string>
-    <string name="af_mode">AF Mode</string>
-    <string name="af_area_mode">AF Area</string>
-    <string name="af_area_single">Single</string>
-    <string name="af_area_zone">Zone</string>
-    <string name="af_area_tracking">Tracking</string>
-    <string name="af_area_face">Face</string>
-    <string name="focus_button">Focus</string>
-
-    <!-- Экспозиция -->
+    <string name="af_mode">Режим АФ</string>
+    <string name="af_area_mode">Зона АФ</string>
+    <string name="af_area_single">Точечный</string>
+    <string name="af_area_zone">Зона</string>
+    <string name="af_area_tracking">Слежение</string>
+    <string name="af_area_face">Лицо</string>
+    <string name="focus_button">Фокус</string>
     <string name="metering_mode">Режим замера</string>
-    <string name="ev_comp_format">Компенсация эксп.：%1$+.1f EV</string>
+    <string name="ev_comp_format">Компенсация эксп.: %1$+.1f EV</string>
     <string name="metering_matrix">Матричный</string>
     <string name="metering_center">Центровзвешенный</string>
     <string name="metering_spot">Точечный</string>
-
-    <!-- Настройки съемки -->
     <string name="iso">ISO</string>
     <string name="aperture">Диафрагма</string>
     <string name="shutter">Выдержка</string>
@@ -46,8 +36,6 @@
     <string name="image_size">Размер изображения</string>
     <string name="burst_speed">Скорость серии</string>
     <string name="capture_settings">Настройки съемки</string>
-
-    <!-- Съемка -->
     <string name="burst">Серия</string>
     <string name="capture">Съемка</string>
     <string name="shooting_mode">Режим съемки</string>
@@ -57,10 +45,10 @@
     <string name="flash_compensation">Компенсация вспышки</string>
     <string name="storage_target">Место хранения</string>
     <string name="advanced_capture">Расширенная съемка</string>
-    <string name="bulb_duration">Bulb：%d с</string>
-    <string name="timer_delay">Самоспуск：%d с</string>
-    <string name="intervalometer_info">Интервал：%1$d с, Кадров：%2$d</string>
-    <string name="aeb_info">Брекетинг：%1$d кадров, Шаг：%2$.1f EV</string>
+    <string name="bulb_duration">Bulb: %d с</string>
+    <string name="timer_delay">Самоспуск: %d с</string>
+    <string name="intervalometer_info">Интервал: %1$d с, Кадров: %2$d</string>
+    <string name="aeb_info">Брекетинг: %1$d кадров, Шаг: %2$.1f EV</string>
     <string name="presets">Пресеты съемки</string>
     <string name="camera_maintenance">Обслуживание камеры</string>
     <string name="fetch_status">Получить статус</string>
@@ -69,11 +57,7 @@
     <string name="bulb">Bulb</string>
     <string name="interval">Интервал</string>
     <string name="aeb">Брекетинг</string>
-
-    <!-- Заставка -->
     <string name="splash_subtitle">Профессиональный пульт камеры</string>
-
-    <!-- Онбординг -->
     <string name="onboarding_welcome">Добро пожаловать в PhtonView</string>
     <string name="onboarding_desc">Профессиональное управление камерой через USB или WiFi.</string>
     <string name="onboarding_permission_title">Разрешение USB</string>
@@ -93,11 +77,8 @@
     <string name="ui_mode_simple_desc">Только основные элементы управления</string>
     <string name="ui_mode_pro">Профессиональный</string>
     <string name="ui_mode_pro_desc">Полная панель управления</string>
-
     <string name="onboarding_get_started">Начать</string>
     <string name="onboarding_next">Далее</string>
-
-    <!-- Настройки -->
     <string name="settings">Настройки</string>
     <string name="theme">Тема</string>
     <string name="language">Язык</string>
@@ -121,13 +102,146 @@
     <string name="wifi_experimental">WiFi подключение (экспериментально)</string>
     <string name="wifi_experimental_summary">Включить экспериментальное WiFi подключение камеры</string>
     <string name="connection_hint_title">Подключение</string>
-    <string name="usb_device_detected">Обнаружена USB камера：%1$s</string>
+    <string name="usb_device_detected">Обнаружена USB камера: %1$s</string>
     <string name="tap_to_connect_usb">Нажмите для подключения по USB</string>
     <string name="wifi_pair">Сопряжение WiFi</string>
     <string name="use_usb">Использовать USB</string>
     <string name="use_wifi">Использовать WiFi</string>
     <string name="wifi_pair_title">Сопряжение WiFi камеры</string>
-    <string name="wifi_pair_desc">Введите IP-адрес и порт камеры. Например：192.168.1.1:15740</string>
+    <string name="wifi_pair_desc">Введите IP-адрес и порт камеры. Например: 192.168.1.1:15740</string>
     <string name="wifi_address_label">IP:Порт камеры</string>
     <string name="version_format">Версия %1$s</string>
+    <string name="brand_sony">Sony</string>
+    <string name="brand_fuji">Fujifilm</string>
+    <string name="flash_manual_popup_hint">В этой модели вспышку нужно поднимать вручную боковой кнопкой; иначе вспышка не сработает</string>
+    <string name="flash_auto">Авто</string>
+    <string name="about_role_lifecycle">AndroidX Lifecycle — ViewModel &amp; runtime</string>
+    <string name="diagnostics">Диагностика подключения</string>
+    <string name="wb_daylight">Дневной свет</string>
+    <string name="about_role_libusb">USB bulk &amp; interrupt transfer</string>
+    <string name="about_role_coroutines">kotlinx.coroutines — async streaming &amp; backpressure</string>
+    <string name="about_group_protocol">Протокол</string>
+    <string name="usb_guide_step_4">4. Приложение обнаружит камеру — нажмите «Подключить USB».</string>
+    <string name="usb_guide_title">Подключение по USB</string>
+    <string name="cd_zoom_out">Уменьшить</string>
+    <string name="connection">Подключение</string>
+    <string name="wifi_select_brand">Марка камеры</string>
+    <string name="usb">USB</string>
+    <string name="error_title">Ошибка</string>
+    <string name="preset_sports">Спорт</string>
+    <string name="reset_to_defaults">Сброс к стандартным</string>
+    <string name="about_version_code">Код версии</string>
+    <string name="wifi_pairing">Сопряжение Wi-Fi</string>
+    <string name="metering_matrix_short">Общ</string>
+    <string name="focus_mf">MF</string>
+    <string name="flash_slow_sync">Медленная синхронизация</string>
+    <string name="privacy_policy_summary">Как мы собираем и используем ваши данные</string>
+    <string name="cd_close">Закрыть</string>
+    <string name="credits">Авторы</string>
+    <string name="wb_fluorescent">Люминесцентный</string>
+    <string name="search_settings">Поиск настроек</string>
+    <string name="af_c">AF-C</string>
+    <string name="brand_canon">Canon</string>
+    <string name="report_issue_submitted">Вопрос отправлен</string>
+    <string name="cd_reset_zoom">Сброс масштаба</string>
+    <string name="about_group_camera_stack">Стек управления камерой</string>
+    <string name="wifi_hint_sony">1. Включите PC Remote на камере.\n2. Подключите телефон к точке доступа (напр. DIRECT-xxxx).\n3. Введите IP-адрес с экрана камеры.</string>
+    <string name="burst_count">Кол-во кадров</string>
+    <string name="credits_summary">Программа: LanChe · UI-дизайн: 安信一・プロス (One Bucket)</string>
+    <string name="off">Выкл</string>
+    <string name="about_app_info">О приложении</string>
+    <string name="search_hint">Введите для фильтра</string>
+    <string name="about_target_sdk">Целевой SDK</string>
+    <string name="wifi_saved_address">Сохранено: %1$s</string>
+    <string name="diagnostics_summary">Состояние USB/Wi-Fi, статус камеры, снимок настроек</string>
+    <string name="usb_guide_note">Примечание: на некоторых телефонах нужно включить OTG в настройках системы.</string>
+    <string name="wifi_custom">Пользовательский</string>
+    <string name="about_role_hilt">Hilt — внедрение зависимостей</string>
+    <string name="timer_summary">Отложенный одиночный снимок</string>
+    <string name="wifi_hint_custom">Введите IP-адрес и порт с экрана камеры или из инструкции.</string>
+    <string name="about_role_icons">Material Icons Extended — расширенный набор иконок</string>
+    <string name="brand_olympus">Olympus</string>
+    <string name="gallery">Галерея</string>
+    <string name="wifi_hint_nikon_wu">1. Установите адаптер WU-1a/1b и включите Wi-Fi.\n2. Подключите телефон к точке доступа адаптера (напр. NIKON_WU_xxx).\n3. Адрес по умолчанию обычно 192.168.1.100:15740.</string>
+    <string name="tap_to_input">Нажмите для ввода</string>
+    <string name="cd_back">Назад</string>
+    <string name="about_android_release">Версия Android</string>
+    <string name="about_role_exif">EXIF Interface — чтение метаданных фото</string>
+    <string name="ux_improvement_decline">Отклонить</string>
+    <string name="focus_af">AF</string>
+    <string name="brand_nikon_wu">Nikon WU-1a/b</string>
+    <string name="wb_kelvin">Кельвин</string>
+    <string name="af_s">AF-S</string>
+    <string name="usb_connection_guide">Руководство по USB</string>
+    <string name="license_summary">Просмотр LICENSE и COPYING</string>
+    <string name="ux_improvement_summary">Автоматически отправлять анонимные логи</string>
+    <string name="flash_rear_sync">Синхр. по задней шторке</string>
+    <string name="flash_off">Выкл</string>
+    <string name="brand_nikon">Nikon</string>
+    <string name="report_issue">Сообщить о проблеме</string>
+    <string name="preset_macro">Макро</string>
+    <string name="usb_guide_step_1">1. Подключите камеру к телефону через адаптер/кабель USB OTG.</string>
+    <string name="usb_guide_step_3">3. Разрешите доступ по USB в системном диалоге.</string>
+    <string name="bulb_summary">Таймер длительной выдержки</string>
+    <string name="connection_status">Статус</string>
+    <string name="about_min_sdk">Мин. SDK</string>
+    <string name="wifi_hint_panasonic">1. Включите tethering на камере.\n2. Подключите телефон к точке доступа.\n3. Введите IP-адрес с экрана камеры.</string>
+    <string name="metering_center_short">Цен</string>
+    <string name="preset_night">Ночь</string>
+    <string name="flash_red_eye">Подавление красных глаз</string>
+    <string name="preset_landscape">Пейзаж</string>
+    <string name="wb_flash">Вспышка</string>
+    <string name="about_package_name">Имя пакета</string>
+    <string name="brand_panasonic">Panasonic</string>
+    <string name="cd_focus_peaking_toggle">Переключить пикинг</string>
+    <string name="wifi_hint_canon">1. Включите Wi-Fi и режим EOS Utility.\n2. Подключите телефон к точке доступа камеры.\n3. Адрес по умолчанию обычно 192.168.1.1:15740.</string>
+    <string name="shutter_speed">Выдержка</string>
+    <string name="wb_auto">Авто</string>
+    <string name="about_android_api">Android API</string>
+    <string name="about_role_compose_bom">Jetpack Compose BOM — UI-фреймворк</string>
+    <string name="wifi_hint_nikon">1. Включите Wi-Fi на камере.\n2. Подключите телефон к точке доступа камеры (напр. NIKON_Z6_xxx).\n3. Адрес по умолчанию обычно 192.168.1.1:15740.</string>
+    <string name="ux_improvement_agree">Согласен</string>
+    <string name="burst_summary">Серия снимков</string>
+    <string name="wifi_pairing_summary">Выберите бренд и введите IP</string>
+    <string name="about_role_core_ktx">AndroidX Core KTX — расширения Kotlin</string>
+    <string name="wifi">Wi-Fi</string>
+    <string name="about_group_app_stack">Android &amp; app stack</string>
+    <string name="aeb_summary">Брекетинг экспозиции</string>
+    <string name="privacy_policy">Политика конфиденциальности</string>
+    <string name="interval_summary">Таймлапс</string>
+    <string name="select_param">Выбрать %1$s</string>
+    <string name="disconnect">Отключить</string>
+    <string name="ux_improvement_title">Программа улучшения UX</string>
+    <string name="about_role_kotlin">Kotlin stdlib — coroutines &amp; language runtime</string>
+    <string name="about_role_gphoto2">Open-source camera driver framework — supports &amp;gt;2000 cameras</string>
+    <string name="camera_connected">Камера подключена</string>
+    <string name="wb_cloudy">Облачно</string>
+    <string name="usb_guide_step_2">2. Включите камеру и переведите её в режим PC / Remote / MTP.</string>
+    <string name="about_version_name">Version</string>
+    <string name="wb_shade">Тень</string>
+    <string name="about_role_phtonview">Нативный мост PhtonView — связывает gphoto2 с USB Android</string>
+    <string name="report_issue_summary">Вручную загрузить текущие логи в issue на GitHub</string>
+    <string name="ux_improvement_desc">Помогите улучшить PhtonView, автоматически отправляя анонимные логи. Могут содержать модель и версию.</string>
+    <string name="wb_custom">Пользовательский</string>
+    <string name="preset_user1">Пользователь 1</string>
+    <string name="search_empty">Нет совпадений</string>
+    <string name="download_preview">Download &amp; Preview</string>
+    <string name="focus_mode">Режим фокуса</string>
+    <string name="cd_zoom_in">Увеличить</string>
+    <string name="connect">Подключить</string>
+    <string name="report_issue_failed">Не удалось отправить</string>
+    <string name="wifi_hint_fuji">1. Включите съёмку по tethering.\n2. Подключите телефон к точке доступа.\n3. Введите IP-адрес с экрана камеры.</string>
+    <string name="wifi_hint_olympus">1. Включите режим PC на камере.\n2. Подключите телефон к точке доступа.\n3. Введите IP-адрес с экрана камеры.</string>
+    <string name="preset_studio">Студия</string>
+    <string name="preset_user2">Пользователь 2</string>
+    <string name="wb_tungsten">Лампа накаливания</string>
+    <string name="preset_portrait">Портрет</string>
+    <string name="license">Лицензия</string>
+    <string name="about_used_sdks">Библиотеки / SDK</string>
+    <string name="flash_on">Вкл</string>
+    <string name="about_role_ptp">Протокол управления камерой (Picture Transfer Protocol)</string>
+    <string name="no_photos">На камере нет фотографий</string>
+    <string name="about_role_material">Material 3 — дизайн-система</string>
+    <string name="about_role_ltdl">Динамический загрузчик библиотек (зависимости gphoto2)</string>
+    <string name="metering_spot_short">Тчк</string>
 </resources>

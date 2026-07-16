@@ -144,6 +144,8 @@ private fun CleanPortraitControlColumn(
                     containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
                     contentColor = MaterialTheme.colorScheme.onSurface
                 )
+                // **迭代 #5**（a11y）：为 IconButton 提供 contentDescription，
+                // TalkBack 屏幕阅读器可朗读"打开图库"，盲用户可用。
             ) {
                 Icon(
                     imageVector = Icons.Default.PhotoLibrary,

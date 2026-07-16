@@ -1,0 +1,92 @@
+
+=== de ===
+  [UNTRANS] language_chinese: '简体中文'
+  [CJK] language_chinese: '简体中文'
+  [MOJI] language_chinese: '简体中文'
+  [UNTRANS] language_japanese: '日本語'
+  [CJK] language_japanese: '日本語'
+  [MOJI] language_japanese: '日本語'
+  [UNTRANS] language_korean: '한국어'
+  [MOJI] language_korean: '한국어'
+  [UNTRANS] language_french: 'Français'
+  [UNTRANS] language_spanish: 'Español'
+  [UNTRANS] language_russian: 'Русский'
+  [MOJI] language_russian: 'Русский'
+  [UNTRANS] version_format: 'Version %1$s'
+  [CJK] credits_summary: 'Programmierung: LanChe · UI-Design: 安信一・プロス (One Bucket)'
+  [MOJI] credits_summary: 'Programmierung: LanChe · UI-Design: 安信一・プロス (One Bucket)'
+  UNTRANS=7  CJK=3  QMARK=0  MOJI=5  MISSING=0
+
+=== es ===
+  [UNTRANS] status_error: 'Error: %1$s'
+  [UNTRANS] language_chinese: '简体中文'
+  [CJK] language_chinese: '简体中文'
+  [MOJI] language_chinese: '简体中文'
+  [UNTRANS] language_japanese: '日本語'
+  [CJK] language_japanese: '日本語'
+  [MOJI] language_japanese: '日本語'
+  [UNTRANS] language_korean: '한국어'
+  [MOJI] language_korean: '한국어'
+  [UNTRANS] language_french: 'Français'
+  [UNTRANS] language_spanish: 'Español'
+  [UNTRANS] language_russian: 'Русский'
+  [MOJI] language_russian: 'Русский'
+  [CJK] credits_summary: 'Programación: LanChe · Diseño UI: 安信一・プロス (One Bucket)'
+  UNTRANS=7  CJK=3  QMARK=0  MOJI=4  MISSING=0
+
+=== fr ===
+  [UNTRANS] language_chinese: '简体中文'
+  [CJK] language_chinese: '简体中文'
+  [MOJI] language_chinese: '简体中文'
+  [UNTRANS] language_japanese: '日本語'
+  [CJK] language_japanese: '日本語'
+  [MOJI] language_japanese: '日本語'
+  [UNTRANS] language_korean: '한국어'
+  [MOJI] language_korean: '한국어'
+  [UNTRANS] language_russian: 'Русский'
+  [MOJI] language_russian: 'Русский'
+  [UNTRANS] version_format: 'Version %1$s'
+  [CJK] credits_summary: 'Programme : LanChe · Design UI : 安信一・プロス (One Bucket)'
+  [MOJI] credits_summary: 'Programme : LanChe · Design UI : 安信一・プロス (One Bucket)'
+  UNTRANS=5  CJK=3  QMARK=0  MOJI=5  MISSING=0
+
+=== ja ===
+  [UNTRANS] language_chinese: '简体中文'
+  [UNTRANS] language_japanese: '日本語'
+  [UNTRANS] language_korean: '한국어'
+  [UNTRANS] language_french: 'Français'
+  [UNTRANS] language_spanish: 'Español'
+  [UNTRANS] language_russian: 'Русский'
+  [UNTRANS] credits_summary: 'Program by LanChe · UI design by 安信一・プロス (One Bucket)'
+  UNTRANS=7  CJK=0  QMARK=0  MOJI=0  MISSING=0
+
+=== ko ===
+  [CJK] status_connected: '연결됨：%1$s'
+  [CJK] status_error: '오류：%1$s'
+  [CJK] ev_comp_format: '노출 보정：%1$+.1f EV'
+  [CJK] timer_delay: '셀프 타이머：%d 초'
+  [CJK] intervalometer_info: '간격：%1$d 초, 장수：%2$d'
+  [CJK] aeb_info: '브래킷：%1$d 장, 단계：%2$.1f EV'
+  [UNTRANS] language_chinese: '简体中文'
+  [CJK] language_chinese: '简体中文'
+  [UNTRANS] language_japanese: '日本語'
+  [CJK] language_japanese: '日本語'
+  [UNTRANS] language_korean: '한국어'
+  [UNTRANS] language_french: 'Français'
+  [UNTRANS] language_spanish: 'Español'
+  [UNTRANS] language_russian: 'Русский'
+  [UNTRANS] credits_summary: 'Program by LanChe · UI design by 安信一・プロス (One Bucket)'
+  [CJK] credits_summary: 'Program by LanChe · UI design by 安信一・プロス (One Bucket)'
+  UNTRANS=7  CJK=9  QMARK=0  MOJI=0  MISSING=0
+
+=== ru ===
+  [UNTRANS] language_chinese: '简体中文'
+  [CJK] language_chinese: '简体中文'
+  [UNTRANS] language_japanese: '日本語'
+  [CJK] language_japanese: '日本語'
+  [UNTRANS] language_korean: '한국어'
+  [UNTRANS] language_french: 'Français'
+  [UNTRANS] language_spanish: 'Español'
+  [UNTRANS] language_russian: 'Русский'
+  [CJK] credits_summary: 'Программа: LanChe · UI-дизайн: 安信一・プロス (One Bucket)'
+  UNTRANS=6  CJK=3  QMARK=0  MOJI=0  MISSING=0

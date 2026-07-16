@@ -92,7 +92,8 @@ fun FocusControlRow(
                             val next = values.firstOrNull { it > magnification } ?: 1f
                             onMagnificationChange(next)
                         },
-                        compact = compact
+                        compact = compact,
+                        contentDescription = "放大"  // **迭代 #5**（a11y）：TalkBack 朗读
                     )
                 }
 
@@ -100,7 +101,8 @@ fun FocusControlRow(
                     icon = Icons.Default.CenterFocusStrong,
                     onClick = { onPeakingChange(!peakingEnabled) },
                     compact = compact,
-                    tint = if (peakingEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                    tint = if (peakingEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    contentDescription = "切换峰值对焦"  // **迭代 #5**（a11y）：TalkBack 朗读
                 )
 
                 if (!veryCompact) {
@@ -162,7 +164,10 @@ internal fun CompactIconButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     onClick: () -> Unit,
     compact: Boolean,
-    tint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface
+    tint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
+    // **迭代 #5**（a11y）：允许调用方传入 contentDescription 让 TalkBack 朗读。
+    // 默认 null 保持向后兼容，调用方按需填入。
+    contentDescription: String? = null
 ) {
     val size = if (compact) 32.dp else 40.dp
     val iconSize = if (compact) 18.dp else 22.dp
@@ -172,7 +177,7 @@ internal fun CompactIconButton(
     ) {
         Icon(
             imageVector = icon,
-            contentDescription = null,
+            contentDescription = contentDescription,
             modifier = Modifier.size(iconSize),
             tint = tint
         )

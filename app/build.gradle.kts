@@ -248,8 +248,16 @@ dependencies {
     // EXIF metadata
     implementation("androidx.exifinterface:exifinterface:1.3.7")
 
-    // 测试
+    // 测试（迭代 #16：单测基建）
     testImplementation("junit:junit:4.13.2")
+    // Robolectric：在 JVM 上跑 Android framework 调用（Bitmap、Context）
+    testImplementation("org.robolectric:robolectric:4.11.1")
+    // MockK：Kotlin 友好 mock 库
+    testImplementation("io.mockk:mockk:1.13.9")
+    // Coroutines test：协程调度器替换为 TestDispatcher
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    // Truth：更可读的断言
+    testImplementation("com.google.truth:truth:1.4.0")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.02.00"))

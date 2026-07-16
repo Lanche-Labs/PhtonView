@@ -189,8 +189,11 @@ private fun PhtonViewApp(
 private fun PreparingMainScreen(
     onReady: () -> Unit
 ) {
+    // **优化启动耗时**（迭代 #1）：原 600ms delay 是为了"等 Hilt 注入 CameraViewModel 完成"，
+    // 但 Hilt 注入是同步阻塞的，调用 hiltViewModel() 时已经实例化完成。
+    // 600ms 空等是浪费。改成 200ms 缓冲（防止动画肉眼可见闪烁）。
     LaunchedEffect(Unit) {
-        delay(600)
+        delay(200)
         onReady()
     }
 

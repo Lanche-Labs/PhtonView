@@ -1,21 +1,15 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="app_name">PhtonView</string>
     <string name="developer_team">Lanche-Labs</string>
-
-    <!-- 接続状態 -->
     <string name="status_connected">接続済み：%1$s</string>
     <string name="status_connecting">接続中…</string>
     <string name="status_error">エラー：%1$s</string>
     <string name="status_disconnected">未接続</string>
-
-    <!-- カメラ情報 -->
     <string name="camera_info_format">露出 %1$+.1f  絞り %2$s  シャッター %3$s  ISO %4$d</string>
     <string name="waiting_for_camera">カメラを待っています…</string>
     <string name="preparing_main">カメラインターフェースを準備中…</string>
     <string name="live_view">ライブビュー</string>
-
-    <!-- フォーカス -->
     <string name="focus_mode_af">AF</string>
     <string name="focus_mode_mf">MF</string>
     <string name="focus">フォーカス</string>
@@ -23,22 +17,18 @@
     <string name="af_continuous">AF-C</string>
     <string name="magnification_format">拡大 %1$.0fx</string>
     <string name="focus_peaking">ピーキング</string>
-    <string name="af_mode">AF Mode</string>
-    <string name="af_area_mode">AF Area</string>
-    <string name="af_area_single">Single</string>
-    <string name="af_area_zone">Zone</string>
-    <string name="af_area_tracking">Tracking</string>
-    <string name="af_area_face">Face</string>
-    <string name="focus_button">Focus</string>
-
-    <!-- 露出 -->
+    <string name="af_mode">AF モード</string>
+    <string name="af_area_mode">AF エリア</string>
+    <string name="af_area_single">シングル</string>
+    <string name="af_area_zone">ゾーン</string>
+    <string name="af_area_tracking">追尾</string>
+    <string name="af_area_face">顔</string>
+    <string name="focus_button">フォーカス</string>
     <string name="metering_mode">測光モード</string>
     <string name="ev_comp_format">露出補正：%1$+.1f EV</string>
     <string name="metering_matrix">マルチパターン測光</string>
     <string name="metering_center">中央重点</string>
     <string name="metering_spot">スポット測光</string>
-
-    <!-- 撮影設定 -->
     <string name="iso">ISO</string>
     <string name="aperture">絞り</string>
     <string name="shutter">シャッター</string>
@@ -46,8 +36,6 @@
     <string name="image_size">画像サイズ</string>
     <string name="burst_speed">連写速度</string>
     <string name="capture_settings">撮影設定</string>
-
-    <!-- 撮影 -->
     <string name="burst">連写</string>
     <string name="capture">撮影</string>
     <string name="shooting_mode">撮影モード</string>
@@ -69,11 +57,7 @@
     <string name="bulb">Bルブ</string>
     <string name="interval">インターバル</string>
     <string name="aeb">ブラケット</string>
-
-    <!-- スプラッシュ -->
     <string name="splash_subtitle">プロフェッショナルカメラリモート</string>
-
-    <!-- オンボーディング -->
     <string name="onboarding_welcome">PhtonView へようこそ</string>
     <string name="onboarding_desc">USB または WiFi でカメラをプロフェッショナルにリモート制御します。</string>
     <string name="onboarding_permission_title">USB 権限</string>
@@ -93,11 +77,8 @@
     <string name="ui_mode_simple_desc">よく使う項目のみ表示</string>
     <string name="ui_mode_pro">プロフェッショナル</string>
     <string name="ui_mode_pro_desc">フルコントロールパネル</string>
-
     <string name="onboarding_get_started">始める</string>
     <string name="onboarding_next">次へ</string>
-
-    <!-- 設定 -->
     <string name="settings">設定</string>
     <string name="theme">テーマ</string>
     <string name="language">言語</string>
@@ -130,4 +111,137 @@
     <string name="wifi_pair_desc">カメラの IP アドレスとポートを入力してください。例：192.168.1.1:15740</string>
     <string name="wifi_address_label">カメラ IP:ポート</string>
     <string name="version_format">バージョン %1$s</string>
+    <string name="brand_sony">ソニー</string>
+    <string name="brand_fuji">富士フイルム</string>
+    <string name="flash_manual_popup_hint">このモデルでは、側面のボタンでフラッシュを手動で開く必要があります。そうしないとフラッシュは発光しません</string>
+    <string name="flash_auto">オート</string>
+    <string name="about_role_lifecycle">AndroidX Lifecycle — ViewModel &amp; runtime</string>
+    <string name="diagnostics">接続診断</string>
+    <string name="wb_daylight">日中光</string>
+    <string name="about_role_libusb">USB bulk &amp; interrupt transfer</string>
+    <string name="about_role_coroutines">kotlinx.coroutines — async streaming &amp; backpressure</string>
+    <string name="about_group_protocol">プロトコル</string>
+    <string name="usb_guide_step_4">4. アプリを検知し、「USB 接続」をタップ。</string>
+    <string name="usb_guide_title">USB 接続方法</string>
+    <string name="cd_zoom_out">縮小</string>
+    <string name="connection">接続</string>
+    <string name="wifi_select_brand">カメラブランド</string>
+    <string name="usb">USB</string>
+    <string name="error_title">エラー</string>
+    <string name="preset_sports">スポーツ</string>
+    <string name="reset_to_defaults">デフォルトに戻す</string>
+    <string name="about_version_code">バージョンコード</string>
+    <string name="wifi_pairing">Wi-Fi ペアリング</string>
+    <string name="metering_matrix_short">全局</string>
+    <string name="focus_mf">MF</string>
+    <string name="flash_slow_sync">スローシンクロ</string>
+    <string name="privacy_policy_summary">データの収集と利用について</string>
+    <string name="cd_close">閉じる</string>
+    <string name="credits">クレジット</string>
+    <string name="wb_fluorescent">蛍光灯</string>
+    <string name="search_settings">設定を検索</string>
+    <string name="af_c">AF-C</string>
+    <string name="brand_canon">キヤノン</string>
+    <string name="report_issue_submitted">問題を送信しました</string>
+    <string name="cd_reset_zoom">ズームをリセット</string>
+    <string name="about_group_camera_stack">カメラ制御スタック</string>
+    <string name="wifi_hint_sony">1. カメラで PC Remote を有効化。\n2. カメラの中継局（例: DIRECT-xxxx）に接続。\n3. 画面に表示された IP を入力。</string>
+    <string name="burst_count">連写枚数</string>
+    <string name="credits_summary">Program by LanChe · UI design by 安信一・プロス (One Bucket)</string>
+    <string name="off">オフ</string>
+    <string name="about_app_info">アプリ情報</string>
+    <string name="search_hint">入力で絞り込み</string>
+    <string name="about_target_sdk">ターゲット SDK</string>
+    <string name="wifi_saved_address">保存済み: %1$s</string>
+    <string name="diagnostics_summary">USB/Wi-Fi 接続状態、カメラ状態、設定スナップショット</string>
+    <string name="usb_guide_note">注意: 一部の端末ではシステム設定で OTG を有効化する必要があります。</string>
+    <string name="wifi_custom">カスタム</string>
+    <string name="about_role_hilt">Hilt — 依存性注入</string>
+    <string name="timer_summary">セルフタイマー</string>
+    <string name="wifi_hint_custom">画面またはマニュアルに表示されている IP とポートを入力。</string>
+    <string name="about_role_icons">Material Icons Extended — 拡張アイコンセット</string>
+    <string name="brand_olympus">オリンパス</string>
+    <string name="gallery">ギャラリー</string>
+    <string name="wifi_hint_nikon_wu">1. WU-1a/1b アダプタを装着して Wi-Fi を有効化。\n2. アダプタの中継局（例: NIKON_WU_xxx）に接続。\n3. デフォルトアドレスは通常 192.168.1.100:15740。</string>
+    <string name="tap_to_input">タップで入力</string>
+    <string name="cd_back">戻る</string>
+    <string name="about_android_release">Android バージョン</string>
+    <string name="about_role_exif">EXIF Interface — 写真のメタデータリーダー</string>
+    <string name="ux_improvement_decline">同意しない</string>
+    <string name="focus_af">AF</string>
+    <string name="brand_nikon_wu">Nikon WU-1a/b</string>
+    <string name="wb_kelvin">ケルビン</string>
+    <string name="af_s">AF-S</string>
+    <string name="usb_connection_guide">USB 接続ガイド</string>
+    <string name="license_summary">LICENSE と COPYING を表示</string>
+    <string name="ux_improvement_summary">匿名のセッションログを自動送信</string>
+    <string name="flash_rear_sync">リアシンクロ</string>
+    <string name="flash_off">オフ</string>
+    <string name="brand_nikon">ニコン</string>
+    <string name="report_issue">問題を報告</string>
+    <string name="preset_macro">マクロ</string>
+    <string name="usb_guide_step_1">1. USB OTG アダプタ／ケーブルでカメラとスマホを接続。</string>
+    <string name="usb_guide_step_3">3. システムダイアログで USB アクセスを許可。</string>
+    <string name="bulb_summary">長時間露光タイマー</string>
+    <string name="connection_status">ステータス</string>
+    <string name="about_min_sdk">最小 SDK</string>
+    <string name="wifi_hint_panasonic">1. カメラでテザリングを有効化。\n2. カメラの中継局に接続。\n3. 画面に表示された IP を入力。</string>
+    <string name="metering_center_short">中央</string>
+    <string name="preset_night">夜景</string>
+    <string name="flash_red_eye">赤目軽減</string>
+    <string name="preset_landscape">風景</string>
+    <string name="wb_flash">フラッシュ</string>
+    <string name="about_package_name">パッケージ名</string>
+    <string name="brand_panasonic">パナソニック</string>
+    <string name="cd_focus_peaking_toggle">ピーキング切替</string>
+    <string name="wifi_hint_canon">1. Wi-Fi を有効にして EOS Utility モードを開始。\n2. カメラの中継局に接続。\n3. デフォルトアドレスは通常 192.168.1.1:15740。</string>
+    <string name="shutter_speed">シャッタースピード</string>
+    <string name="wb_auto">オート</string>
+    <string name="about_android_api">Android API</string>
+    <string name="about_role_compose_bom">Jetpack Compose BOM — UI フレームワーク</string>
+    <string name="wifi_hint_nikon">1. カメラの Wi-Fi を有効化。\n2. カメラの中継局（例: NIKON_Z6_xxx）に接続。\n3. デフォルトアドレスは通常 192.168.1.1:15740。</string>
+    <string name="ux_improvement_agree">同意</string>
+    <string name="burst_summary">連続撮影</string>
+    <string name="wifi_pairing_summary">ブランドを選び IP を入力</string>
+    <string name="about_role_core_ktx">AndroidX Core KTX — Kotlin 拡張</string>
+    <string name="wifi">Wi-Fi</string>
+    <string name="about_group_app_stack">Android &amp; app stack</string>
+    <string name="aeb_summary">自動露出ブラケット</string>
+    <string name="privacy_policy">プライバシーポリシー</string>
+    <string name="interval_summary">タイムラプス</string>
+    <string name="select_param">%1$s を選択</string>
+    <string name="disconnect">切断</string>
+    <string name="ux_improvement_title">UX 改善プログラム</string>
+    <string name="about_role_kotlin">Kotlin stdlib — coroutines &amp; language runtime</string>
+    <string name="about_role_gphoto2">Open-source camera driver framework — supports &amp;gt;2000 cameras</string>
+    <string name="camera_connected">カメラ接続済み</string>
+    <string name="wb_cloudy">曇天</string>
+    <string name="usb_guide_step_2">2. カメラの電源を入れ、PC/リモート/MTP モードに設定。</string>
+    <string name="about_version_name">Version</string>
+    <string name="wb_shade">日陰</string>
+    <string name="about_role_phtonview">PhtonView ネイティブブリッジ — gphoto2 を Android USB に接着</string>
+    <string name="report_issue_summary">現在のログを手動で GitHub issue にアップロード</string>
+    <string name="ux_improvement_desc">匿名のログを自動送信して PhtonView の改善にご協力ください。端末モデルとアプリ版が含まれる場合があります。</string>
+    <string name="wb_custom">カスタム</string>
+    <string name="preset_user1">ユーザー 1</string>
+    <string name="search_empty">該当する設定なし</string>
+    <string name="download_preview">Download &amp; Preview</string>
+    <string name="focus_mode">フォーカスモード</string>
+    <string name="cd_zoom_in">拡大</string>
+    <string name="connect">接続</string>
+    <string name="report_issue_failed">送信に失敗しました</string>
+    <string name="wifi_hint_fuji">1. カメラでテザー撮影を有効化。\n2. カメラの中継局に接続。\n3. 画面に表示された IP を入力。</string>
+    <string name="wifi_hint_olympus">1. カメラで PC モードを有効化。\n2. カメラの中継局に接続。\n3. 画面に表示された IP を入力。</string>
+    <string name="preset_studio">スタジオ</string>
+    <string name="preset_user2">ユーザー 2</string>
+    <string name="wb_tungsten">タングステン</string>
+    <string name="preset_portrait">ポートレート</string>
+    <string name="license">ライセンス</string>
+    <string name="about_used_sdks">ライブラリ / SDK</string>
+    <string name="flash_on">オン</string>
+    <string name="about_role_ptp">カメラ制御プロトコル (Picture Transfer Protocol)</string>
+    <string name="no_photos">カメラに写真がありません</string>
+    <string name="about_role_material">Material 3 — デザインシステム</string>
+    <string name="about_role_ltdl">動的ライブラリローダー（gphoto2 依存関係）</string>
+    <string name="metering_spot_short">点</string>
 </resources>

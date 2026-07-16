@@ -1,21 +1,15 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="app_name">PhtonView</string>
     <string name="developer_team">Lanche-Labs</string>
-
-    <!-- Verbindungsstatus -->
-    <string name="status_connected">Verbunden：%1$s</string>
+    <string name="status_connected">Verbunden: %1$s</string>
     <string name="status_connecting">Verbinden…</string>
-    <string name="status_error">Fehler：%1$s</string>
+    <string name="status_error">Fehler: %1$s</string>
     <string name="status_disconnected">Getrennt</string>
-
-    <!-- Kamerainfos -->
     <string name="camera_info_format">Bel %1$+.1f  Blende %2$s  Verschluss %3$s  ISO %4$d</string>
     <string name="waiting_for_camera">Warte auf Kamera…</string>
     <string name="preparing_main">Bereite Kameraoberfläche vor…</string>
     <string name="live_view">Live-Bild</string>
-
-    <!-- Fokus -->
     <string name="focus_mode_af">AF</string>
     <string name="focus_mode_mf">MF</string>
     <string name="focus">Fokus</string>
@@ -23,22 +17,18 @@
     <string name="af_continuous">AF-C</string>
     <string name="magnification_format">Vergrößerung %1$.0fx</string>
     <string name="focus_peaking">Peaking</string>
-    <string name="af_mode">AF Mode</string>
-    <string name="af_area_mode">AF Area</string>
-    <string name="af_area_single">Single</string>
+    <string name="af_mode">AF-Modus</string>
+    <string name="af_area_mode">AF-Bereich</string>
+    <string name="af_area_single">Einzel</string>
     <string name="af_area_zone">Zone</string>
     <string name="af_area_tracking">Tracking</string>
-    <string name="af_area_face">Face</string>
-    <string name="focus_button">Focus</string>
-
-    <!-- Belichtung -->
+    <string name="af_area_face">Gesicht</string>
+    <string name="focus_button">Fokus</string>
     <string name="metering_mode">Messmodus</string>
-    <string name="ev_comp_format">Belichtungskorrektur：%1$+.1f EV</string>
+    <string name="ev_comp_format">Belichtungskorrektur: %1$+.1f EV</string>
     <string name="metering_matrix">Matrixmessung</string>
     <string name="metering_center">Mittenbetont</string>
     <string name="metering_spot">Spotmessung</string>
-
-    <!-- Aufnahmeeinstellungen -->
     <string name="iso">ISO</string>
     <string name="aperture">Blende</string>
     <string name="shutter">Verschluss</string>
@@ -46,8 +36,6 @@
     <string name="image_size">Bildgröße</string>
     <string name="burst_speed">Serienbildrate</string>
     <string name="capture_settings">Aufnahmeeinstellungen</string>
-
-    <!-- Aufnahme -->
     <string name="burst">Serie</string>
     <string name="capture">Auslösen</string>
     <string name="shooting_mode">Aufnahmemodus</string>
@@ -57,10 +45,10 @@
     <string name="flash_compensation">Blitzkorrektur</string>
     <string name="storage_target">Speicherziel</string>
     <string name="advanced_capture">Erweiterte Aufnahme</string>
-    <string name="bulb_duration">Bulb：%d s</string>
-    <string name="timer_delay">Selbstauslöser：%d s</string>
-    <string name="intervalometer_info">Intervall：%1$d s, Aufnahmen：%2$d</string>
-    <string name="aeb_info">Belichtungsreihe：%1$d Aufn., Schritt：%2$.1f EV</string>
+    <string name="bulb_duration">Bulb: %d s</string>
+    <string name="timer_delay">Selbstauslöser: %d s</string>
+    <string name="intervalometer_info">Intervall: %1$d s, Aufnahmen: %2$d</string>
+    <string name="aeb_info">Belichtungsreihe: %1$d Aufn., Schritt: %2$.1f EV</string>
     <string name="presets">Aufnahmevorlagen</string>
     <string name="camera_maintenance">Kamerawartung</string>
     <string name="fetch_status">Status abrufen</string>
@@ -69,11 +57,7 @@
     <string name="bulb">Bulb</string>
     <string name="interval">Intervall</string>
     <string name="aeb">Belichtungsreihe</string>
-
-    <!-- Splash -->
     <string name="splash_subtitle">Professionelle Kamerasteuerung</string>
-
-    <!-- Onboarding -->
     <string name="onboarding_welcome">Willkommen bei PhtonView</string>
     <string name="onboarding_desc">Professionelle Kamerasteuerung per USB oder WiFi.</string>
     <string name="onboarding_permission_title">USB-Berechtigung</string>
@@ -93,11 +77,8 @@
     <string name="ui_mode_simple_desc">Nur wichtige Bedienelemente</string>
     <string name="ui_mode_pro">Professionell</string>
     <string name="ui_mode_pro_desc">Vollständiges Bedienfeld</string>
-
     <string name="onboarding_get_started">Loslegen</string>
     <string name="onboarding_next">Weiter</string>
-
-    <!-- Einstellungen -->
     <string name="settings">Einstellungen</string>
     <string name="theme">Thema</string>
     <string name="language">Sprache</string>
@@ -121,13 +102,146 @@
     <string name="wifi_experimental">WiFi-Verbindung (experimentell)</string>
     <string name="wifi_experimental_summary">Experimentelle WiFi-Kameraverbindung aktivieren</string>
     <string name="connection_hint_title">Verbindung</string>
-    <string name="usb_device_detected">USB-Kamera erkannt：%1$s</string>
+    <string name="usb_device_detected">USB-Kamera erkannt: %1$s</string>
     <string name="tap_to_connect_usb">Tippen, um per USB zu verbinden</string>
     <string name="wifi_pair">WiFi-Kopplung</string>
     <string name="use_usb">USB verwenden</string>
     <string name="use_wifi">WiFi verwenden</string>
     <string name="wifi_pair_title">WiFi-Kamerakopplung</string>
-    <string name="wifi_pair_desc">IP-Adresse und Port der Kamera eingeben. Z.B.：192.168.1.1:15740</string>
+    <string name="wifi_pair_desc">IP-Adresse und Port der Kamera eingeben. Z.B.: 192.168.1.1:15740</string>
     <string name="wifi_address_label">Kamera IP:Port</string>
     <string name="version_format">Version %1$s</string>
+    <string name="brand_sony">Sony</string>
+    <string name="brand_fuji">Fujifilm</string>
+    <string name="flash_manual_popup_hint">Dieses Modell erfordert manuelles Aufklappen des Blitzes über die Seitentaste; andernfalls wird der Blitz nicht ausgelöst</string>
+    <string name="flash_auto">Auto</string>
+    <string name="about_role_lifecycle">AndroidX Lifecycle — ViewModel &amp; runtime</string>
+    <string name="diagnostics">Verbindungsdiagnose</string>
+    <string name="wb_daylight">Tageslicht</string>
+    <string name="about_role_libusb">USB bulk &amp; interrupt transfer</string>
+    <string name="about_role_coroutines">kotlinx.coroutines — async streaming &amp; backpressure</string>
+    <string name="about_group_protocol">Protokoll</string>
+    <string name="usb_guide_step_4">4. Die App erkennt die Kamera und Sie können auf „USB verbinden" tippen.</string>
+    <string name="usb_guide_title">USB-Verbindung herstellen</string>
+    <string name="cd_zoom_out"> Verkleinern</string>
+    <string name="connection">Verbindung</string>
+    <string name="wifi_select_brand">Kameramarke</string>
+    <string name="usb">USB</string>
+    <string name="error_title">Fehler</string>
+    <string name="preset_sports">Sport</string>
+    <string name="reset_to_defaults">Auf Standard zurücksetzen</string>
+    <string name="about_version_code">Versionscode</string>
+    <string name="wifi_pairing">WLAN-Kopplung</string>
+    <string name="metering_matrix_short">Glob</string>
+    <string name="focus_mf">MF</string>
+    <string name="flash_slow_sync">Langzeitsynchronisation</string>
+    <string name="privacy_policy_summary">Wie wir Ihre Daten erfassen und nutzen</string>
+    <string name="cd_close">Schließen</string>
+    <string name="credits">Mitwirkende</string>
+    <string name="wb_fluorescent">Leuchtstoff</string>
+    <string name="search_settings">Einstellungen suchen</string>
+    <string name="af_c">AF-C</string>
+    <string name="brand_canon">Canon</string>
+    <string name="report_issue_submitted">Problem gemeldet</string>
+    <string name="cd_reset_zoom">Zoom zurücksetzen</string>
+    <string name="about_group_camera_stack">Kamerasteuerungs-Stack</string>
+    <string name="wifi_hint_sony">1. Aktivieren Sie PC Remote an der Kamera.\n2. Verbinden Sie das Telefon mit dem Kamera-Hotspot (z.B. DIRECT-xxxx).\n3. Geben Sie die auf dem Bildschirm angezeigte IP ein.</string>
+    <string name="burst_count">Serienbildanzahl</string>
+    <string name="credits_summary">Programmierung: LanChe · UI-Design: 安信一・プロス (One Bucket)</string>
+    <string name="off">Aus</string>
+    <string name="about_app_info">App-Informationen</string>
+    <string name="search_hint">Tippen zum Filtern</string>
+    <string name="about_target_sdk">Ziel-SDK</string>
+    <string name="wifi_saved_address">Gespeichert: %1$s</string>
+    <string name="diagnostics_summary">USB-/WLAN-Verbindungsstatus, Kamerastatus, Einstellungs-Snapshot</string>
+    <string name="usb_guide_note">Hinweis: Bei einigen Telefonen muss OTG in den Systemeinstellungen aktiviert werden.</string>
+    <string name="wifi_custom">Benutzerdefiniert</string>
+    <string name="about_role_hilt">Hilt — Dependency Injection</string>
+    <string name="timer_summary">Verzögerte Einzelaufnahme</string>
+    <string name="wifi_hint_custom">Geben Sie die auf dem Bildschirm oder im Handbuch angezeigte IP und den Port ein.</string>
+    <string name="about_role_icons">Material Icons Extended — erweiterte Icon-Sammlung</string>
+    <string name="brand_olympus">Olympus</string>
+    <string name="gallery">Galerie</string>
+    <string name="wifi_hint_nikon_wu">1. Stecken Sie den WU-1a/1b-Adapter ein und aktivieren Sie WLAN.\n2. Verbinden Sie das Telefon mit dem Adapter-Hotspot (z.B. NIKON_WU_xxx).\n3. Standardadresse ist normalerweise 192.168.1.100:15740.</string>
+    <string name="tap_to_input">Zum Eingeben tippen</string>
+    <string name="cd_back">Zurück</string>
+    <string name="about_android_release">Android-Version</string>
+    <string name="about_role_exif">EXIF Interface — Foto-Metadaten-Leser</string>
+    <string name="ux_improvement_decline">Ablehnen</string>
+    <string name="focus_af">AF</string>
+    <string name="brand_nikon_wu">Nikon WU-1a/b</string>
+    <string name="wb_kelvin">Kelvin</string>
+    <string name="af_s">AF-S</string>
+    <string name="usb_connection_guide">USB-Verbindungsanleitung</string>
+    <string name="license_summary">LICENSE und COPYING ansehen</string>
+    <string name="ux_improvement_summary">Anonyme Sitzungs-Logs automatisch senden</string>
+    <string name="flash_rear_sync">Synchronisation auf 2. Vorhang</string>
+    <string name="flash_off">Aus</string>
+    <string name="brand_nikon">Nikon</string>
+    <string name="report_issue">Problem melden</string>
+    <string name="preset_macro">Makro</string>
+    <string name="usb_guide_step_1">1. USB-OTG-Adapter/Kabel verwenden, um die Kamera mit dem Telefon zu verbinden.</string>
+    <string name="usb_guide_step_3">3. USB-Berechtigung im Systemdialog erteilen.</string>
+    <string name="bulb_summary">Langzeitbelichtung</string>
+    <string name="connection_status">Status</string>
+    <string name="about_min_sdk">Min. SDK</string>
+    <string name="wifi_hint_panasonic">1. Aktivieren Sie Tethering an der Kamera.\n2. Verbinden Sie das Telefon mit dem Kamera-Hotspot.\n3. Geben Sie die auf dem Bildschirm angezeigte IP ein.</string>
+    <string name="metering_center_short">Mit</string>
+    <string name="preset_night">Nacht</string>
+    <string name="flash_red_eye">Rote-Augen-Reduktion</string>
+    <string name="preset_landscape">Landschaft</string>
+    <string name="wb_flash">Blitz</string>
+    <string name="about_package_name">Paketname</string>
+    <string name="brand_panasonic">Panasonic</string>
+    <string name="cd_focus_peaking_toggle">Fokus-Peaking umschalten</string>
+    <string name="wifi_hint_canon">1. Aktivieren Sie WLAN und starten Sie den EOS Utility-Modus.\n2. Verbinden Sie das Telefon mit dem Kamera-Hotspot.\n3. Standardadresse ist normalerweise 192.168.1.1:15740.</string>
+    <string name="shutter_speed">Verschlusszeit</string>
+    <string name="wb_auto">Auto</string>
+    <string name="about_android_api">Android API</string>
+    <string name="about_role_compose_bom">Jetpack Compose BOM — UI-Framework</string>
+    <string name="wifi_hint_nikon">1. Aktivieren Sie WLAN an der Kamera.\n2. Verbinden Sie das Telefon mit dem Kamera-Hotspot (z.B. NIKON_Z6_xxx).\n3. Standardadresse ist normalerweise 192.168.1.1:15740.</string>
+    <string name="ux_improvement_agree">Zustimmen</string>
+    <string name="burst_summary">Mehrere Bilder aufnehmen</string>
+    <string name="wifi_pairing_summary">Marke wählen und IP eingeben</string>
+    <string name="about_role_core_ktx">AndroidX Core KTX — Kotlin-Erweiterungen</string>
+    <string name="wifi">Wi-Fi</string>
+    <string name="about_group_app_stack">Android &amp; app stack</string>
+    <string name="aeb_summary">Belichtungsreihe</string>
+    <string name="privacy_policy">Datenschutzerklärung</string>
+    <string name="interval_summary">Zeitraffer-Sequenz</string>
+    <string name="select_param">%1$s wählen</string>
+    <string name="disconnect">Trennen</string>
+    <string name="ux_improvement_title">Programm zur Nutzererfahrungs-Verbesserung</string>
+    <string name="about_role_kotlin">Kotlin stdlib — coroutines &amp; language runtime</string>
+    <string name="about_role_gphoto2">Open-source camera driver framework — supports &amp;gt;2000 cameras</string>
+    <string name="camera_connected">Kamera verbunden</string>
+    <string name="wb_cloudy">Bewölkt</string>
+    <string name="usb_guide_step_2">2. Kamera einschalten und in den PC-/Remote-/MTP-Modus setzen.</string>
+    <string name="about_version_name">Version</string>
+    <string name="wb_shade">Schatten</string>
+    <string name="about_role_phtonview">PhtonView Native-Bridge — verbindet gphoto2 mit Android-USB</string>
+    <string name="report_issue_summary">Aktuelle Logs manuell in ein GitHub-Issue hochladen</string>
+    <string name="ux_improvement_desc">Helfen Sie uns, PhtonView zu verbessern, indem anonyme Logs automatisch übermittelt werden. Enthalten können Gerätemodell und App-Version sein.</string>
+    <string name="wb_custom">Benutzerdefiniert</string>
+    <string name="preset_user1">Benutzer 1</string>
+    <string name="search_empty">Keine passenden Einstellungen</string>
+    <string name="download_preview">Download &amp; Preview</string>
+    <string name="focus_mode">Fokusmodus</string>
+    <string name="cd_zoom_in">Vergrößern</string>
+    <string name="connect">Verbinden</string>
+    <string name="report_issue_failed">Senden fehlgeschlagen</string>
+    <string name="wifi_hint_fuji">1. Aktivieren Sie Tether-Aufnahme an der Kamera.\n2. Verbinden Sie das Telefon mit dem Kamera-Hotspot.\n3. Geben Sie die auf dem Bildschirm angezeigte IP ein.</string>
+    <string name="wifi_hint_olympus">1. Aktivieren Sie den PC-Modus an der Kamera.\n2. Verbinden Sie das Telefon mit dem Kamera-Hotspot.\n3. Geben Sie die auf dem Bildschirm angezeigte IP ein.</string>
+    <string name="preset_studio">Studio</string>
+    <string name="preset_user2">Benutzer 2</string>
+    <string name="wb_tungsten">Wolfram</string>
+    <string name="preset_portrait">Porträt</string>
+    <string name="license">Lizenz</string>
+    <string name="about_used_sdks">Bibliotheken / SDKs</string>
+    <string name="flash_on">Ein</string>
+    <string name="about_role_ptp">Kamerasteuerungsprotokoll (Picture Transfer Protocol)</string>
+    <string name="no_photos">Keine Fotos auf der Kamera</string>
+    <string name="about_role_material">Material 3 — Designsystem</string>
+    <string name="about_role_ltdl">Dynamischer Bibliothekslader (gphoto2-Abhängigkeiten)</string>
+    <string name="metering_spot_short">Spot</string>
 </resources>

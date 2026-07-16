@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,6 +36,7 @@ import androidx.compose.material.icons.filled.Cable
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Layers
@@ -51,10 +53,13 @@ import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -90,6 +95,7 @@ import com.phtontools.phtonview.data.model.ConnectionType
 import com.phtontools.phtonview.data.model.WifiBrandPreset
 import com.phtontools.phtonview.ui.CameraViewModel
 import com.phtontools.phtonview.ui.components.UnifiedChip
+import com.phtontools.phtonview.ui.diagnostics.ConnectionDiagnosticsScreen
 import com.phtontools.phtonview.ui.components.UnifiedSettingsHeader
 import com.phtontools.phtonview.ui.components.UnifiedSettingsItem
 import com.phtontools.phtonview.ui.components.UnifiedSwitchRow
@@ -99,7 +105,7 @@ import com.phtontools.phtonview.util.UxImprovementManager
 import kotlinx.coroutines.launch
 
 private enum class SettingsPage {
-    Main, Theme, Language, UiMode, Credits, Update, Privacy, License, About
+    Main, Theme, Language, UiMode, Credits, Update, Privacy, License, About, Diagnostics, Search
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -157,6 +163,8 @@ fun SettingsScreen(
         SettingsPage.Privacy -> stringResource(id = R.string.privacy_policy)
         SettingsPage.License -> stringResource(id = R.string.license)
         SettingsPage.About -> stringResource(id = R.string.about)
+        SettingsPage.Diagnostics -> stringResource(id = R.string.diagnostics)
+        SettingsPage.Search -> stringResource(id = R.string.search_settings)
     }
     Scaffold(
         topBar = {
@@ -168,6 +176,17 @@ fun SettingsScreen(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back"
                         )
+                    }
+                },
+                // **迭代 #8**（设置项搜索栏）：从 topbar 进入搜索屏
+                actions = {
+                    if (currentPage == SettingsPage.Main) {
+                        IconButton(onClick = { currentPage = SettingsPage.Search }) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = stringResource(id = R.string.search_settings)
+                            )
+                        }
                     }
                 }
             )
@@ -223,6 +242,7 @@ fun SettingsScreen(
                     onPrivacyClick = { currentPage = SettingsPage.Privacy },
                     onLicenseClick = { currentPage = SettingsPage.License },
                     onAboutClick = { currentPage = SettingsPage.About },
+                    onDiagnosticsClick = { currentPage = SettingsPage.Diagnostics },
                     onCheckUpdate = checkUpdate,
                     onConnectionTypeChange = {
                         viewModel.setConnectionType(it)
@@ -329,6 +349,12 @@ fun SettingsScreen(
                 SettingsPage.About -> AboutPage(
                     modifier = Modifier.padding(padding)
                 )
+
+                SettingsPage.Diagnostics -> ConnectionDiagnosticsScreen()
+
+                SettingsPage.Search -> SettingsSearchScreen(
+                    onNavigateTo = { currentPage = it }
+                )
             }
         }
     }
@@ -353,6 +379,7 @@ private fun MainSettingsContent(
     onPrivacyClick: () -> Unit,
     onLicenseClick: () -> Unit,
     onAboutClick: () -> Unit,
+    onDiagnosticsClick: () -> Unit,
     onCheckUpdate: () -> Unit,
     onConnectionTypeChange: (ConnectionType) -> Unit,
     onConnect: () -> Unit,
@@ -1153,6 +1180,159 @@ private fun ConnectionSection(
         }
     }
 }
+
+/**
+ * 设置项搜索屏（迭代 #8）。
+ *
+ * 静态枚举所有二级页 + 主屏常用功能，做模糊匹配（title + summary + keywords 拼起来的字符串），
+ * 选中跳转对应 page。
+ *
+ * 实时过滤：每次 query 变化都重新计算；50 项以下无需 debounce。
+ */
+@Composable
+private fun SettingsSearchScreen(
+    onNavigateTo: (SettingsPage) -> Unit
+) {
+    var query by remember { mutableStateOf("") }
+    val allEntries = remember {
+        listOf(
+            SearchableSettingsEntry(
+                page = SettingsPage.Theme,
+                title = R.string.theme,
+                summary = R.string.theme_system,
+                keywords = "appearance color night day"
+            ),
+            SearchableSettingsEntry(
+                page = SettingsPage.Language,
+                title = R.string.language,
+                summary = R.string.language_english,
+                keywords = "i18n locale translate 中文 english"
+            ),
+            SearchableSettingsEntry(
+                page = SettingsPage.UiMode,
+                title = R.string.select_ui_mode,
+                summary = R.string.ui_mode_simple,
+                keywords = "ui mode simple professional 简单 专业"
+            ),
+            SearchableSettingsEntry(
+                page = SettingsPage.Credits,
+                title = R.string.credits,
+                summary = R.string.credits_summary,
+                keywords = "team author open source"
+            ),
+            SearchableSettingsEntry(
+                page = SettingsPage.Update,
+                title = R.string.check_update,
+                summary = R.string.about_version_name,
+                keywords = "version upgrade new"
+            ),
+            SearchableSettingsEntry(
+                page = SettingsPage.Privacy,
+                title = R.string.privacy_policy,
+                summary = R.string.privacy_policy_summary,
+                keywords = "policy data collect telemetry"
+            ),
+            SearchableSettingsEntry(
+                page = SettingsPage.License,
+                title = R.string.license,
+                summary = R.string.license,
+                keywords = "license gpl mit apache"
+            ),
+            SearchableSettingsEntry(
+                page = SettingsPage.About,
+                title = R.string.about,
+                summary = R.string.about_app_info,
+                keywords = "version app info sdk library"
+            ),
+            SearchableSettingsEntry(
+                page = SettingsPage.Diagnostics,
+                title = R.string.diagnostics,
+                summary = R.string.diagnostics_summary,
+                keywords = "diagnose troubleshoot connection usb wifi"
+            )
+        )
+    }
+    // 模糊匹配（迭代 #8）：title + summary + keywords 拼起来 contains 查询词。
+    // 在 Composable 体内执行，可以调 stringResource；9 项数据，无需 debounce。
+    val results = if (query.isBlank()) {
+        allEntries
+    } else {
+        val q = query.trim().lowercase()
+        allEntries.filter { entry ->
+            val title = stringResource(id = entry.title).lowercase()
+            val summary = stringResource(id = entry.summary).lowercase()
+            val haystack = "$title $summary ${entry.keywords.lowercase()}"
+            haystack.contains(q)
+        }
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text(stringResource(id = R.string.search_hint)) },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = null
+                )
+            },
+            singleLine = true
+        )
+        if (results.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = stringResource(id = R.string.search_empty),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                )
+            }
+        } else {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(results, key = { it.page.name }) { entry ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onNavigateTo(entry.page) },
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = stringResource(id = entry.title),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                            )
+                            Text(
+                                text = stringResource(id = entry.summary),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private data class SearchableSettingsEntry(
+    val page: SettingsPage,
+    val title: Int,
+    val summary: Int,
+    val keywords: String
+)
 
 @Composable
 private fun ConnectionChip(

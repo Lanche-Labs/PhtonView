@@ -34,9 +34,11 @@ fun SplashScreen(
     val alpha = remember { Animatable(0f) }
 
     LaunchedEffect(Unit) {
-        scale.animateTo(1f, animationSpec = tween(durationMillis = 800))
-        alpha.animateTo(1f, animationSpec = tween(durationMillis = 800))
-        delay(1200)
+        // **优化启动耗时**（迭代 #1）：旧逻辑 800ms 动画 + 1200ms 静止 delay = 2s，
+        // 现动画跑完直接 onSplashFinished；静止 1.2s 是空等，浪费用户感知时间。
+        // 启动链路总耗时 -1.2s。
+        scale.animateTo(1f, animationSpec = tween(durationMillis = 600))
+        alpha.animateTo(1f, animationSpec = tween(durationMillis = 600))
         onSplashFinished()
     }
 

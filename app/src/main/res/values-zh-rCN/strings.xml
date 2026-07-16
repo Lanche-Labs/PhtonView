@@ -247,6 +247,20 @@
     <string name="about_role_material">Material 3 — 设计系统</string>
     <string name="about_role_icons">Material Icons Extended — 扩展图标集</string>
     <string name="about_role_exif">EXIF Interface — 照片元数据读取</string>
+    <string name="diagnostics">连接诊断</string>
+    <string name="diagnostics_summary">USB / WiFi 连接状态、相机状态、设置快照</string>
+    <!-- **迭代 #5**（a11y）：TalkBack 屏幕阅读器朗读 -->
+    <string name="cd_zoom_in">放大</string>
+    <string name="cd_zoom_out">缩小</string>
+    <string name="cd_reset_zoom">重置缩放</string>
+    <string name="cd_focus_peaking_toggle">切换峰值对焦</string>
+    <string name="cd_close">关闭</string>
+    <string name="cd_back">返回</string>
+    <string name="flash_manual_popup_hint">手动闪光将在下次打开闪光灯时触发</string>
+    <!-- **迭代 #8**（设置项搜索栏） -->
+    <string name="search_settings">搜索设置</string>
+    <string name="search_hint">输入关键词筛选设置项</string>
+    <string name="search_empty">没有匹配项</string>
     <string name="select_param">选择%1$s</string>
     <string name="tap_to_input">点击数值可手动输入</string>
     <string name="shutter_speed">快门速度</string>

@@ -575,9 +575,11 @@ private fun LiveViewLayer(
         contentAlignment = Alignment.Center
     ) {
         processedFrame?.let { bitmap ->
-            Image(
-                bitmap = bitmap.asImageBitmap(),
-                contentDescription = stringResource(id = R.string.live_view),
+            // **迭代 #17**：取景帧改用 TextureView + drawBitmap，30fps 不抢主线程。
+            // 旧实现 Image(bitmap=processedFrame.asImageBitmap()) 走 Compose 重组 +
+            // ImageBitmap 分配 + 纹理上传，每帧 CPU 重活。
+            com.phtontools.phtonview.ui.components.LiveViewTextureView(
+                bitmap = bitmap,
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
@@ -586,7 +588,7 @@ private fun LiveViewLayer(
                         translationX = offset.x
                         translationY = offset.y
                     },
-                contentScale = ContentScale.Fit
+                contentDescription = stringResource(id = R.string.live_view)
             )
         } ?: NoSignalMessage(
             connectionState = connectionState,

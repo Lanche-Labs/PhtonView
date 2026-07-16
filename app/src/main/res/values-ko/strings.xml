@@ -1,21 +1,15 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="app_name">PhtonView</string>
     <string name="developer_team">Lanche-Labs</string>
-
-    <!-- 연결 상태 -->
     <string name="status_connected">연결됨：%1$s</string>
     <string name="status_connecting">연결 중…</string>
     <string name="status_error">오류：%1$s</string>
     <string name="status_disconnected">연결 해제됨</string>
-
-    <!-- 칩 정보 -->
     <string name="camera_info_format">노출 %1$+.1f  조리개 %2$s  셔터 %3$s  ISO %4$d</string>
-    <string name="waiting_for_camera">칩 대기 중…</string>
-    <string name="preparing_main">칩 인터페이스 준비 중…</string>
+    <string name="waiting_for_camera">카메라 대기 중…</string>
+    <string name="preparing_main">카메라 인터페이스 준비 중…</string>
     <string name="live_view">라이브 뷰</string>
-
-    <!-- 초점 -->
     <string name="focus_mode_af">AF</string>
     <string name="focus_mode_mf">MF</string>
     <string name="focus">초점</string>
@@ -23,22 +17,18 @@
     <string name="af_continuous">AF-C</string>
     <string name="magnification_format">확대 %1$.0fx</string>
     <string name="focus_peaking">피킹</string>
-    <string name="af_mode">AF Mode</string>
-    <string name="af_area_mode">AF Area</string>
-    <string name="af_area_single">Single</string>
-    <string name="af_area_zone">Zone</string>
-    <string name="af_area_tracking">Tracking</string>
-    <string name="af_area_face">Face</string>
-    <string name="focus_button">Focus</string>
-
-    <!-- 노출 -->
+    <string name="af_mode">AF 모드</string>
+    <string name="af_area_mode">AF 영역</string>
+    <string name="af_area_single">단일</string>
+    <string name="af_area_zone">영역</string>
+    <string name="af_area_tracking">추적</string>
+    <string name="af_area_face">얼굴</string>
+    <string name="focus_button">포커스</string>
     <string name="metering_mode">측광 모드</string>
     <string name="ev_comp_format">노출 보정：%1$+.1f EV</string>
     <string name="metering_matrix">평균 측광</string>
     <string name="metering_center">중심 중점</string>
     <string name="metering_spot">스팟 측광</string>
-
-    <!-- 촬영 설정 -->
     <string name="iso">ISO</string>
     <string name="aperture">조리개</string>
     <string name="shutter">셔터</string>
@@ -46,8 +36,6 @@
     <string name="image_size">이미지 크기</string>
     <string name="burst_speed">연속 촬영 속도</string>
     <string name="capture_settings">촬영 설정</string>
-
-    <!-- 촬영 -->
     <string name="burst">연속 촬영</string>
     <string name="capture">촬영</string>
     <string name="shooting_mode">촬영 모드</string>
@@ -57,33 +45,29 @@
     <string name="flash_compensation">플래시 보정</string>
     <string name="storage_target">저장 위치</string>
     <string name="advanced_capture">고급 촬영</string>
-    <string name="bulb_duration">B(벌브)：%d 초</string>
+    <string name="bulb_duration">벌브 시간: %d 초</string>
     <string name="timer_delay">셀프 타이머：%d 초</string>
     <string name="intervalometer_info">간격：%1$d 초, 장수：%2$d</string>
     <string name="aeb_info">브래킷：%1$d 장, 단계：%2$.1f EV</string>
     <string name="presets">촬영 프리셋</string>
-    <string name="camera_maintenance">칩 유지보수</string>
+    <string name="camera_maintenance">카메라 유지보수</string>
     <string name="fetch_status">상태 가져오기</string>
     <string name="sync_datetime">날짜/시간 동기화</string>
     <string name="timer_2s">타이머</string>
-    <string name="bulb">B(벌브)</string>
+    <string name="bulb">벌브</string>
     <string name="interval">인터벌</string>
     <string name="aeb">브래킷</string>
-
-    <!-- 스플래시 -->
-    <string name="splash_subtitle">전문 칩 리모컨</string>
-
-    <!-- 온볼딩 -->
+    <string name="splash_subtitle">전문가용 카메라 리모컨</string>
     <string name="onboarding_welcome">PhtonView에 오신 것을 환영합니다</string>
-    <string name="onboarding_desc">USB 또는 WiFi로 칩을 전문적으로 원격 제어하세요.</string>
+    <string name="onboarding_desc">USB 또는 Wi-Fi 로 카메라를 전문적으로 원격 제어하세요.</string>
     <string name="onboarding_permission_title">USB 권한</string>
-    <string name="onboarding_permission_desc">PhtonView는 USB OTG로 칩과 통신합니다. 메시지가 표시되면 USB 액세스를 허용하세요.</string>
+    <string name="onboarding_permission_desc">PhtonView 는 USB OTG 로 카메라와 통신합니다. 메시지가 표시되면 USB 접근을 허용하세요.</string>
     <string name="onboarding_theme_title">테마 선택</string>
     <string name="onboarding_theme_desc">작업 환경에 맞는 외관을 선택하세요.</string>
     <string name="theme_system">시스템 기본값</string>
     <string name="theme_light">라이트</string>
     <string name="theme_dark">다크</string>
-    <string name="onboarding_connection_title">칩 설정</string>
+    <string name="onboarding_connection_title">카메라 설정</string>
     <string name="onboarding_connection_desc">선호하는 연결 방식과 인터페이스 모드를 설정하세요.</string>
     <string name="onboarding_skip">걸러뛰기</string>
     <string name="multi_brand">멀티 브랜드</string>
@@ -93,11 +77,8 @@
     <string name="ui_mode_simple_desc">자주 사용하는 항목만 표시</string>
     <string name="ui_mode_pro">전문가</string>
     <string name="ui_mode_pro_desc">전체 제어 패널</string>
-
     <string name="onboarding_get_started">시작하기</string>
     <string name="onboarding_next">다음</string>
-
-    <!-- 설정 -->
     <string name="settings">설정</string>
     <string name="theme">테마</string>
     <string name="language">언어</string>
@@ -121,13 +102,146 @@
     <string name="wifi_experimental">WiFi 연결(실험적)</string>
     <string name="wifi_experimental_summary">실험적 WiFi 칩 연결 활성화</string>
     <string name="connection_hint_title">연결</string>
-    <string name="usb_device_detected">USB 칩 감지：%1$s</string>
+    <string name="usb_device_detected">USB 카메라 감지: %1$s</string>
     <string name="tap_to_connect_usb">탭하여 USB로 연결</string>
     <string name="wifi_pair">WiFi 페어링</string>
     <string name="use_usb">USB 사용</string>
     <string name="use_wifi">WiFi 사용</string>
     <string name="wifi_pair_title">WiFi 칩 페어링</string>
-    <string name="wifi_pair_desc">칩의 IP 주소와 포트를 입력하세요. 예：192.168.1.1:15740</string>
+    <string name="wifi_pair_desc">카메라 IP 주소와 포트를 입력하세요. 예: 192.168.1.1:15740</string>
     <string name="wifi_address_label">칩 IP:포트</string>
     <string name="version_format">버전 %1$s</string>
+    <string name="brand_sony">소니</string>
+    <string name="brand_fuji">후지필름</string>
+    <string name="flash_manual_popup_hint">이 모델은 측면 버튼으로 플래시를 수동으로 열어야 합니다. 그렇지 않으면 플래시가 작동하지 않습니다</string>
+    <string name="flash_auto">자동</string>
+    <string name="about_role_lifecycle">AndroidX Lifecycle — ViewModel &amp; runtime</string>
+    <string name="diagnostics">연결 진단</string>
+    <string name="wb_daylight">일광</string>
+    <string name="about_role_libusb">USB bulk &amp; interrupt transfer</string>
+    <string name="about_role_coroutines">kotlinx.coroutines — async streaming &amp; backpressure</string>
+    <string name="about_group_protocol">프로토콜</string>
+    <string name="usb_guide_step_4">4. 앱이 카메라를 감지하면 "USB 연결"을 탭하세요.</string>
+    <string name="usb_guide_title">USB 연결 방법</string>
+    <string name="cd_zoom_out">축소</string>
+    <string name="connection">연결</string>
+    <string name="wifi_select_brand">카메라 브랜드</string>
+    <string name="usb">USB</string>
+    <string name="error_title">오류</string>
+    <string name="preset_sports">스포츠</string>
+    <string name="reset_to_defaults">기본값으로 재설정</string>
+    <string name="about_version_code">버전 코드</string>
+    <string name="wifi_pairing">Wi-Fi 페어링</string>
+    <string name="metering_matrix_short">전역</string>
+    <string name="focus_mf">MF</string>
+    <string name="flash_slow_sync">슬로우 싱크</string>
+    <string name="privacy_policy_summary">데이터 수집 및 사용 방법</string>
+    <string name="cd_close">닫기</string>
+    <string name="credits">크레딧</string>
+    <string name="wb_fluorescent">형광등</string>
+    <string name="search_settings">설정 검색</string>
+    <string name="af_c">AF-C</string>
+    <string name="brand_canon">캐논</string>
+    <string name="report_issue_submitted">문제 전송됨</string>
+    <string name="cd_reset_zoom">확대/축소 초기화</string>
+    <string name="about_group_camera_stack">카메라 제어 스택</string>
+    <string name="wifi_hint_sony">1. 카메라에서 PC Remote 활성화.\n2. 카메라 핫스팟에 연결 (예: DIRECT-xxxx).\n3. 화면에 표시된 IP 입력.</string>
+    <string name="burst_count">연사 매수</string>
+    <string name="credits_summary">Program by LanChe · UI design by 安信一・プロス (One Bucket)</string>
+    <string name="off">끔</string>
+    <string name="about_app_info">앱 정보</string>
+    <string name="search_hint">입력하여 필터</string>
+    <string name="about_target_sdk">대상 SDK</string>
+    <string name="wifi_saved_address">저장됨: %1$s</string>
+    <string name="diagnostics_summary">USB/Wi-Fi 연결 상태, 카메라 상태, 설정 스냅샷</string>
+    <string name="usb_guide_note">참고: 일부 기기는 시스템 설정에서 OTG를 켜야 합니다.</string>
+    <string name="wifi_custom">사용자 지정</string>
+    <string name="about_role_hilt">Hilt — 의존성 주입</string>
+    <string name="timer_summary">지연 단일 촬영</string>
+    <string name="wifi_hint_custom">화면이나 설명서에 표시된 IP와 포트를 입력하세요.</string>
+    <string name="about_role_icons">Material Icons Extended — 확장 아이콘 세트</string>
+    <string name="brand_olympus">올림푸스</string>
+    <string name="gallery">갤러리</string>
+    <string name="wifi_hint_nikon_wu">1. WU-1a/1b 어댑터를 끼우고 Wi-Fi를 켭니다.\n2. 폰을 어댑터 핫스팟에 연결 (예: NIKON_WU_xxx).\n3. 기본 주소는 보통 192.168.1.100:15740.</string>
+    <string name="tap_to_input">탭하여 입력</string>
+    <string name="cd_back">뒤로</string>
+    <string name="about_android_release">Android 버전</string>
+    <string name="about_role_exif">EXIF Interface — 사진 메타데이터 리더</string>
+    <string name="ux_improvement_decline">거절</string>
+    <string name="focus_af">AF</string>
+    <string name="brand_nikon_wu">Nikon WU-1a/b</string>
+    <string name="wb_kelvin">켈빈</string>
+    <string name="af_s">AF-S</string>
+    <string name="usb_connection_guide">USB 연결 안내</string>
+    <string name="license_summary">LICENSE 및 COPYING 보기</string>
+    <string name="ux_improvement_summary">익명 세션 로그 자동 전송</string>
+    <string name="flash_rear_sync">리어 싱크</string>
+    <string name="flash_off">끔</string>
+    <string name="brand_nikon">니콘</string>
+    <string name="report_issue">문제 보고</string>
+    <string name="preset_macro">매크로</string>
+    <string name="usb_guide_step_1">1. USB OTG 어댑터/케이블로 카메라와 폰을 연결하세요.</string>
+    <string name="usb_guide_step_3">3. 시스템 대화상자에서 USB 접근을 허용하세요.</string>
+    <string name="bulb_summary">장시간 노출 타이머</string>
+    <string name="connection_status">상태</string>
+    <string name="about_min_sdk">최소 SDK</string>
+    <string name="wifi_hint_panasonic">1. 카메라에서 테더링 활성화.\n2. 카메라 핫스팟에 연결.\n3. 화면에 표시된 IP 입력.</string>
+    <string name="metering_center_short">중앙</string>
+    <string name="preset_night">야경</string>
+    <string name="flash_red_eye">적목 감소</string>
+    <string name="preset_landscape">풍경</string>
+    <string name="wb_flash">플래시</string>
+    <string name="about_package_name">패키지명</string>
+    <string name="brand_panasonic">파나소닉</string>
+    <string name="cd_focus_peaking_toggle">피킹 토글</string>
+    <string name="wifi_hint_canon">1. Wi-Fi를 켜고 EOS Utility 모드 시작.\n2. 카메라 핫스팟에 연결.\n3. 기본 주소는 보통 192.168.1.1:15740.</string>
+    <string name="shutter_speed">셔터 속도</string>
+    <string name="wb_auto">자동</string>
+    <string name="about_android_api">Android API</string>
+    <string name="about_role_compose_bom">Jetpack Compose BOM — UI 프레임워크</string>
+    <string name="wifi_hint_nikon">1. 카메라의 Wi-Fi를 켭니다.\n2. 폰을 카메라 핫스팟에 연결 (예: NIKON_Z6_xxx).\n3. 기본 주소는 보통 192.168.1.1:15740.</string>
+    <string name="ux_improvement_agree">동의</string>
+    <string name="burst_summary">연속 프레임 촬영</string>
+    <string name="wifi_pairing_summary">브랜드 선택 후 IP 입력</string>
+    <string name="about_role_core_ktx">AndroidX Core KTX — Kotlin 확장</string>
+    <string name="wifi">Wi-Fi</string>
+    <string name="about_group_app_stack">Android &amp; app stack</string>
+    <string name="aeb_summary">자동 노출 브래킷</string>
+    <string name="privacy_policy">개인정보 처리방침</string>
+    <string name="interval_summary">타임랩스</string>
+    <string name="select_param">%1$s 선택</string>
+    <string name="disconnect">연결 해제</string>
+    <string name="ux_improvement_title">UX 개선 프로그램</string>
+    <string name="about_role_kotlin">Kotlin stdlib — coroutines &amp; language runtime</string>
+    <string name="about_role_gphoto2">Open-source camera driver framework — supports &amp;gt;2000 cameras</string>
+    <string name="camera_connected">카메라 연결됨</string>
+    <string name="wb_cloudy">흐림</string>
+    <string name="usb_guide_step_2">2. 카메라 전원을 켜고 PC / 원격 / MTP 모드로 설정.</string>
+    <string name="about_version_name">Version</string>
+    <string name="wb_shade">그늘</string>
+    <string name="about_role_phtonview">PhtonView 네이티브 브리지 — gphoto2 를 Android USB 에 연결</string>
+    <string name="report_issue_summary">현재 로그를 수동으로 GitHub issue 에 업로드</string>
+    <string name="ux_improvement_desc">익명 로그를 자동 전송하여 PhtonView 개선에 도움을 주세요. 기기 모델과 앱 버전이 포함될 수 있습니다.</string>
+    <string name="wb_custom">사용자 지정</string>
+    <string name="preset_user1">사용자 1</string>
+    <string name="search_empty">일치하는 설정 없음</string>
+    <string name="download_preview">Download &amp; Preview</string>
+    <string name="focus_mode">포커스 모드</string>
+    <string name="cd_zoom_in">확대</string>
+    <string name="connect">연결</string>
+    <string name="report_issue_failed">전송 실패</string>
+    <string name="wifi_hint_fuji">1. 카메라에서 테더 촬영 활성화.\n2. 카메라 핫스팟에 연결.\n3. 화면에 표시된 IP 입력.</string>
+    <string name="wifi_hint_olympus">1. 카메라에서 PC 모드 활성화.\n2. 카메라 핫스팟에 연결.\n3. 화면에 표시된 IP 입력.</string>
+    <string name="preset_studio">스튜디오</string>
+    <string name="preset_user2">사용자 2</string>
+    <string name="wb_tungsten">텅스텐</string>
+    <string name="preset_portrait">인물</string>
+    <string name="license">라이선스</string>
+    <string name="about_used_sdks">라이브러리 / SDK</string>
+    <string name="flash_on">켬</string>
+    <string name="about_role_ptp">카메라 제어 프로토콜 (Picture Transfer Protocol)</string>
+    <string name="no_photos">카메라에 사진이 없습니다</string>
+    <string name="about_role_material">Material 3 — 디자인 시스템</string>
+    <string name="about_role_ltdl">동적 라이브러리 로더 (gphoto2 종속성)</string>
+    <string name="metering_spot_short">점</string>
 </resources>

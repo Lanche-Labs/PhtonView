@@ -130,6 +130,15 @@ object PtpConstants {
     const val RESPONSE_INVALID_TRANSACTION: Short = 0x2004
     const val RESPONSE_OPERATION_NOT_SUPPORTED: Short = 0x2005
     const val RESPONSE_PARAMETER_NOT_SUPPORTED: Short = 0x2006
+
+    /**
+     * Nikon D5200 / 部分老机器在收到重复 OpenSession 时会回 `0x201E`
+     * （标准码表是 "Specification Of Destination Unsupported"），实际语义是
+     * "Session Already Open"。识别为已开 session，避免 3 次空重试 + sessionOpen=false。
+     * 也覆盖 MTP 标准的 `0x2007`。
+     */
+    const val RESPONSE_SESSION_ALREADY_OPEN: Short = 0x2007
+    const val RESPONSE_NIKON_SESSION_ALREADY_OPEN: Short = 0x201E.toShort()
     const val RESPONSE_INVALID_OBJECT_HANDLE: Short = 0x2009
     const val RESPONSE_STORE_FULL: Short = 0x200C
     const val RESPONSE_DEVICE_BUSY: Short = 0x2019

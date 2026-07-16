@@ -72,6 +72,10 @@ class UsbCameraConnection @Inject constructor(
 
     // 防止 USB attached/permission/connect 广播并发触发多次 openDevice，导致旧连接被中途关闭。
     private val isOpeningDevice = AtomicBoolean(false)
+    // **fix #123**: 记录锁的获取时间，若 5 秒后仍未释放（stuck coroutine）则强制重置，
+    // 避免 attach 广播一直无法打开新设备，UI 看到 Connecting 卡死。
+    private val openingDeviceSinceMs = java.util.concurrent.atomic.AtomicLong(0)
+    private val OPENING_DEVICE_TIMEOUT_MS = 5000L
 
     private val usbReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -128,6 +132,17 @@ class UsbCameraConnection @Inject constructor(
                     }
                     if (device?.deviceId == cameraDevice?.deviceId) {
                         disconnect()
+                    }
+                    // **fix #123**：USB 拔线/断电时强制重置 isOpeningDevice 锁。
+                    // 之前只在 openDevice 的 scope.launch finally 中清锁，如果拔线
+                    // 时刻 openDevice 的协程还在 delay(100) / bulkTransfer IN 等相机端
+                    // 永远不会再响应的命令上，整把锁会卡 5s（OPENING_DEVICE_TIMEOUT_MS）
+                    // 后才被强制释放，期间用户重新插线/点连接都拿不到锁。
+                    // detach 事件是"相机一定没了"的明确信号，直接 reset 是最安全的。
+                    if (isOpeningDevice.get()) {
+                        AppLogger.w("USB detached while isOpeningDevice=true, force reset")
+                        isOpeningDevice.set(false)
+                        openingDeviceSinceMs.set(0)
                     }
                 }
             }
@@ -281,12 +296,26 @@ class UsbCameraConnection @Inject constructor(
         }
         // 原子方式抢占 openDevice 执行权；有另一个协程正在打开时直接返回，避免中途关闭旧连接。
         if (!isOpeningDevice.compareAndSet(false, true)) {
-            AppLogger.d("Another openDevice in progress, skip duplicate open for ${device.deviceId}")
-            return
+            // **fix #123**: 检查锁是否已超时（stuck coroutine），是则强制重置
+            val sinceMs = openingDeviceSinceMs.get()
+            if (sinceMs > 0 && System.currentTimeMillis() - sinceMs > OPENING_DEVICE_TIMEOUT_MS) {
+                AppLogger.w("openDevice lock stuck for ${System.currentTimeMillis() - sinceMs}ms, force-reset for ${device.deviceId}")
+                isOpeningDevice.set(false)
+                // 重试一次获取
+                if (!isOpeningDevice.compareAndSet(false, true)) {
+                    AppLogger.d("Another openDevice grabbed the lock after reset, skip for ${device.deviceId}")
+                    return
+                }
+            } else {
+                AppLogger.d("Another openDevice in progress, skip duplicate open for ${device.deviceId}")
+                return
+            }
         }
+        openingDeviceSinceMs.set(System.currentTimeMillis())
 
         val newConnection = usbManager.openDevice(device) ?: run {
             isOpeningDevice.set(false)
+            openingDeviceSinceMs.set(0)
             AppLogger.e("Failed to open USB device")
             _connectionState.value = CameraConnection.ConnectionState.Error("Failed to open USB device")
             return
@@ -310,6 +339,7 @@ class UsbCameraConnection @Inject constructor(
 
         if (inputEndpoint == null || outputEndpoint == null) {
             isOpeningDevice.set(false)
+            openingDeviceSinceMs.set(0)
             newConnection.close()
             _connectionState.value = CameraConnection.ConnectionState.Error("USB endpoints not found")
             return
@@ -326,17 +356,45 @@ class UsbCameraConnection @Inject constructor(
                 // #region debug-point A:open-session
                 AppLogger.report("A", "UsbCameraConnection.kt:openDevice", "Opening PTP session", mapOf("device" to (device.productName ?: "unknown")))
                 // #endregion
+                // **fix #122**: 最多 3 次重试；遇到 SESSION_ALREADY_OPEN (0x2007) /
+                // Nikon 0x201E 立即认为 session 有效并停止重试，避免给老机器的 NAK
+                // 反复打 3 次（实测每次重试约 100ms + 一次 USB bulk 往返）。
                 var sessionOk = false
                 repeat(3) { attempt ->
                     sessionOk = openSession(PtpConstants.DEFAULT_SESSION_ID)
-                    if (sessionOk) return@repeat
+                    if (sessionOk) {
+                        AppLogger.report("A", "UsbCameraConnection.kt:openDevice", "Session open OK", mapOf("attempt" to (attempt + 1).toString()))
+                        return@repeat
+                    }
                     AppLogger.report("A", "UsbCameraConnection.kt:openDevice", "Session retry", mapOf("attempt" to (attempt + 2).toString()))
                     delay(100)
                 }
                 // #region debug-point A:device-info
                 val model = runCatching { getDeviceInfo() }.getOrDefault(device.productName ?: "Camera")
+                // **fix #122**: 如果 OpenSession 失败但 GetDeviceInfo 成功，
+                // 说明 session 实际是开的（响应码 0x201E / 0x2007），
+                // 强制把 sessionOpen 置为 true，避免后续命令误判。
+                if (!sessionOk) {
+                    val probed = runCatching { getDeviceInfo() }.isSuccess
+                    if (probed) {
+                        sessionOpen = true
+                        sessionOk = true
+                        AppLogger.report("A", "UsbCameraConnection.kt:openDevice", "Session recovered via GetDeviceInfo", emptyMap())
+                    }
+                }
                 AppLogger.report("A", "UsbCameraConnection.kt:openDevice", "Device info received", mapOf("model" to model, "sessionOk" to sessionOk.toString()))
                 // #endregion
+                // **fix #123**：不要在 OpenSession/GetDeviceInfo 都失败时把状态推到 Connected。
+                // 之前直接用 productName 作为 fallback（"NIKON DSC D5200"），结果：
+                //   - UI 显示"已连接 DSC D5200"（被用户叫成"未知机型"）
+                //   - 但相机实际不响应任何命令 → "显示连接却连不上"
+                // 现在：sessionOk 必须为 true 才推 Connected，否则落 Error 并清理连接。
+                if (!sessionOk) {
+                    AppLogger.report("A", "UsbCameraConnection.kt:openDevice", "Session not opened and DeviceInfo probe failed", mapOf("model" to model))
+                    cleanupFailedConnection(newConnection)
+                    _connectionState.value = CameraConnection.ConnectionState.Error("相机未响应 PTP 会话请求（模型=$model）")
+                    return@launch
+                }
                 _connectionState.value = CameraConnection.ConnectionState.Connected(model)
                 AppLogger.d("USB device connected: $model")
             } catch (e: Exception) {
@@ -348,6 +406,7 @@ class UsbCameraConnection @Inject constructor(
                 _connectionState.value = CameraConnection.ConnectionState.Error("PTP session failed: ${e.message}")
             } finally {
                 isOpeningDevice.set(false)
+                openingDeviceSinceMs.set(0)
             }
         }
     }
@@ -438,7 +497,16 @@ class UsbCameraConnection @Inject constructor(
         val (code, _) = sendCommandInternal(
             PtpCommand(PtpConstants.OPERATION_OPEN_SESSION, nextTransactionId(), intArrayOf(sessionId))
         )
-        if (code == PtpConstants.RESPONSE_OK || code == PtpConstants.RESPONSE_SESSION_NOT_OPEN) {
+        // 视为成功的响应码：
+        // - 0x2001 OK
+        // - 0x2003 Session Not Open（不应出现在 OpenSession，但兼容老固件异常）
+        // - 0x2007 Session Already Open（MTP 标准）
+        // - 0x201E Nikon D5200 / 老机器对重复 OpenSession 的非标准应答
+        if (code == PtpConstants.RESPONSE_OK ||
+            code == PtpConstants.RESPONSE_SESSION_NOT_OPEN ||
+            code == PtpConstants.RESPONSE_SESSION_ALREADY_OPEN ||
+            code == PtpConstants.RESPONSE_NIKON_SESSION_ALREADY_OPEN
+        ) {
             sessionOpen = true
             return true
         }
