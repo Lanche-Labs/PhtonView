@@ -90,6 +90,14 @@ class CameraRepositoryImpl @Inject constructor(
     private val heartbeatIntervalLiveviewMs: Long = 10000L
 
     /**
+     * Canon EOS 0x9154 Do AF 异步：相机返回 0x2001 仅表示"接收命令"，物理合焦需
+     * 等待 GetEvent 推回的 ObjectAdded 事件（EOS 7D/5D/6D 强光 200~500ms/暗光 1~2s）。
+     * 应用层无事件流，兜底用 250ms delay，强光够用、暗光偶尔略早但比 13ms（旧值）改善 20 倍。
+     * issue #128~#132。
+     */
+    private val CANON_AF_WAIT_MS: Long = 250L
+
+    /**
      * 根据相机型号/能力选择使用标准 0x500D 还是尼康 0xD100 快门属性，
      * 避免两个属性同时写入导致显示与实际不一致。
      */
@@ -1436,8 +1444,21 @@ class CameraRepositoryImpl @Inject constructor(
                     conn.sendCommand(brandStrategy.captureOperation, afParam, targetParam)
                 }
                 CameraBrand.Canon -> {
-                    // Canon EOS: prefer RemoteReleaseOn/Off for a clean shutter press
-                    brandStrategy.afDriveOperation?.let { conn.sendCommand(it) }
+                    // Canon EOS: 0x9154 Do AF 是**异步**命令，相机返回 0x2001 只表示"接收到了"，
+                    // 不代表 AF 已合焦；实际 AF 锁定需通过 0x9116 GetEvent 推回的 ObjectAdded
+                    // 事件通知。issue #131 EOS 7D 日志显示旧代码发完 0x9154 后 13ms 就发
+                    // 0x9128 Release On，远短于物理 AF 所需时间（强光 200~500ms/暗光 1~2s），
+                    // 导致连按快门时大量脱焦。
+                    //
+                    // 修复（#128~#132）：
+                    // 1. MF 模式下跳过 Do AF（与 triggerAf() 行为一致；旧代码无视 focusMode）
+                    // 2. AF 命令后用保守 delay 等物理对焦完成（强光 200ms / 暗光 800ms）。
+                    //    因为 Canon EOS 7D/5D/6D AF 锁定事件需 EventLoop 轮询，统一在应用层
+                    //    用 250ms 兜底（强光够用，暗光偶尔仍可能略早触发但比 13ms 改善 20 倍）。
+                    if (_focusMode.value != FocusMode.MF) {
+                        brandStrategy.afDriveOperation?.let { conn.sendCommand(it) }
+                        delay(CANON_AF_WAIT_MS)
+                    }
                     conn.sendCommand(PtpConstants.CANON_EOS_OPERATION_REMOTE_RELEASE_ON, 1)
                 }
                 CameraBrand.Panasonic -> {
