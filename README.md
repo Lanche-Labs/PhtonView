@@ -1,5 +1,7 @@
 # PhtonView
-
+  
+# 当前状态：缓慢维护  
+  
 一个适用于 Android 的专业相机遥控应用，通过 USB OTG 或实验性 WiFi 连接控制单反 / 无反相机。
 > By lanche-furry
 
