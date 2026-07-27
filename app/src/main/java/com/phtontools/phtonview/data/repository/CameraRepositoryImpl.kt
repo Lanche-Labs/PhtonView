@@ -2474,6 +2474,10 @@ class CameraRepositoryImpl @Inject constructor(
         currentConnection = null
         runCatching { scope.cancel() }
         runCatching { conn?.release() }
+        // **fix (issue: mDNS 扫描卡死闪退)**：必须在 Activity 销毁路径上把
+        // WifiCameraDiscovery 的所有飞行中扫描/端口扫描/MulticastLock 全停掉，
+        // 避免离开扫描页后协程继续吃 socket FD 导致下一启动闪退。
+        runCatching { wifiDiscovery.release() }
         // **fix #158**：release 完成后立即清空取景状态，避免 UI 残留
         // （之前 disconnect 中已清，但 release 路径独立，要再兜一次）
         runCatching {

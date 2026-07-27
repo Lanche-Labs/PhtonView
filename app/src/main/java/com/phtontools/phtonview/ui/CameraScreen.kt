@@ -1,6 +1,7 @@
 package com.phtontools.phtonview.ui
 
 import android.graphics.Bitmap
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -125,6 +126,13 @@ fun CameraScreen(
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+
+    // **fix (issue: 菜单栏系统返回关 APP)**：Material3 ModalNavigationDrawer 在某些版本下
+    // 内置 BackHandler 不会拦截 predictive back gesture。显式注册一个兜底：drawer 打开时
+    // 按系统返回先关闭 drawer 而不是 finish 整个 Activity。
+    BackHandler(enabled = drawerState.isOpen) {
+        scope.launch { drawerState.close() }
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,

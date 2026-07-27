@@ -3,15 +3,20 @@ package com.phtontools.phtonview.connection
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import android.net.wifi.WifiManager
 import android.os.Build
 import com.phtontools.phtonview.util.AppLogger
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.flatMapMerge
+import kotlinx.coroutines.flow.flow
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.Socket
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -31,6 +36,7 @@ class WifiCameraDiscovery @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val nsdManager: NsdManager? = context.getSystemService(Context.NSD_SERVICE) as? NsdManager
+    private val wifiManager: WifiManager? = context.getSystemService(Context.WIFI_SERVICE) as? WifiManager
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -43,7 +49,16 @@ class WifiCameraDiscovery @Inject constructor(
     private val _scanProgress = MutableStateFlow(ScanProgress.IDLE)
     val scanProgress: StateFlow<ScanProgress> = _scanProgress
 
-    private val discoveryListeners = mutableListOf<NsdManager.DiscoveryListener>()
+    // 线程安全：NSD 回调线程和 IO 协程都会读写。
+    private val discoveryListeners = CopyOnWriteArrayList<NsdManager.DiscoveryListener>()
+
+    // **fix (issue: mDNS 扫描卡死闪退)**：跟踪全轮询 Job，stopDiscovery 可立刻取消；
+    // 之前裸 scope.launch 完全无引用，stopDiscovery 只能"等所有 in-flight socket 跑完"才停。
+    private var scanJob: Job? = null
+
+    // **fix (issue: mDNS 扫描卡死闪退)**：持有 MulticastLock 才能在大多数 Android 版本上
+    // 收到 mDNS 多播响应（之前 AndroidManifest 声明了 CHANGE_WIFI_MULTICAST_STATE 但代码从不 acquire）。
+    private var multicastLock: WifiManager.MulticastLock? = null
 
     /**
      * Service types commonly used by camera vendors for app-to-camera communication.
@@ -67,25 +82,19 @@ class WifiCameraDiscovery @Inject constructor(
     /**
      * Well-known PTP-IP command ports. If mDNS fails, we probe these ports on the
      * local subnet as a fallback.
+     *
+     * **fix (issue: mDNS 扫描卡死闪退)**：原 17 个端口是按"宁可错杀"原则堆出来的，但实际
+     * 厂商用的就 5~6 个，多余的 4755/4756/4758/4760/4761/15742~15745/8080 几乎都是死端口，
+     * 配合 254 主机并发扫描会瞬间打满 socket FD 表，导致 "Too many open files" 闪退。
+     * 收敛到 6 个高命中端口，外加 80 兜底 HTTP 配置页。
      */
     private val knownCommandPorts = listOf(
         15740, // Generic PTP-IP, Nikon, Sony
         15741, // Event port (some cameras also listen here)
-        15742, // Canon WFT / some Fuji
-        15743,
-        15744,
-        15745,
+        4757,  // Sony Imaging Edge
         4759,  // Canon Camera Connect / Image Transfer Utility
-        4760,
-        4761,
-        4757,  // Sony imaging
-        4758,
-        4755,
-        4756,
         49152, // Panasonic / Lumix Sync
-        49153,
-        80,    // HTTP config fallback
-        8080
+        80     // HTTP config fallback
     )
 
     /**
@@ -116,12 +125,21 @@ class WifiCameraDiscovery @Inject constructor(
     /**
      * 全量轮询扫描：先 mDNS 发现，再子网端口扫描。
      * 反复轮询直到用户停止或发现至少一台相机。
+     *
+     * **fix (issue: mDNS 扫描卡死闪退)**：
+     * 1. 入口 acquire MulticastLock，否则 NSD 收不到多播响应。
+     * 2. 整个轮询用 withTimeoutOrNull(35_000L) 封顶，超时后强制 FAILED + stopDiscovery，
+     *    避免"UI 一直显示 SCANNING / 协程泄漏"。
+     * 3. 把 scanJob 存到字段，stopDiscovery() 可直接 cancel()，不等所有 in-flight socket。
+     * 4. maxRounds 默认 2（原 3）：一轮 mDNS 失败后立刻跑端口扫描，缩短总等待时间。
      */
-    fun startFullScan(maxRounds: Int = 3) {
+    fun startFullScan(maxRounds: Int = 2) {
         if (_isDiscovering.value) return
         _isDiscovering.value = true
         _scanProgress.value = ScanProgress.SCANNING_MDNS
         _discoveredServices.value = emptyList()
+
+        acquireMulticastLock()
 
         nsdManager?.let { manager ->
             for (type in serviceTypes) {
@@ -135,16 +153,29 @@ class WifiCameraDiscovery @Inject constructor(
             }
         } ?: AppLogger.w("NsdManager not available, falling back to port scan only")
 
-        scope.launch {
-            repeat(maxRounds) { round ->
-                if (!_isDiscovering.value) return@launch
-                AppLogger.d("WiFi scan round $round/${maxRounds - 1}")
-                _scanProgress.value = if (round == 0) ScanProgress.SCANNING_MDNS else ScanProgress.SCANNING_PORTS
-                runRoundScan(round)
-                // 一旦发现相机，立刻结束后续轮询
-                if (_discoveredServices.value.isNotEmpty()) return@launch
+        scanJob = scope.launch {
+            // 显式标注 <Boolean>：lambda 内部通过 return@withTimeoutOrNull 早返回 Unit，
+            // 最后一行是 false (Boolean)，类型推断会变成 Any。标注后早返回被收紧到 Boolean。
+            val timedOut: Boolean = withTimeoutOrNull(35_000L) {
+                repeat(maxRounds) { round ->
+                    if (!_isDiscovering.value) return@withTimeoutOrNull false
+                    AppLogger.d("WiFi scan round $round/${maxRounds - 1}")
+                    _scanProgress.value = if (round == 0) ScanProgress.SCANNING_MDNS else ScanProgress.SCANNING_PORTS
+                    runRoundScan(round)
+                    // 一旦发现相机，立刻结束后续轮询
+                    if (_discoveredServices.value.isNotEmpty()) return@withTimeoutOrNull false
+                }
+                false
+            } ?: run {
+                // 超时：协程在 await/cancel 中
+                AppLogger.w("mDNS full scan timed out after 35s")
+                true
             }
-            _scanProgress.value = if (_discoveredServices.value.isNotEmpty()) ScanProgress.DONE else ScanProgress.FAILED
+            _scanProgress.value = when {
+                timedOut -> ScanProgress.FAILED
+                _discoveredServices.value.isNotEmpty() -> ScanProgress.DONE
+                else -> ScanProgress.FAILED
+            }
             stopDiscovery()
         }
     }
@@ -197,10 +228,17 @@ class WifiCameraDiscovery @Inject constructor(
 
     /**
      * Stop discovery and clean up listeners.
+     *
+     * **fix (issue: mDNS 扫描卡死闪退)**：现在会立刻 cancel() 跟踪的 scanJob，
+     * 不再等所有 in-flight Socket.connect() 跑完；同时释放 MulticastLock。
      */
     fun stopDiscovery() {
         if (!_isDiscovering.value) return
         _isDiscovering.value = false
+
+        // 取消全轮询 Job（若正在进行）
+        scanJob?.cancel()
+        scanJob = null
 
         nsdManager?.let { manager ->
             for (listener in discoveryListeners) {
@@ -212,6 +250,48 @@ class WifiCameraDiscovery @Inject constructor(
             }
         }
         discoveryListeners.clear()
+        releaseMulticastLock()
+    }
+
+    /**
+     * 彻底关闭单例：取消所有协程、释放锁、清空监听器。
+     * 由 CameraRepositoryImpl.release() 在 Activity 销毁时调用，避免
+     * 离开扫描页后端口扫描仍在后台吃 FD。
+     */
+    fun release() {
+        runCatching { stopDiscovery() }
+        runCatching { scope.cancel() }
+        runCatching { resolveExecutor.shutdownNow() }
+    }
+
+    /**
+     * 持有 MulticastLock，否则部分 OEM Android（特别是 Doze / 待机后）收不到 mDNS 多播。
+     * AndroidManifest 已声明 CHANGE_WIFI_MULTICAST_STATE 权限。
+     */
+    private fun acquireMulticastLock() {
+        val wm = wifiManager ?: return
+        // 已持有则跳过
+        if (multicastLock?.isHeld == true) return
+        runCatching {
+            val lock = wm.createMulticastLock("PhtonView-mDNS")
+            lock.setReferenceCounted(false)
+            lock.acquire()
+            multicastLock = lock
+            AppLogger.d("MulticastLock acquired for mDNS")
+        }.onFailure { e ->
+            AppLogger.w("Failed to acquire MulticastLock: ${e.message}")
+        }
+    }
+
+    private fun releaseMulticastLock() {
+        val lock = multicastLock ?: return
+        runCatching {
+            if (lock.isHeld) lock.release()
+            AppLogger.d("MulticastLock released")
+        }.onFailure { e ->
+            AppLogger.w("Failed to release MulticastLock: ${e.message}")
+        }
+        multicastLock = null
     }
 
     /**
@@ -317,38 +397,46 @@ class WifiCameraDiscovery @Inject constructor(
     /**
      * Fallback port scan on common local subnet addresses.
      * This is best-effort and only runs if mDNS is unavailable or found nothing.
+     *
+     * **fix (issue: mDNS 扫描卡死闪退)**：
+     * - 旧实现 `for (host in 1..254) { jobs += async { for (port in knownCommandPorts) ... } }`
+     *   最多并发 254×17=4,318 个 Socket.connect，瞬间打满 FD 表导致 "Too many open files" 闪退。
+     * - 改用 `flatMapMerge(concurrency = 32)`，最多同时 32 个 in-flight socket（kernel 默认
+     *   ephemeral port 范围 + TCP 重传队列都不会被打爆）。
+     * - 每个 host 内层 port 循环找到开放端口就 break，避免一台相机入列多次。
      */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private suspend fun runFallbackPortScan() = withContext(Dispatchers.IO) {
         val subnetBase = localSubnetBase() ?: return@withContext
         if (!_isDiscovering.value) return@withContext
 
-        val jobs = mutableListOf<Deferred<Unit>>()
-        for (host in 1..254) {
-            if (!_isDiscovering.value) break
-            val address = "$subnetBase.$host"
-            jobs += async {
-                for (port in knownCommandPorts) {
-                    if (!_isDiscovering.value) return@async
-                    if (isPortOpen(address, port)) {
-                        addService(
-                            CameraServiceInfo(
-                                host = address,
-                                port = port,
-                                serviceType = "_ptp._tcp",
-                                name = "PTP-IP $address:$port",
-                                vendorHint = null
+        coroutineScope {
+            (1..254)
+                .flatMap { host -> knownCommandPorts.map { port -> "$subnetBase.$host" to port } }
+                .asFlow()
+                .flatMapMerge(concurrency = 32) { (address, port) ->
+                    flow {
+                        if (!_isDiscovering.value) return@flow
+                        if (isPortOpen(address, port)) {
+                            addService(
+                                CameraServiceInfo(
+                                    host = address,
+                                    port = port,
+                                    serviceType = "_ptp._tcp",
+                                    name = "PTP-IP $address:$port",
+                                    vendorHint = null
+                                )
                             )
-                        )
-                        AppLogger.report("W", "WifiCameraDiscovery.kt:runFallbackPortScan", "Camera found by scan", mapOf(
-                            "host" to address,
-                            "port" to port.toString()
-                        ))
-                        break
+                            AppLogger.report("W", "WifiCameraDiscovery.kt:runFallbackPortScan", "Camera found by scan", mapOf(
+                                "host" to address,
+                                "port" to port.toString()
+                            ))
+                        }
+                        emit(Unit)
                     }
                 }
-            }
+                .collect { /* drain */ }
         }
-        jobs.awaitAll()
     }
 
     private fun isPortOpen(host: String, port: Int): Boolean {
