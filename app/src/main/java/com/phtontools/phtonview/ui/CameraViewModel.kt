@@ -85,6 +85,15 @@ class CameraViewModel @Inject constructor(
     val photos: StateFlow<List<PhotoItem>> = repository.photos
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    /** WiFi 自动扫描结果。 */
+    val discoveredWifiServices: StateFlow<List<com.phtontools.phtonview.connection.WifiCameraDiscovery.CameraServiceInfo>> =
+        repository.discoveredWifiServices
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    /** WiFi 扫描阶段状态。 */
+    val wifiScanProgress: StateFlow<com.phtontools.phtonview.connection.WifiCameraDiscovery.ScanProgress> =
+        repository.wifiScanProgress
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.phtontools.phtonview.connection.WifiCameraDiscovery.ScanProgress.IDLE)
+
     private val _photosLoading = MutableStateFlow(false)
     val photosLoading: StateFlow<Boolean> = _photosLoading.asStateFlow()
 
@@ -156,6 +165,11 @@ class CameraViewModel @Inject constructor(
     fun setConnectionType(type: ConnectionType) { repository.setConnectionType(type) }
     fun pairWifi(address: String, brandPreset: com.phtontools.phtonview.data.model.WifiBrandPreset = com.phtontools.phtonview.data.model.WifiBrandPreset.Custom) {
         repository.pairWifi(address, brandPreset)
+    }
+    fun startWifiAutoScan() = repository.startWifiAutoScan()
+    fun stopWifiAutoScan() = repository.stopWifiAutoScan()
+    fun connectWifiService(service: com.phtontools.phtonview.connection.WifiCameraDiscovery.CameraServiceInfo) {
+        viewModelScope.launch { repository.connectWifiService(service) }
     }
 
     fun captureImage(delayMs: Long = 0) = viewModelScope.launch { repository.captureImage(delayMs) }

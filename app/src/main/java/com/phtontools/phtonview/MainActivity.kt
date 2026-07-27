@@ -131,8 +131,20 @@ private fun PhtonViewApp(
             showSettings -> Screen.Settings
             else -> Screen.Camera
         },
+        // **fix 左划动画方向**：原 transitionSpec 是单向的，新屏永远从右进、旧屏永远往左出。
+        // 用户从 Settings 左划返回 Camera 时，期望 Camera 从左进、Settings 往右出（与手势方向一致）。
+        // 仿照 SettingsScreen 子页面切换的写法，根据 Screen.ordinal 判定 forward/backward：
+        //   forward (Camera→Settings): 右进左出
+        //   backward (Settings→Camera): 左进右出
         transitionSpec = {
-            fadeIn() + slideInHorizontally { it } togetherWith fadeOut() + slideOutHorizontally { -it }
+            val forward = targetState.ordinal > initialState.ordinal
+            if (forward) {
+                fadeIn() + slideInHorizontally { it } togetherWith
+                    fadeOut() + slideOutHorizontally { -it }
+            } else {
+                fadeIn() + slideInHorizontally { -it } togetherWith
+                    fadeOut() + slideOutHorizontally { it }
+            }
         },
         label = "screen_transition"
     ) { screen ->

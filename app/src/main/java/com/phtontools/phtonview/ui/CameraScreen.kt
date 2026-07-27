@@ -74,6 +74,7 @@ import com.phtontools.phtonview.data.model.MeteringResult
 import com.phtontools.phtonview.data.model.TimerSettings
 import com.phtontools.phtonview.data.model.WhiteBalance
 import com.phtontools.phtonview.ui.components.CameraSettingsPanel
+import com.phtontools.phtonview.ui.components.ConnectionHintBanner
 import com.phtontools.phtonview.ui.components.ErrorBanner
 import com.phtontools.phtonview.ui.components.FocusPeakingProcessor
 import com.phtontools.phtonview.ui.components.MeteringOverlay
@@ -113,6 +114,8 @@ fun CameraScreen(
     val burstRunning by viewModel.burstRunning.collectAsStateWithLifecycle()
     val photos by viewModel.photos.collectAsStateWithLifecycle()
     val photosLoading by viewModel.photosLoading.collectAsStateWithLifecycle()
+    val discoveredWifiServices by viewModel.discoveredWifiServices.collectAsStateWithLifecycle()
+    val wifiScanProgress by viewModel.wifiScanProgress.collectAsStateWithLifecycle()
 
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
@@ -252,6 +255,24 @@ fun CameraScreen(
             )
         }
     }
+
+            // WiFi/USB 提示横幅：仅在未连接时显示，提供自动扫描入口
+            ConnectionHintBanner(
+                connectionState = connectionState,
+                detectedUsbDevice = detectedUsb,
+                onPairWifi = { address ->
+                    viewModel.pairWifi(address)
+                    viewModel.connect()
+                },
+                onSwitchToUsb = { viewModel.setConnectionType(com.phtontools.phtonview.data.model.ConnectionType.USB) },
+                onStartWifiScan = { viewModel.startWifiAutoScan() },
+                onStopWifiScan = { viewModel.stopWifiAutoScan() },
+                onConnectWifiService = { service -> viewModel.connectWifiService(service) },
+                discoveredWifiServices = discoveredWifiServices,
+                wifiScanProgress = wifiScanProgress,
+                onConnect = { viewModel.connect() },
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
 
             selectedParam?.let { kind ->
                 ParamSelectorSheet(

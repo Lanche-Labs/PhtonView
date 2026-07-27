@@ -92,10 +92,12 @@ class CameraRepositoryImpl @Inject constructor(
     /**
      * Canon EOS 0x9154 Do AF 异步：相机返回 0x2001 仅表示"接收命令"，物理合焦需
      * 等待 GetEvent 推回的 ObjectAdded 事件（EOS 7D/5D/6D 强光 200~500ms/暗光 1~2s）。
-     * 应用层无事件流，兜底用 250ms delay，强光够用、暗光偶尔略早但比 13ms（旧值）改善 20 倍。
-     * issue #128~#132。
+     * 应用层无事件流，兜底用 delay。
+     *
+     * issue #137 (#133~#137) 反馈：旧 250ms 在弱光下太短导致相机拒绝 release；
+     * 改 800ms 兜底（强光略长可接受、暗光够用）。
      */
-    private val CANON_AF_WAIT_MS: Long = 250L
+    private val CANON_AF_WAIT_MS: Long = 800L
 
     /**
      * 根据相机型号/能力选择使用标准 0x500D 还是尼康 0xD100 快门属性，
@@ -174,6 +176,12 @@ class CameraRepositoryImpl @Inject constructor(
 
     private val _burstRunning = MutableStateFlow(false)
     override val burstRunning: StateFlow<Boolean> = _burstRunning
+
+    // WiFi 自动发现状态直接转发自 WifiCameraDiscovery，供 UI 订阅。
+    override val discoveredWifiServices: StateFlow<List<WifiCameraDiscovery.CameraServiceInfo>> =
+        wifiDiscovery.discoveredServices
+    override val wifiScanProgress: StateFlow<WifiCameraDiscovery.ScanProgress> =
+        wifiDiscovery.scanProgress
 
     private var currentConnection: CameraConnection? = null
     private var currentModelName: String = ""
@@ -782,6 +790,37 @@ class CameraRepositoryImpl @Inject constructor(
     }
 
     /**
+     * 启动 WiFi 全量自动轮询：mDNS + 子网端口扫描。
+     * 反复扫描直到发现至少一台相机或达到上限（默认 3 轮）。
+     */
+    override fun startWifiAutoScan() {
+        wifiDiscovery.startFullScan()
+    }
+
+    override fun stopWifiAutoScan() {
+        wifiDiscovery.stopDiscovery()
+    }
+
+    /**
+     * 选中扫描到的某个相机服务并开始配对 + 连接。
+     * 优先使用服务自带的端口；品牌按 vendorHint 推断；保存配对地址供下次启动自动恢复。
+     */
+    override suspend fun connectWifiService(service: WifiCameraDiscovery.CameraServiceInfo) {
+        // 1) 保存配对地址 + 端口
+        settingsManager.wifiPairedAddress = service.host
+        settingsManager.wifiPairedPort = service.port
+        // 2) 按 vendorHint 推断品牌预设
+        val brand = brandFromVendorHint(service.vendorHint)
+        val preset = WifiBrandPreset.forBrand(brand)
+        pairWifi(service.host, preset)
+        // 3) 切换连接类型 + 触发连接流程
+        if (_cameraSettings.value.connectionType != ConnectionType.WiFi) {
+            setConnectionType(ConnectionType.WiFi)
+        }
+        connect()
+    }
+
+    /**
      * 取景帧 JPEG 解码（迭代 #3）：API 28+ 走 ImageDecoder GPU 硬解，
      * 24-27 fallback BitmapFactory 软解。
      *
@@ -1380,9 +1419,12 @@ class CameraRepositoryImpl @Inject constructor(
         val wasLiveView = _liveViewEnabled.value
         if (wasLiveView) {
             stopLiveView()
-            // 停止取景后给相机一点时间退出 PC 模式，否则紧接着的拍摄命令会被拒绝
-            waitForDeviceReady()
-            delay(300)
+            // 停止取景后给相机足够时间退出 PC 模式（#141 fix：原 300ms 不够，
+            // Nikon D5200 退出 liveview 需 1~1.5s，期间 ChangeCameraMode 会被拒）。
+            // 等够才能进 capture 流程，否则 0x90C2 ChangeCameraMode(1) 与相机的
+            // liveview→capture 状态切换撞车，会让相机卡在"半 PC 模式"死锁。
+            waitForDeviceReady(timeoutMs = 5000)
+            delay(1500)
         }
         runCatching { doCaptureImage() }
             .onFailure {
@@ -1390,7 +1432,21 @@ class CameraRepositoryImpl @Inject constructor(
             }
             .also {
                 if (wasLiveView) {
-                    runCatching { startLiveView() }
+                    // **fix #141（issue #140~#142）**：拍完不要立即 restartLiveView。
+                    // 旧逻辑：doCaptureImage 退出 PC 模式 → 立刻 startLiveView 重新 enter PC 模式。
+                    // Nikon D5200 等 DSLR 拍完一张后机身还在做（写卡、反光板回落、sensor 重启、
+                    // 镜头归位），典型耗时 500~2000ms。ChangeCameraMode(1) 反复切换会让
+                    // 相机状态机卡死，表现为手机显示已连接但无法通讯、相机 LCD 黑屏（mirror
+                    // 锁在 PC 位置），最终 USB 端点死锁（issue #142 bulkTransfer OUT=-1）。
+                    //
+                    // 修复：拍完后等 1500ms 让相机完成 capture 后续，再 startLiveView。
+                    // startLiveView 自身已用 runCatching 包裹，失败不会让整次 capture 崩。
+                    delay(1500)
+                    runCatching {
+                        if (ensureConnected()) startLiveView()
+                    }.onFailure {
+                        AppLogger.w("startLiveView after capture failed: ${it.message}")
+                    }
                 } else {
                     // 没有取景时拍完就退出 PC 模式，避免相机一直显示“正在连接 PC”
                     runCatching { exitPcMode() }
@@ -1446,18 +1502,24 @@ class CameraRepositoryImpl @Inject constructor(
                 CameraBrand.Canon -> {
                     // Canon EOS: 0x9154 Do AF 是**异步**命令，相机返回 0x2001 只表示"接收到了"，
                     // 不代表 AF 已合焦；实际 AF 锁定需通过 0x9116 GetEvent 推回的 ObjectAdded
-                    // 事件通知。issue #131 EOS 7D 日志显示旧代码发完 0x9154 后 13ms 就发
-                    // 0x9128 Release On，远短于物理 AF 所需时间（强光 200~500ms/暗光 1~2s），
-                    // 导致连按快门时大量脱焦。
+                    // 事件通知。
                     //
-                    // 修复（#128~#132）：
-                    // 1. MF 模式下跳过 Do AF（与 triggerAf() 行为一致；旧代码无视 focusMode）
-                    // 2. AF 命令后用保守 delay 等物理对焦完成（强光 200ms / 暗光 800ms）。
-                    //    因为 Canon EOS 7D/5D/6D AF 锁定事件需 EventLoop 轮询，统一在应用层
-                    //    用 250ms 兜底（强光够用，暗光偶尔仍可能略早触发但比 13ms 改善 20 倍）。
+                    // 修复迭代：
+                    // - #131（26.07.16.01）：首次加 250ms delay 等物理对焦
+                    // - **#137（26.07.24.01 用户反馈）**：
+                    //   1. **弱光下 250ms 不够，相机会拒绝 release** → 提到 800ms
+                    //   2. **Do AF 失败（0xA001 等）时仍硬等** → 检查 responseCode，失败直接跳过 delay
+                    //   3. **不破坏 MF 模式快门**（与 triggerAf() 行为一致）
                     if (_focusMode.value != FocusMode.MF) {
-                        brandStrategy.afDriveOperation?.let { conn.sendCommand(it) }
-                        delay(CANON_AF_WAIT_MS)
+                        val (afCode, _) = brandStrategy.afDriveOperation?.let { op ->
+                            conn.sendCommand(op)
+                        } ?: (PtpConstants.RESPONSE_OK to IntArray(0))
+                        if (afCode == PtpConstants.RESPONSE_OK) {
+                            delay(CANON_AF_WAIT_MS)
+                        } else {
+                            // 相机拒收 AF 命令（如镜头在 MF 或不支持 AF），不阻塞直接放行 release。
+                            AppLogger.w("Canon Do AF rejected code=0x${String.format(Locale.US, "%04X", afCode)}, skip AF wait")
+                        }
                     }
                     conn.sendCommand(PtpConstants.CANON_EOS_OPERATION_REMOTE_RELEASE_ON, 1)
                 }
@@ -1483,7 +1545,14 @@ class CameraRepositoryImpl @Inject constructor(
             AppLogger.report("G", "CameraRepositoryImpl.kt:doCaptureImage", "Capture error", mapOf("error" to (it.message ?: "unknown")))
             runCatching { conn.sendCommand(PtpConstants.OPERATION_INITIATE_CAPTURE) }
         }
-        // 退出 PC 模式（引用计数减 1）；连拍循环由 captureBurst 自身维持 PC 模式以避免反复切换。
+        // **fix #137（issue #133~#137）**：doCaptureImage 入口调用了 enterPcMode()
+        // （pcModeRefCount +1），旧代码尾部没有对应的 exitPcMode()，导致：
+        //   - 单拍：refCount 每次都漏加 1，连拍叠加 N 次
+        //   - liveview 模式：startLiveView() 看到 pcModeActive=true 跳过 ChangeCameraMode(1)，
+        //     但相机侧实际已因 release 切回正常模式，状态不一致 → 相机 LCD 卡在"正在连接 PC"
+        // 调用 exitPcMode() 让 refCount 归零；连拍循环 captureBurst 走 doCaptureImageNoPcMode
+        // 不受影响（它自己 enter/exit 配对）。
+        runCatching { exitPcMode() }
     }
 
     override suspend fun captureBurst(count: Int) {

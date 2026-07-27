@@ -218,6 +218,21 @@
     <string name="wifi_hint_panasonic">1. 在相机上开启联机功能。\n2. 手机连接相机热点。\n3. 输入相机屏幕上显示的 IP。</string>
     <string name="wifi_hint_olympus">1. 在相机上开启 PC 模式。\n2. 手机连接相机热点。\n3. 输入相机屏幕上显示的 IP。</string>
     <string name="wifi_hint_custom">输入相机屏幕或说明书中显示的 IP 与端口。</string>
+    <!-- WiFi 自动扫描相关 -->
+    <string name="wifi_auto_scan_title">WiFi 自动扫描</string>
+    <string name="wifi_auto_scan_desc">切换到此模式后，APP 会自动扫描本地子网中的 PTP-IP 相机。点击发现的相机即可连接。</string>
+    <string name="wifi_scan_idle">准备开始扫描</string>
+    <string name="wifi_scan_mdns">正在扫描 mDNS 服务…</string>
+    <string name="wifi_scan_ports">正在扫描子网端口…（已发现 %1$d 台）</string>
+    <string name="wifi_scan_done">扫描完成，共发现 %1$d 台相机</string>
+    <string name="wifi_scan_failed">未发现相机。请确认手机已连接相机热点。</string>
+    <string name="wifi_scan_starting">正在启动扫描…</string>
+    <string name="wifi_scan_searching">正在搜索相机…</string>
+    <string name="wifi_scan_empty_done">扫描完成，未发现相机。</string>
+    <string name="wifi_scan_empty_failed">扫描失败。请确认手机已连接相机热点后重试。</string>
+    <string name="wifi_rescan">重新扫描</string>
+    <string name="wifi_manual">手动</string>
+    <string name="wifi_manual_connect">使用该地址</string>
     <string name="version_format">版本 %1$s</string>
     <string name="credits">鸣谢</string>
     <string name="credits_summary">澜澈LanChe 程序制作 · 安信一・プロス（一桶） UI设计</string>

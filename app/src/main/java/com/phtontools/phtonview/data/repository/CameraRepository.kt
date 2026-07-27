@@ -1,6 +1,7 @@
 package com.phtontools.phtonview.data.repository
 
 import android.graphics.Bitmap
+import com.phtontools.phtonview.connection.WifiCameraDiscovery
 import com.phtontools.phtonview.data.model.*
 import kotlinx.coroutines.flow.StateFlow
 
@@ -30,6 +31,11 @@ interface CameraRepository {
     val liveViewEnabled: StateFlow<Boolean>
     val burstRunning: StateFlow<Boolean>
 
+    /** WiFi 自动扫描的发现结果。 */
+    val discoveredWifiServices: StateFlow<List<WifiCameraDiscovery.CameraServiceInfo>>
+    /** WiFi 扫描阶段状态。 */
+    val wifiScanProgress: StateFlow<WifiCameraDiscovery.ScanProgress>
+
     fun setConnectionType(type: ConnectionType)
     fun clearError()
 
@@ -38,6 +44,12 @@ interface CameraRepository {
     suspend fun startLiveView()
     suspend fun stopLiveView()
     fun pairWifi(address: String, brandPreset: com.phtontools.phtonview.data.model.WifiBrandPreset = com.phtontools.phtonview.data.model.WifiBrandPreset.Custom)
+    /** 启动全量 WiFi 自动轮询扫描（mDNS + 子网端口）。 */
+    fun startWifiAutoScan()
+    /** 停止 WiFi 扫描。 */
+    fun stopWifiAutoScan()
+    /** 选中某个扫描到的服务并开始配对+连接。 */
+    suspend fun connectWifiService(service: WifiCameraDiscovery.CameraServiceInfo)
     suspend fun triggerAf()
     suspend fun setAfArea(x: Float, y: Float)
     fun setFocusMode(mode: FocusMode)

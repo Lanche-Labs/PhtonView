@@ -10,6 +10,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.net.InetSocketAddress
+import java.net.NetworkInterface
 import java.net.Socket
 import java.util.concurrent.Executors
 import javax.inject.Inject
@@ -38,6 +39,9 @@ class WifiCameraDiscovery @Inject constructor(
 
     private val _isDiscovering = MutableStateFlow(false)
     val isDiscovering: StateFlow<Boolean> = _isDiscovering
+
+    private val _scanProgress = MutableStateFlow(ScanProgress.IDLE)
+    val scanProgress: StateFlow<ScanProgress> = _scanProgress
 
     private val discoveryListeners = mutableListOf<NsdManager.DiscoveryListener>()
 
@@ -88,7 +92,7 @@ class WifiCameraDiscovery @Inject constructor(
      * Discovery timeout for mDNS and port scan.
      */
     private val discoveryTimeoutMs = 8000L
-    private val portScanTimeoutMs = 800
+    private val portScanTimeoutMs = 600
 
     data class CameraServiceInfo(
         val host: String,
@@ -99,11 +103,59 @@ class WifiCameraDiscovery @Inject constructor(
     )
 
     /**
-     * Start discovery. Discovered services are emitted on [discoveredServices].
+     * 扫描阶段状态，用于 UI 显示进度。
+     */
+    enum class ScanProgress {
+        IDLE,
+        SCANNING_MDNS,
+        SCANNING_PORTS,
+        DONE,
+        FAILED
+    }
+
+    /**
+     * 全量轮询扫描：先 mDNS 发现，再子网端口扫描。
+     * 反复轮询直到用户停止或发现至少一台相机。
+     */
+    fun startFullScan(maxRounds: Int = 3) {
+        if (_isDiscovering.value) return
+        _isDiscovering.value = true
+        _scanProgress.value = ScanProgress.SCANNING_MDNS
+        _discoveredServices.value = emptyList()
+
+        nsdManager?.let { manager ->
+            for (type in serviceTypes) {
+                val listener = createNsdDiscoveryListener(type)
+                discoveryListeners.add(listener)
+                try {
+                    manager.discoverServices(type, NsdManager.PROTOCOL_DNS_SD, listener)
+                } catch (e: Exception) {
+                    AppLogger.w("mDNS discovery failed for $type: ${e.message}")
+                }
+            }
+        } ?: AppLogger.w("NsdManager not available, falling back to port scan only")
+
+        scope.launch {
+            repeat(maxRounds) { round ->
+                if (!_isDiscovering.value) return@launch
+                AppLogger.d("WiFi scan round $round/${maxRounds - 1}")
+                _scanProgress.value = if (round == 0) ScanProgress.SCANNING_MDNS else ScanProgress.SCANNING_PORTS
+                runRoundScan(round)
+                // 一旦发现相机，立刻结束后续轮询
+                if (_discoveredServices.value.isNotEmpty()) return@launch
+            }
+            _scanProgress.value = if (_discoveredServices.value.isNotEmpty()) ScanProgress.DONE else ScanProgress.FAILED
+            stopDiscovery()
+        }
+    }
+
+    /**
+     * 兼容旧 API：单轮 mDNS + 端口扫描。
      */
     fun startDiscovery() {
         if (_isDiscovering.value) return
         _isDiscovering.value = true
+        _scanProgress.value = ScanProgress.SCANNING_MDNS
         _discoveredServices.value = emptyList()
 
         nsdManager?.let { manager ->
@@ -120,12 +172,27 @@ class WifiCameraDiscovery @Inject constructor(
 
         scope.launch {
             delay(discoveryTimeoutMs)
+            _scanProgress.value = if (_discoveredServices.value.isNotEmpty()) ScanProgress.DONE else ScanProgress.FAILED
             stopDiscovery()
         }
 
         scope.launch {
-            fallbackPortScan()
+            runRoundScan(0)
         }
+    }
+
+    /**
+     * 一轮扫描：mDNS 给 2 秒缓冲，再子网端口扫描。
+     */
+    private suspend fun runRoundScan(round: Int) {
+        if (!_isDiscovering.value) return
+        // 仅在第一轮给 mDNS 一个发现窗口
+        if (round == 0 && nsdManager != null) {
+            delay(2000L)
+        }
+        if (!_isDiscovering.value) return
+        _scanProgress.value = ScanProgress.SCANNING_PORTS
+        runFallbackPortScan()
     }
 
     /**
@@ -152,6 +219,7 @@ class WifiCameraDiscovery @Inject constructor(
      */
     fun clear() {
         _discoveredServices.value = emptyList()
+        _scanProgress.value = ScanProgress.IDLE
     }
 
     private fun createNsdDiscoveryListener(type: String): NsdManager.DiscoveryListener {
@@ -183,7 +251,7 @@ class WifiCameraDiscovery @Inject constructor(
             }
 
             override fun onStopDiscoveryFailed(serviceType: String?, errorCode: Int) {
-                AppLogger.w("mDNS discovery stop failed for $serviceType: $errorCode")
+                AppLogger.w("mDNS stop failed for $serviceType: $errorCode")
             }
         }
     }
@@ -250,21 +318,17 @@ class WifiCameraDiscovery @Inject constructor(
      * Fallback port scan on common local subnet addresses.
      * This is best-effort and only runs if mDNS is unavailable or found nothing.
      */
-    private suspend fun fallbackPortScan() = withContext(Dispatchers.IO) {
-        if (nsdManager != null) {
-            // Give mDNS a head start before scanning.
-            delay(2000L)
-        }
+    private suspend fun runFallbackPortScan() = withContext(Dispatchers.IO) {
+        val subnetBase = localSubnetBase() ?: return@withContext
         if (!_isDiscovering.value) return@withContext
 
-        val gateway = localGateway() ?: return@withContext
-        val base = gateway.substringBeforeLast(".")
         val jobs = mutableListOf<Deferred<Unit>>()
-        for (host in 2..254) {
+        for (host in 1..254) {
             if (!_isDiscovering.value) break
-            val address = "$base.$host"
+            val address = "$subnetBase.$host"
             jobs += async {
                 for (port in knownCommandPorts) {
+                    if (!_isDiscovering.value) return@async
                     if (isPortOpen(address, port)) {
                         addService(
                             CameraServiceInfo(
@@ -275,7 +339,7 @@ class WifiCameraDiscovery @Inject constructor(
                                 vendorHint = null
                             )
                         )
-                        AppLogger.report("W", "WifiCameraDiscovery.kt:fallbackPortScan", "Camera found by scan", mapOf(
+                        AppLogger.report("W", "WifiCameraDiscovery.kt:runFallbackPortScan", "Camera found by scan", mapOf(
                             "host" to address,
                             "port" to port.toString()
                         ))
@@ -299,23 +363,33 @@ class WifiCameraDiscovery @Inject constructor(
     }
 
     /**
-     * Best-effort local gateway detection. Returns something like "192.168.1.1".
+     * 返回本机所在 /24 子网前缀，例如 "192.168.1"。
+     * 优先返回 WiFi 接口 IP 的子网（连接相机热点时通常就是 192.168.1.x / 192.168.0.x）。
      */
-    private fun localGateway(): String? {
+    private fun localSubnetBase(): String? {
         return runCatching {
-            val interfaces = java.net.NetworkInterface.getNetworkInterfaces().toList()
+            val interfaces = NetworkInterface.getNetworkInterfaces().toList()
+            var wifiSubnet: String? = null
+            var fallbackSubnet: String? = null
             for (ni in interfaces) {
                 if (!ni.isUp || ni.isLoopback) continue
+                val isWifi = ni.name.startsWith("wlan") || ni.name.startsWith("ap") || ni.name.contains("wifi", ignoreCase = true)
                 for (addr in ni.interfaceAddresses) {
                     val address = addr.address ?: continue
                     if (address.isLoopbackAddress) continue
                     val host = address.hostAddress ?: continue
-                    if (host.contains('.')) {
-                        return@runCatching host
+                    if (!host.contains('.')) continue
+                    val base = host.substringBeforeLast(".")
+                    if (isWifi) {
+                        wifiSubnet = base
+                        break
+                    } else if (fallbackSubnet == null) {
+                        fallbackSubnet = base
                     }
                 }
+                if (wifiSubnet != null) break
             }
-            null
+            wifiSubnet ?: fallbackSubnet
         }.getOrNull()
     }
 }

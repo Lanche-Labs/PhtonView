@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
   <string name="app_name">PhtonView</string>
   <string name="developer_team">Lanche-Labs</string>
@@ -204,6 +204,21 @@
   <string name="wifi_hint_panasonic">1. Enable tethering on the camera.\n2. Connect your phone to the camera hotspot.\n3. Enter the camera IP shown on screen.</string>
   <string name="wifi_hint_olympus">1. Enable PC mode on the camera.\n2. Connect your phone to the camera hotspot.\n3. Enter the camera IP shown on screen.</string>
   <string name="wifi_hint_custom">Enter the camera IP and port shown on screen or in the manual.</string>
+  <!-- WiFi 自动扫描相关 -->
+  <string name="wifi_auto_scan_title">WiFi Auto Scan</string>
+  <string name="wifi_auto_scan_desc">Switching to this mode automatically scans the local subnet for PTP-IP cameras. Tap a discovered camera to connect.</string>
+  <string name="wifi_scan_idle">Ready to scan</string>
+  <string name="wifi_scan_mdns">Scanning mDNS services…</string>
+  <string name="wifi_scan_ports">Scanning subnet ports… (%1$d found)</string>
+  <string name="wifi_scan_done">Scan finished, %1$d camera(s) found</string>
+  <string name="wifi_scan_failed">No camera found. Make sure the phone is connected to the camera hotspot.</string>
+  <string name="wifi_scan_starting">Starting scan…</string>
+  <string name="wifi_scan_searching">Searching for cameras…</string>
+  <string name="wifi_scan_empty_done">Scan finished. No camera found.</string>
+  <string name="wifi_scan_empty_failed">Scan failed. Make sure the phone is connected to the camera hotspot, then try again.</string>
+  <string name="wifi_rescan">Rescan</string>
+  <string name="wifi_manual">Manual</string>
+  <string name="wifi_manual_connect">Use this address</string>
   <string name="version_format">Version %1$s</string>
   <string name="credits">Credits</string>
   <string name="credits_summary">Program by LanChe · UI design by 安信一・プロス (One Bucket)</string>

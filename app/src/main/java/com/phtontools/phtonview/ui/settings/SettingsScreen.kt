@@ -2,6 +2,7 @@ package com.phtontools.phtonview.ui.settings
 
 import android.app.Activity
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -18,6 +19,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
@@ -57,10 +60,12 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -79,7 +84,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phtontools.phtonview.BuildConfig
@@ -122,6 +129,8 @@ fun SettingsScreen(
     val connectionState by viewModel.connectionState.collectAsStateWithLifecycle()
     val cameraSettings by viewModel.cameraSettings.collectAsStateWithLifecycle()
     val detectedUsb by viewModel.detectedUsbDevice.collectAsStateWithLifecycle()
+    val discoveredWifiServices by viewModel.discoveredWifiServices.collectAsStateWithLifecycle()
+    val wifiScanProgress by viewModel.wifiScanProgress.collectAsStateWithLifecycle()
     var currentPage by remember { mutableStateOf(SettingsPage.Main) }
     var currentTheme by remember { mutableStateOf(settingsManager.themeMode) }
     var currentLanguage by remember { mutableStateOf(settingsManager.language) }
@@ -152,6 +161,11 @@ fun SettingsScreen(
             currentPage = SettingsPage.Main
         }
     }
+
+    // **fix**: 系统返回键调用 navigateBack，而不是直接退 App。
+    // 旧代码没有 BackHandler，按返回键走 Activity.finish() → 退 App。
+    // 现在返回键行为与 TopAppBar 返回按钮、左划手势完全一致。
+    BackHandler(onBack = navigateBack)
 
     val pageTitle = when (currentPage) {
         SettingsPage.Main -> stringResource(id = R.string.settings)
@@ -284,7 +298,12 @@ fun SettingsScreen(
                                 android.widget.Toast.LENGTH_LONG
                             ).show()
                         }
-                    }
+                    },
+                    onStartWifiScan = { viewModel.startWifiAutoScan() },
+                    onStopWifiScan = { viewModel.stopWifiAutoScan() },
+                    onConnectWifiService = { service -> viewModel.connectWifiService(service) },
+                    discoveredWifiServices = discoveredWifiServices,
+                    wifiScanProgress = wifiScanProgress
                 )
 
                 SettingsPage.Theme -> ThemePage(
@@ -387,7 +406,12 @@ private fun MainSettingsContent(
     onPairWifi: (String) -> Unit,
     onDebugModeChange: (Boolean) -> Unit,
     onUxImprovementChange: (Boolean) -> Unit,
-    onReportIssue: () -> Unit
+    onReportIssue: () -> Unit,
+    onStartWifiScan: () -> Unit = {},
+    onStopWifiScan: () -> Unit = {},
+    onConnectWifiService: (com.phtontools.phtonview.connection.WifiCameraDiscovery.CameraServiceInfo) -> Unit = {},
+    discoveredWifiServices: List<com.phtontools.phtonview.connection.WifiCameraDiscovery.CameraServiceInfo> = emptyList(),
+    wifiScanProgress: com.phtontools.phtonview.connection.WifiCameraDiscovery.ScanProgress = com.phtontools.phtonview.connection.WifiCameraDiscovery.ScanProgress.IDLE
 ) {
     Column(
         modifier = Modifier
@@ -424,7 +448,12 @@ private fun MainSettingsContent(
             onConnectionTypeChange = onConnectionTypeChange,
             onConnect = onConnect,
             onDisconnect = onDisconnect,
-            onPairWifi = onPairWifi
+            onPairWifi = onPairWifi,
+            onStartWifiScan = onStartWifiScan,
+            onStopWifiScan = onStopWifiScan,
+            onConnectWifiService = onConnectWifiService,
+            discoveredWifiServices = discoveredWifiServices,
+            wifiScanProgress = wifiScanProgress
         )
 
         SettingsHeader(title = stringResource(id = R.string.general))
@@ -1031,7 +1060,12 @@ private fun ConnectionSection(
     onConnectionTypeChange: (ConnectionType) -> Unit,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
-    onPairWifi: (String) -> Unit
+    onPairWifi: (String) -> Unit,
+    onStartWifiScan: () -> Unit = {},
+    onStopWifiScan: () -> Unit = {},
+    onConnectWifiService: (com.phtontools.phtonview.connection.WifiCameraDiscovery.CameraServiceInfo) -> Unit = {},
+    discoveredWifiServices: List<com.phtontools.phtonview.connection.WifiCameraDiscovery.CameraServiceInfo> = emptyList(),
+    wifiScanProgress: com.phtontools.phtonview.connection.WifiCameraDiscovery.ScanProgress = com.phtontools.phtonview.connection.WifiCameraDiscovery.ScanProgress.IDLE
 ) {
     var selectedPreset by remember {
         mutableStateOf(
@@ -1043,8 +1077,20 @@ private fun ConnectionSection(
     var wifiAddress by remember {
         mutableStateOf(savedWifiAddress ?: selectedPreset.defaultIp)
     }
+    var manualAddress by remember { mutableStateOf("") }
+    var showManual by remember { mutableStateOf(false) }
     val isConnected = connectionState is ConnectionState.Connected
     val isConnecting = connectionState is ConnectionState.Connecting
+
+    // 当用户切换到 WiFi + Custom 时，自动启动全量轮询扫描。
+    // 切回其它品牌预设或退出页面时停止扫描。
+    LaunchedEffect(connectionType, selectedPreset) {
+        if (connectionType == ConnectionType.WiFi && selectedPreset == WifiBrandPreset.Custom) {
+            onStartWifiScan()
+        } else {
+            onStopWifiScan()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -1158,6 +1204,27 @@ private fun ConnectionSection(
                 modifier = Modifier.padding(top = 8.dp)
             )
 
+            // Custom 预设：自动轮询扫描 mDNS + 子网端口，并展示已发现相机。
+            // 用户点击任意发现项即配对并连接；无相机时提供手动输入作为 fallback。
+            if (selectedPreset == WifiBrandPreset.Custom) {
+                WifiAutoScanBlock(
+                    discoveredServices = discoveredWifiServices,
+                    scanProgress = wifiScanProgress,
+                    onRescan = onStartWifiScan,
+                    onConnectService = onConnectWifiService,
+                    manualAddress = manualAddress,
+                    onManualAddressChange = { manualAddress = it },
+                    showManual = showManual,
+                    onToggleManual = { showManual = !showManual },
+                    onManualConnect = {
+                        if (manualAddress.isNotBlank()) {
+                            onPairWifi(manualAddress)
+                            onConnect()
+                        }
+                    }
+                )
+            }
+
             // issue #99：已自动配对，不再要求用户输入 IP。
             // 显示当前配对状态供用户确认。
             if (!savedWifiAddress.isNullOrBlank()) {
@@ -1177,6 +1244,157 @@ private fun ConnectionSection(
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(top = 6.dp)
             )
+        }
+    }
+}
+
+/**
+ * WiFi 自动扫描结果块：用于 "Custom" 预设场景。
+ * 进入页面时即开始 mDNS + 子网端口轮询；列出已发现相机，点击即可配对并连接。
+ * 同时提供 "重新扫描" 按钮和 "手动输入" fallback。
+ */
+@Composable
+private fun WifiAutoScanBlock(
+    discoveredServices: List<com.phtontools.phtonview.connection.WifiCameraDiscovery.CameraServiceInfo>,
+    scanProgress: com.phtontools.phtonview.connection.WifiCameraDiscovery.ScanProgress,
+    onRescan: () -> Unit,
+    onConnectService: (com.phtontools.phtonview.connection.WifiCameraDiscovery.CameraServiceInfo) -> Unit,
+    manualAddress: String,
+    onManualAddressChange: (String) -> Unit,
+    showManual: Boolean,
+    onToggleManual: () -> Unit,
+    onManualConnect: () -> Unit
+) {
+    val scanning = scanProgress == com.phtontools.phtonview.connection.WifiCameraDiscovery.ScanProgress.SCANNING_MDNS ||
+            scanProgress == com.phtontools.phtonview.connection.WifiCameraDiscovery.ScanProgress.SCANNING_PORTS
+    val statusText = when (scanProgress) {
+        com.phtontools.phtonview.connection.WifiCameraDiscovery.ScanProgress.IDLE ->
+            stringResource(id = R.string.wifi_scan_idle)
+        com.phtontools.phtonview.connection.WifiCameraDiscovery.ScanProgress.SCANNING_MDNS ->
+            stringResource(id = R.string.wifi_scan_mdns)
+        com.phtontools.phtonview.connection.WifiCameraDiscovery.ScanProgress.SCANNING_PORTS ->
+            stringResource(id = R.string.wifi_scan_ports, discoveredServices.size)
+        com.phtontools.phtonview.connection.WifiCameraDiscovery.ScanProgress.DONE ->
+            stringResource(id = R.string.wifi_scan_done, discoveredServices.size)
+        com.phtontools.phtonview.connection.WifiCameraDiscovery.ScanProgress.FAILED ->
+            stringResource(id = R.string.wifi_scan_failed)
+    }
+    Column(modifier = Modifier.padding(top = 8.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            if (scanning) {
+                androidx.compose.material3.CircularProgressIndicator(
+                    modifier = Modifier.size(14.dp),
+                    strokeWidth = 2.dp
+                )
+            }
+            Text(
+                text = statusText,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = onToggleManual) {
+                Text(
+                    text = stringResource(id = R.string.wifi_manual),
+                    fontSize = 12.sp
+                )
+            }
+            TextButton(onClick = onRescan, enabled = !scanning) {
+                Text(
+                    text = stringResource(id = R.string.wifi_rescan),
+                    fontSize = 12.sp
+                )
+            }
+        }
+        if (scanning) {
+            androidx.compose.material3.LinearProgressIndicator(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp)
+            )
+        }
+
+        if (discoveredServices.isNotEmpty()) {
+            androidx.compose.foundation.lazy.LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 220.dp)
+                    .padding(top = 4.dp)
+            ) {
+                items(discoveredServices) { service ->
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 3.dp)
+                            .clickable { onConnectService(service) }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            androidx.compose.material3.Icon(
+                                imageVector = androidx.compose.material.icons.Icons.Default.Wifi,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "${service.host}:${service.port}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (!service.vendorHint.isNullOrBlank()) {
+                                    Text(
+                                        text = service.vendorHint,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (!scanning && scanProgress != com.phtontools.phtonview.connection.WifiCameraDiscovery.ScanProgress.IDLE) {
+            Text(
+                text = stringResource(id = R.string.wifi_scan_empty_failed),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+
+        if (showManual) {
+            androidx.compose.material3.OutlinedTextField(
+                value = manualAddress,
+                onValueChange = onManualAddressChange,
+                label = { Text(stringResource(id = R.string.wifi_address_label)) },
+                placeholder = { Text("192.168.1.1:15740") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 6.dp),
+                singleLine = true
+            )
+            androidx.compose.material3.TextButton(
+                onClick = onManualConnect,
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Text(stringResource(id = R.string.wifi_manual_connect))
+            }
         }
     }
 }
