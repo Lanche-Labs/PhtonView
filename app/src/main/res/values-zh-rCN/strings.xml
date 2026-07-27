@@ -188,16 +188,7 @@
     <string name="wifi_pair">WiFi 配对</string>
     <string name="use_usb">使用 USB</string>
     <string name="use_wifi">使用 WiFi</string>
-    <string name="wifi_pair_title">WiFi 相机配对</string>
-    <string name="wifi_pair_desc">输入相机 IP 地址和端口。例如：192.168.1.1:15740</string>
     <string name="wifi_address_label">相机 IP:端口</string>
-    <string name="usb_connection_guide">USB 连接教程</string>
-    <string name="usb_guide_title">如何通过 USB 连接</string>
-    <string name="usb_guide_step_1">1. 使用 USB OTG 转接头/线缆将相机连接到手机。</string>
-    <string name="usb_guide_step_2">2. 打开相机并将其设置为 PC / 遥控 / MTP 模式。</string>
-    <string name="usb_guide_step_3">3. 当系统弹出 USB 权限对话框时点击允许。</string>
-    <string name="usb_guide_step_4">4. 应用检测到相机后点击“连接 USB”即可。</string>
-    <string name="usb_guide_note">提示：部分手机需要在系统设置中开启 OTG 功能。</string>
     <string name="wifi_pairing">WiFi 配对</string>
     <string name="wifi_pairing_summary">选择品牌并输入相机 IP</string>
     <string name="wifi_select_brand">相机品牌</string>

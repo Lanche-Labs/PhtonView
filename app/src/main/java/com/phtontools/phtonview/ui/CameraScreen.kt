@@ -260,17 +260,12 @@ fun CameraScreen(
             ConnectionHintBanner(
                 connectionState = connectionState,
                 detectedUsbDevice = detectedUsb,
-                onPairWifi = { address ->
-                    viewModel.pairWifi(address)
-                    viewModel.connect()
-                },
                 onSwitchToUsb = { viewModel.setConnectionType(com.phtontools.phtonview.data.model.ConnectionType.USB) },
                 onStartWifiScan = { viewModel.startWifiAutoScan() },
                 onStopWifiScan = { viewModel.stopWifiAutoScan() },
                 onConnectWifiService = { service -> viewModel.connectWifiService(service) },
                 discoveredWifiServices = discoveredWifiServices,
                 wifiScanProgress = wifiScanProgress,
-                onConnect = { viewModel.connect() },
                 modifier = Modifier.align(Alignment.TopCenter)
             )
 

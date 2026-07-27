@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -19,7 +18,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.NetworkWifi
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Usb
@@ -28,13 +26,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,25 +45,21 @@ import androidx.compose.ui.window.Dialog
 import com.phtontools.phtonview.R
 import com.phtontools.phtonview.connection.WifiCameraDiscovery
 import com.phtontools.phtonview.data.model.ConnectionState
-import com.phtontools.phtonview.data.model.ConnectionType
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ConnectionHintBanner(
     connectionState: ConnectionState,
     detectedUsbDevice: String?,
-    onPairWifi: (String) -> Unit,
     onSwitchToUsb: () -> Unit,
     onStartWifiScan: () -> Unit = {},
     onStopWifiScan: () -> Unit = {},
     onConnectWifiService: (WifiCameraDiscovery.CameraServiceInfo) -> Unit = {},
     discoveredWifiServices: List<WifiCameraDiscovery.CameraServiceInfo> = emptyList(),
     wifiScanProgress: WifiCameraDiscovery.ScanProgress = WifiCameraDiscovery.ScanProgress.IDLE,
-    onConnect: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showWifiDialog by remember { mutableStateOf(false) }
-    var showUsbGuide by remember { mutableStateOf(false) }
 
     if (connectionState is ConnectionState.Connected) return
 
@@ -125,24 +117,9 @@ fun ConnectionHintBanner(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            androidx.compose.material3.OutlinedButton(
-                onClick = { showUsbGuide = true }
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.HelpOutline,
-                    contentDescription = null,
-                    modifier = Modifier.padding(end = 4.dp).size(16.dp)
-                )
-                Text(
-                    text = stringResource(id = R.string.usb_connection_guide),
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
             Button(
-                onClick = { showWifiDialog = true }
+                onClick = { showWifiDialog = true },
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Icon(
                     imageVector = Icons.Default.NetworkWifi,
@@ -165,44 +142,30 @@ fun ConnectionHintBanner(
                 onStopWifiScan()
                 showWifiDialog = false
             },
-            onPairWifi = onPairWifi,
             onStartScan = onStartWifiScan,
-            onStopScan = onStopWifiScan,
             onConnectService = {
                 onStopWifiScan()
                 showWifiDialog = false
                 onConnectWifiService(it)
             },
             discoveredServices = discoveredWifiServices,
-            scanProgress = wifiScanProgress,
-            onConnect = onConnect
+            scanProgress = wifiScanProgress
         )
-    }
-
-    if (showUsbGuide) {
-        UsbGuideDialog(onDismiss = { showUsbGuide = false })
     }
 }
 
 /**
  * WiFi 自动扫描对话框：自动轮询 mDNS + 子网端口扫描，
  * 展示发现的相机列表，点击列表项即配对并连接。
- * 保留手动输入作为 fallback。
  */
 @Composable
 private fun WifiAutoScanDialog(
     onDismiss: () -> Unit,
-    onPairWifi: (String) -> Unit,
     onStartScan: () -> Unit,
-    onStopScan: () -> Unit,
     onConnectService: (WifiCameraDiscovery.CameraServiceInfo) -> Unit,
     discoveredServices: List<WifiCameraDiscovery.CameraServiceInfo>,
-    scanProgress: WifiCameraDiscovery.ScanProgress,
-    onConnect: () -> Unit
+    scanProgress: WifiCameraDiscovery.ScanProgress
 ) {
-    var showManual by remember { mutableStateOf(false) }
-    var manualAddress by remember { mutableStateOf("") }
-
     // 对话框打开即开始自动轮询；用户关闭或选中设备时停止。
     LaunchedEffect(Unit) {
         onStartScan()
@@ -234,15 +197,14 @@ private fun WifiAutoScanDialog(
             ScanStatusRow(
                 progress = scanProgress,
                 foundCount = discoveredServices.size,
-                onRescan = onStartScan,
-                onToggleManual = { showManual = !showManual }
+                onRescan = onStartScan
             )
 
             // 已发现列表
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 120.dp, max = 280.dp)
+                    .heightIn(min = 160.dp, max = 360.dp)
                     .padding(top = 8.dp)
             ) {
                 if (discoveredServices.isEmpty()) {
@@ -255,43 +217,15 @@ private fun WifiAutoScanDialog(
                 }
             }
 
-            // 手动输入 fallback
-            if (showManual) {
-                Column(modifier = Modifier.padding(top = 8.dp)) {
-                    OutlinedTextField(
-                        value = manualAddress,
-                        onValueChange = { manualAddress = it },
-                        label = { Text(stringResource(id = R.string.wifi_address_label)) },
-                        placeholder = { Text("192.168.1.1:15740") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                }
-            }
-
             // 底部按钮
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 16.dp),
+                    .padding(top = 12.dp),
                 horizontalArrangement = Arrangement.End
             ) {
                 TextButton(onClick = onDismiss) {
                     Text(stringResource(id = android.R.string.cancel))
-                }
-                if (showManual) {
-                    Spacer(modifier = Modifier.width(4.dp))
-                    TextButton(
-                        onClick = {
-                            if (manualAddress.isNotBlank()) {
-                                onPairWifi(manualAddress)
-                                onDismiss()
-                                onConnect()
-                            }
-                        }
-                    ) {
-                        Text(stringResource(id = android.R.string.ok))
-                    }
                 }
             }
         }
@@ -302,8 +236,7 @@ private fun WifiAutoScanDialog(
 private fun ScanStatusRow(
     progress: WifiCameraDiscovery.ScanProgress,
     foundCount: Int,
-    onRescan: () -> Unit,
-    onToggleManual: () -> Unit
+    onRescan: () -> Unit
 ) {
     val scanning = progress == WifiCameraDiscovery.ScanProgress.SCANNING_MDNS ||
             progress == WifiCameraDiscovery.ScanProgress.SCANNING_PORTS
@@ -337,12 +270,6 @@ private fun ScanStatusRow(
                 else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                 modifier = Modifier.weight(1f)
             )
-            TextButton(onClick = onToggleManual) {
-                Text(
-                    text = stringResource(id = R.string.wifi_manual),
-                    fontSize = 12.sp
-                )
-            }
             TextButton(onClick = onRescan, enabled = !scanning) {
                 Icon(
                     imageVector = Icons.Default.Refresh,
@@ -444,71 +371,6 @@ private fun DiscoveredList(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun UsbGuideDialog(
-    onDismiss: () -> Unit
-) {
-    Dialog(onDismissRequest = onDismiss) {
-        Column(
-            modifier = Modifier
-                .background(
-                    MaterialTheme.colorScheme.surface,
-                    RoundedCornerShape(16.dp)
-                )
-                .padding(20.dp)
-        ) {
-            Text(
-                text = stringResource(id = R.string.usb_guide_title),
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Column(
-                modifier = Modifier
-                    .padding(top = 12.dp, bottom = 8.dp)
-                    .verticalScroll(rememberScrollState())
-            ) {
-                Text(
-                    text = stringResource(id = R.string.usb_guide_step_1),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                Text(
-                    text = stringResource(id = R.string.usb_guide_step_2),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                Text(
-                    text = stringResource(id = R.string.usb_guide_step_3),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                Text(
-                    text = stringResource(id = R.string.usb_guide_step_4),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                Text(
-                    text = stringResource(id = R.string.usb_guide_note),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                TextButton(onClick = onDismiss) {
-                    Text(stringResource(id = android.R.string.ok))
                 }
             }
         }

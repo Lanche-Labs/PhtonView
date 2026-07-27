@@ -174,16 +174,7 @@
   <string name="wifi_pair">WiFi Pair</string>
   <string name="use_usb">Use USB</string>
   <string name="use_wifi">Use WiFi</string>
-  <string name="wifi_pair_title">WiFi Camera Pairing</string>
-  <string name="wifi_pair_desc">Enter camera IP address and port. Example: 192.168.1.1:15740</string>
   <string name="wifi_address_label">Camera IP:Port</string>
-  <string name="usb_connection_guide">USB Connection Guide</string>
-  <string name="usb_guide_title">How to connect via USB</string>
-  <string name="usb_guide_step_1">1. Use a USB OTG adapter/cable to connect the camera to your phone.</string>
-  <string name="usb_guide_step_2">2. Turn the camera on and set it to PC / Remote / MTP mode.</string>
-  <string name="usb_guide_step_3">3. Allow USB permission when the system dialog pops up.</string>
-  <string name="usb_guide_step_4">4. The app will detect the camera and you can tap "Connect USB".</string>
-  <string name="usb_guide_note">Note: Some phones require enabling OTG in system settings.</string>
   <string name="wifi_pairing">WiFi Pairing</string>
   <string name="wifi_pairing_summary">Select brand and enter camera IP</string>
   <string name="wifi_select_brand">Camera Brand</string>
