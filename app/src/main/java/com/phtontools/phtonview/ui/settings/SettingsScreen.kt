@@ -297,6 +297,7 @@ fun SettingsScreen(
                     },
                     onStartWifiScan = { viewModel.startWifiAutoScan() },
                     onStopWifiScan = { viewModel.stopWifiAutoScan() },
+                    onConnectWifiService = { viewModel.connectWifiService(it) },
                     discoveredWifiServices = discoveredWifiServices,
                     wifiScanProgress = wifiScanProgress
                 )
@@ -403,6 +404,7 @@ private fun MainSettingsContent(
     onReportIssue: () -> Unit,
     onStartWifiScan: () -> Unit = {},
     onStopWifiScan: () -> Unit = {},
+    onConnectWifiService: (com.phtontools.phtonview.connection.WifiCameraDiscovery.CameraServiceInfo) -> Unit = {},
     discoveredWifiServices: List<com.phtontools.phtonview.connection.WifiCameraDiscovery.CameraServiceInfo> = emptyList(),
     wifiScanProgress: com.phtontools.phtonview.connection.WifiCameraDiscovery.ScanProgress = com.phtontools.phtonview.connection.WifiCameraDiscovery.ScanProgress.IDLE
 ) {
@@ -443,6 +445,7 @@ private fun MainSettingsContent(
             onDisconnect = onDisconnect,
             onStartWifiScan = onStartWifiScan,
             onStopWifiScan = onStopWifiScan,
+            onConnectWifiService = onConnectWifiService,
             discoveredWifiServices = discoveredWifiServices,
             wifiScanProgress = wifiScanProgress
         )
@@ -1053,6 +1056,7 @@ private fun ConnectionSection(
     onDisconnect: () -> Unit,
     onStartWifiScan: () -> Unit = {},
     onStopWifiScan: () -> Unit = {},
+    onConnectWifiService: (com.phtontools.phtonview.connection.WifiCameraDiscovery.CameraServiceInfo) -> Unit = {},
     discoveredWifiServices: List<com.phtontools.phtonview.connection.WifiCameraDiscovery.CameraServiceInfo> = emptyList(),
     wifiScanProgress: com.phtontools.phtonview.connection.WifiCameraDiscovery.ScanProgress = com.phtontools.phtonview.connection.WifiCameraDiscovery.ScanProgress.IDLE
 ) {
@@ -1134,7 +1138,7 @@ private fun ConnectionSection(
             )
         }
 
-        // WiFi 选中时：自动轮询扫描 + 发现列表（不再显示品牌选择/教程文字/手动输入）
+        // WiFi 选中时：自动轮询扫描 + 发现列表（点击列表项直接连接）
         if (connectionType == ConnectionType.WiFi) {
             WifiScanStatusBlock(
                 scanProgress = wifiScanProgress,
@@ -1143,6 +1147,7 @@ private fun ConnectionSection(
             if (discoveredWifiServices.isNotEmpty()) {
                 DiscoveredWifiList(
                     services = discoveredWifiServices,
+                    onConnect = { onConnectWifiService(it) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = 200.dp)
@@ -1208,10 +1213,12 @@ private fun WifiScanStatusBlock(
 @Composable
 private fun DiscoveredWifiList(
     services: List<com.phtontools.phtonview.connection.WifiCameraDiscovery.CameraServiceInfo>,
+    onConnect: (com.phtontools.phtonview.connection.WifiCameraDiscovery.CameraServiceInfo) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Settings 仅展示已发现相机，不在此处触发连接，避免页面叠加多个入口。
-    // 连接操作请通过主屏的 ConnectionHintBanner 触发。
+    // **fix (issue: 列表不能点击连接)**：之前列表项没有 clickable，用户点击完全无反应。
+    // 现在每项点一下就调 onConnect(service) → ViewModel.connectWifiService → repository 真正去握手。
+    // 用 Surface + clickable 而不是单纯的 Row.clickable，可以让整张卡片都成为热区。
     androidx.compose.foundation.lazy.LazyColumn(modifier = modifier) {
         items(services) { service ->
             Surface(
@@ -1220,6 +1227,7 @@ private fun DiscoveredWifiList(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 3.dp)
+                    .clickable { onConnect(service) }
             ) {
                 Row(
                     modifier = Modifier
@@ -1252,6 +1260,12 @@ private fun DiscoveredWifiList(
                             )
                         }
                     }
+                    // **fix**：右侧加一个"连接"文字提示，让用户清楚这一行是可点的。
+                    Text(
+                        text = stringResource(id = R.string.connect),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
         }

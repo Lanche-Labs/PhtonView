@@ -13,9 +13,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.flatMapMerge
 import kotlinx.coroutines.flow.flow
+import java.io.ByteArrayOutputStream
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.Socket
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import javax.inject.Inject
@@ -102,6 +105,16 @@ class WifiCameraDiscovery @Inject constructor(
      */
     private val discoveryTimeoutMs = 8000L
     private val portScanTimeoutMs = 600
+
+    // **fix (issue: 扫出 1104 台假相机)**：PTP-IP 协议握手超时，必须小于 portScanTimeoutMs
+    // 太长会让单端口占用太久，拖慢整轮 254 主机扫描；太短会误杀慢响应相机（局域网内通常 < 100ms）。
+    private val PTP_PROBE_TIMEOUT_MS = 1200
+
+    // **fix (issue: 扫出 1104 台假相机)**：与 WifiCameraConnection 协议层一致的小端协议类型码，
+    // 用于探针：发送 InitCommandRequest (1)，期望对端回复 InitCommandAck (2)。
+    // 注意：const val 在普通 class 里是禁止的，要么放 companion object 要么放顶层。这里用普通 val。
+    private val PKT_INIT_COMMAND_REQUEST = 1
+    private val PKT_INIT_COMMAND_ACK = 2
 
     data class CameraServiceInfo(
         val host: String,
@@ -404,6 +417,14 @@ class WifiCameraDiscovery @Inject constructor(
      * - 改用 `flatMapMerge(concurrency = 32)`，最多同时 32 个 in-flight socket（kernel 默认
      *   ephemeral port 范围 + TCP 重传队列都不会被打爆）。
      * - 每个 host 内层 port 循环找到开放端口就 break，避免一台相机入列多次。
+     *
+     * **fix (issue: 扫出 1104 台假相机 / 列表无法交互)**：
+     * - 仅 `Socket.connect()` 通过就当成相机入列是错的——路由器/打印机/IoT 设备的 Web/管理
+     *   端口（80、4757、49152、15740、15741）几乎都会接受 TCP 连接，但根本不是 PTP-IP。
+     *   在用户家庭网络里 254 主机 × 6 端口就有可能扫出上千条"假相机"。
+     * - 现在 `isPtpIpEndpoint()` 会对每个开放端口额外发一次 PTP-IP InitCommandRequest 探针
+     *   （与 WifiCameraConnection 同样的 1.0 LE 协议头），等待 InitCommandAck（type=2），
+     *   拿到才入列。无法在 1.2s 内响应或返回类型不对的统统丢弃。
      */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private suspend fun runFallbackPortScan() = withContext(Dispatchers.IO) {
@@ -417,7 +438,7 @@ class WifiCameraDiscovery @Inject constructor(
                 .flatMapMerge(concurrency = 32) { (address, port) ->
                     flow {
                         if (!_isDiscovering.value) return@flow
-                        if (isPortOpen(address, port)) {
+                        if (isPtpIpEndpoint(address, port)) {
                             addService(
                                 CameraServiceInfo(
                                     host = address,
@@ -427,7 +448,7 @@ class WifiCameraDiscovery @Inject constructor(
                                     vendorHint = null
                                 )
                             )
-                            AppLogger.report("W", "WifiCameraDiscovery.kt:runFallbackPortScan", "Camera found by scan", mapOf(
+                            AppLogger.report("W", "WifiCameraDiscovery.kt:runFallbackPortScan", "PTP-IP camera verified", mapOf(
                                 "host" to address,
                                 "port" to port.toString()
                             ))
@@ -448,6 +469,74 @@ class WifiCameraDiscovery @Inject constructor(
         } catch (e: Exception) {
             false
         }
+    }
+
+    /**
+     * PTP-IP 协议探针：开放 TCP 端口之后，再发一次 InitCommandRequest 确认对端真的说 PTP-IP。
+     * 协议格式与 [WifiCameraConnection.doConnect] 完全一致（LE + packet type 1/2 + 12B ACK）。
+     *
+     * 必须在端口打开之后 1.2s 内完成握手；否则视为非相机设备直接丢弃。
+     * 任何 IO 异常也一律返回 false，避免给 UI 喂垃圾。
+     */
+    private fun isPtpIpEndpoint(host: String, port: Int): Boolean {
+        val socket = try {
+            Socket().apply {
+                connect(InetSocketAddress(host, port), portScanTimeoutMs)
+                soTimeout = PTP_PROBE_TIMEOUT_MS
+            }
+        } catch (e: Exception) {
+            return false
+        }
+        return try {
+            socket.use { s ->
+                val guid = ByteArray(16) // 16 字节全 0 也合法，PTP-IP 协议只要求 16 字节
+                val name = "PhtonView".toByteArray(Charsets.UTF_16LE)
+                val version = byteArrayOf(1, 0)
+
+                val payloadLength = 4 + guid.size + 4 + name.size + version.size
+                val request = ByteArrayOutputStream().apply {
+                    writeLEInt(payloadLength + 4) // length
+                    writeLEInt(PKT_INIT_COMMAND_REQUEST)
+                    write(guid)
+                    writeLEInt(name.size)
+                    write(name)
+                    write(version)
+                }
+                s.getOutputStream().write(request.toByteArray())
+                s.getOutputStream().flush()
+
+                val header = readAtLeast(s.getInputStream(), 8)
+                if (header.size < 8) return@use false
+                val ackType = bytesToIntLE(header, 4)
+                ackType == PKT_INIT_COMMAND_ACK
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun ByteArrayOutputStream.writeLEInt(value: Int) {
+        write(ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(value).array())
+    }
+
+    private fun bytesToIntLE(bytes: ByteArray, offset: Int): Int {
+        return ByteBuffer.wrap(bytes, offset, 4).order(ByteOrder.LITTLE_ENDIAN).int
+    }
+
+    /**
+     * 从 InputStream 至少读 minBytes 字节；EOF 或抛异常都返回已读到的部分。
+     * PTP-IP 探针的 8 字节头部读取专用，比通用 readAtLeast 更精简。
+     */
+    private fun readAtLeast(stream: java.io.InputStream, minBytes: Int): ByteArray {
+        val out = ByteArrayOutputStream()
+        val buf = ByteArray(64)
+        while (out.size() < minBytes) {
+            val need = minOf(buf.size, minBytes - out.size())
+            val read = stream.read(buf, 0, need)
+            if (read < 0) break
+            out.write(buf, 0, read)
+        }
+        return out.toByteArray()
     }
 
     /**
