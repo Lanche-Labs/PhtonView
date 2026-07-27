@@ -32,6 +32,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -56,7 +57,13 @@ class CameraRepositoryImpl @Inject constructor(
     // 触发 PTP 协议中断 + 心跳断流 + UI 闪烁。加全局 in-progress 互斥：
     // 已有 connect 协程在跑时，新触发的 connect 直接 return。
     // 配套：connect() 在 finally 中复位，disconnect() 不影响此 flag（只阻止新 connect）。
-    @Volatile private var isConnectInProgress = false
+    // **fix #158（释放快门闪退）**：必须用 AtomicBoolean.compareAndSet 原子抢占，
+    // 普通 @Volatile Boolean 在 60 秒内 USB attach 事件重复触发 connect() 时，
+    // 多个协程会同时跑 switchConnection() + target.connect()，互相抢 USB 端点 / PTP 会话。
+    // 此前用 @Volatile var 写 compareAndSet 是编译错误（#158 现场编译失败、APK 装不上），
+    // 等于修复完全没生效，连接风暴直接让 capture 协程在 doCaptureImage 中撞上
+    // currentConnection=null / conn.release() → IllegalStateException 闪退。
+    private val isConnectInProgress = AtomicBoolean(false)
     // **迭代 #12** 自动重连限频：心跳失败触发 auto reconnect 后冷却 5 秒，
     // 避免与外部 USB attach/detach 事件触发的 connect() 形成风暴。
     @Volatile private var lastAutoReconnectAt = 0L
@@ -550,6 +557,21 @@ class CameraRepositoryImpl @Inject constructor(
     }
 
     override suspend fun connect() {
+        // **fix #158（释放快门闪退）**：isConnectInProgress 标志之前**只在
+        // finally 中被设为 false，从未在开头被设为 true**（issue #110 修复不完整）。
+        // 后果：60 秒内 USB attach 事件重复触发 connect() 时，多个协程同时跑
+        // switchConnection() + target.connect()，互相抢 USB 端点 / PTP 会话，
+        // 触发"连接风暴"；最坏情况下 capture 协程正在 doCaptureImage 内部持有
+        // ptpLock，connect 协程 switchConnection 时把 currentConnection=null、
+        // conn.release() 把 USB 接口 close → capture 的 sendCommand 抛
+        // IllegalStateException，runCatching 兜住但堆栈被噪声淹没，最终看上去
+        // 是"释放快门闪退"。
+        //
+        // 修复：在开头 compareAndSet 抢占，已有 connect 协程在跑就直接 return。
+        if (!isConnectInProgress.compareAndSet(false, true)) {
+            AppLogger.d("connect: another connect() in progress, skip duplicate")
+            return
+        }
         // #region debug-point E:connect-start
         AppLogger.report("E", "CameraRepositoryImpl.kt:connect", "Repository connect start", mapOf("type" to _cameraSettings.value.connectionType.name))
         // #endregion
@@ -591,7 +613,7 @@ class CameraRepositoryImpl @Inject constructor(
             // **修复**（issue #110）：无论如何释放 in-progress 锁，
             // 让后续 connect() 可正常进入。注意 disconnect() 不改这个 flag，
             // 只阻止"新 connect 并发"，不影响 disconnect 立即清理资源。
-            isConnectInProgress = false
+            isConnectInProgress.set(false)
         }
     }
 
@@ -1426,6 +1448,19 @@ class CameraRepositoryImpl @Inject constructor(
             waitForDeviceReady(timeoutMs = 5000)
             delay(1500)
         }
+        // **fix #158（释放快门闪退）**：
+        // doCaptureImage 内部已经 enter+exit PC 模式（issue #137 修复的引用计数配对），
+        // 旧实现 .also 块中 else 分支又调一次 exitPcMode()，导致 pcModeRefCount 变负、
+        // 重复发送 ChangeCameraMode(0) 命令。绝大多数情况下 runCatching 会兜住，但
+        // - 当 exitPcMode 内部 ChangeCameraMode(0) 与相机"刚退出 PC 模式"的状态切换
+        //   撞车时（Canon EOS Release OFF 后立刻发 ChangeCameraMode(0)），相机可能
+        //   返回非标准错误码，runCatching 不会崩，但连续重复会让相机进入"半 PC 模式"
+        // - 当 viewModelScope 取消时（用户按 Home/切换），onCleared → release() →
+        //   scope.cancel() 与此 .also 块并发执行，可能在 currentConnection=null 后
+        //   仍然访问 conn 引发 NPE（虽然 runCatching 兜住，但堆栈会污染 release 路径，
+        //   影响后续 USB 重连诊断）
+        // 修复：把 PC 模式退出完全交给 doCaptureImage，.also 仅负责"是否需要重启
+        // 实时取景"，与 PC 模式解耦。notLiveView 路径不再重复 exitPcMode。
         runCatching { doCaptureImage() }
             .onFailure {
                 AppLogger.report("G", "CameraRepositoryImpl.kt:captureImage", "Capture error", mapOf("error" to (it.message ?: "unknown")))
@@ -1447,10 +1482,8 @@ class CameraRepositoryImpl @Inject constructor(
                     }.onFailure {
                         AppLogger.w("startLiveView after capture failed: ${it.message}")
                     }
-                } else {
-                    // 没有取景时拍完就退出 PC 模式，避免相机一直显示“正在连接 PC”
-                    runCatching { exitPcMode() }
                 }
+                // notLiveView 路径：doCaptureImage 已 exitPcMode，这里不再重复
             }
     }
 
@@ -1485,9 +1518,29 @@ class CameraRepositoryImpl @Inject constructor(
     private suspend fun doCaptureImage() {
         if (!ensureConnected()) return
         val conn = currentConnection ?: return
-        runCatching {
+        // **fix #158（释放快门闪退）**：用 try/finally 强制保证 PC 模式被退出。
+        // 旧实现：先 runCatching 块（内部 enterPcMode + 拍摄），块结束后 runCatching { exitPcMode() }。
+        // 当块内任何 suspend 函数抛 CancellationException（viewModelScope 取消 / 用户按 Home）
+        // 或 RuntimeException（相机物理断开导致 IllegalStateException）时：
+        //   1. runCatching 捕获 → onFailure 块执行 fallback sendCommand
+        //   2. **fallback sendCommand 内部又会抛异常**（conn 已 release），
+        //      内层 runCatching 兜住，但此时 pcModeRefCount 已经被 enterPcMode +1
+        //      但永远不会 -1（exitPcMode 还没执行）
+        //   3. runCatching { exitPcMode() } 执行，pcModeRefCount -1 = 0，
+        //      ChangeCameraMode(0) 发出，但相机可能已经 release
+        //   4. 如果 ChangeCameraMode(0) 抛异常 + 此刻 viewModelScope 正在被 cancel
+        //      → 协程被强制终止 → **可能**导致 Activity 重建时 release() 路径
+        //      看到不一致的 pcModeActive 状态（虽然不直接导致 ANR，但会让
+        //      后续重连出现"半 PC 模式"残留）
+        //
+        // 修复：用 try/finally 把 exitPcMode 放在 finally 块中，确保不论正常/异常
+        // 退出都能正确 decrement 引用计数。onFailure 块不再做 fallback sendCommand
+        // （相机本身已经在拍摄中，重复发 InitiateCapture 没意义，且会与正在退出的
+        // PC 模式状态机撞车，反而把相机弄死）。
+        var pcModeEntered = false
+        try {
             // Ensure PC control mode before capture; older Nikon/Canon bodies need this.
-            enterPcMode()
+            pcModeEntered = enterPcMode()
             waitForDeviceReady()
 
             val (code, _) = when (brandStrategy.brand) {
@@ -1541,18 +1594,30 @@ class CameraRepositoryImpl @Inject constructor(
                 conn.sendCommand(PtpConstants.CANON_EOS_OPERATION_REMOTE_RELEASE_OFF, 1)
             }
             waitForDeviceReady()
-        }.onFailure {
-            AppLogger.report("G", "CameraRepositoryImpl.kt:doCaptureImage", "Capture error", mapOf("error" to (it.message ?: "unknown")))
-            runCatching { conn.sendCommand(PtpConstants.OPERATION_INITIATE_CAPTURE) }
+        } catch (e: CancellationException) {
+            // **fix #158**：viewModelScope 取消（用户按 Home/切后台）时协程会被强制
+            // 中断。CancellationException 必须在 finally 之前处理：先记录日志再
+            // 重新抛出（协程取消语义需要 CancellationException 向上传播），
+            // 让 finally 块有机会执行 exitPcMode 清理 PC 模式。
+            AppLogger.report("G", "CameraRepositoryImpl.kt:doCaptureImage", "Capture cancelled", mapOf("error" to (e.message ?: "cancelled")))
+            throw e
+        } catch (e: Throwable) {
+            // **fix #158**：onFailure 块中不再发 fallback sendCommand（容易与正在
+            // 退出的 PC 模式状态机撞车），改为仅记录错误。runCatching 兜底 finally
+            // 块的 exitPcMode，确保 PC 模式引用计数归零。
+            AppLogger.report("G", "CameraRepositoryImpl.kt:doCaptureImage", "Capture error", mapOf("error" to (e.message ?: "unknown")))
+        } finally {
+            // **fix #137 + #158**：doCaptureImage 入口调用了 enterPcMode()
+            // （pcModeRefCount +1），必须在 finally 中保证对应的 exitPcMode()
+            // 即使中途抛 CancellationException/Throwable 也会执行。
+            // 只有真正 enterPcMode 成功（pcModeRefCount 已被 +1）才需要退出，
+            // 避免 enterPcMode 内部失败时重复 decrement 让计数变负。
+            if (pcModeEntered) {
+                runCatching { exitPcMode() }.onFailure {
+                    AppLogger.w("doCaptureImage: exitPcMode failed: ${it.message}")
+                }
+            }
         }
-        // **fix #137（issue #133~#137）**：doCaptureImage 入口调用了 enterPcMode()
-        // （pcModeRefCount +1），旧代码尾部没有对应的 exitPcMode()，导致：
-        //   - 单拍：refCount 每次都漏加 1，连拍叠加 N 次
-        //   - liveview 模式：startLiveView() 看到 pcModeActive=true 跳过 ChangeCameraMode(1)，
-        //     但相机侧实际已因 release 切回正常模式，状态不一致 → 相机 LCD 卡在"正在连接 PC"
-        // 调用 exitPcMode() 让 refCount 归零；连拍循环 captureBurst 走 doCaptureImageNoPcMode
-        // 不受影响（它自己 enter/exit 配对）。
-        runCatching { exitPcMode() }
     }
 
     override suspend fun captureBurst(count: Int) {
@@ -1596,6 +1661,12 @@ class CameraRepositoryImpl @Inject constructor(
 
     /**
      * 拍摄单张但不进入 PC 模式（适用于连拍循环已外层进入 PC 模式的场景）。
+     *
+     * **fix #158**：去掉 onFailure 块中的 fallback `conn.sendCommand(OPERATION_INITIATE_CAPTURE)`。
+     * 原因与 doCaptureImage 相同：相机本体已经在拍摄中，重复发 InitiateCapture 会与
+     * 正在退出的 PC 模式状态机撞车，且在 cancel 路径上容易引发 NPE / 协程取消语义混乱。
+     * 此函数本身不管理 PC 模式（由 captureBurst 外层 try/finally + exitPcMode 负责），
+     * 因此**不要**在异常路径中再做 PC 模式相关副作用。
      */
     private suspend fun doCaptureImageNoPcMode() {
         if (!ensureConnected()) return
@@ -1629,8 +1700,9 @@ class CameraRepositoryImpl @Inject constructor(
             }
             waitForDeviceReady()
         }.onFailure {
+            // **fix #158**：仅记录错误，不再发 fallback InitiateCapture。
+            // captureBurst 的 finally 块会负责 exitPcMode 和清理。
             AppLogger.report("G", "CameraRepositoryImpl.kt:doCaptureImageNoPcMode", "Capture error", mapOf("error" to (it.message ?: "unknown")))
-            runCatching { conn.sendCommand(PtpConstants.OPERATION_INITIATE_CAPTURE) }
         }
     }
 
@@ -2383,14 +2455,31 @@ class CameraRepositoryImpl @Inject constructor(
     }
 
     override fun release() {
-        stopLiveViewInternal()
-        intervalometerJob?.cancel()
-        bulbJob?.cancel()
-        connectionStateJob?.cancel()
+        // **fix #158（释放快门闪退）**：释放流程必须**严格容错**。
+        // release() 会在 Activity 销毁 / onCleared 路径上被调用，此时可能
+        // 还有 capture 协程正在 doCaptureImage 的 try/finally 中执行。
+        // 任何一步抛异常都会导致后续清理跳过，造成资源泄漏/ANR/二次闪退。
+        //
+        // 修复：
+        // 1. 每个 cancel / release 调用都用 runCatching 包裹，单步失败不影响后续
+        // 2. 先 cancel 所有协程（让它们的 finally 块能跑 exitPcMode 清理 PC 模式）
+        // 3. 再 release 连接（conn.release 内部 disconnect 用 runBlocking + connectionLock）
+        // 4. 最后把 _liveViewFrame/_liveViewEnabled 清空，避免 release 后 UI 残留
+        //    旧画面（issue #158 现场反馈：释放快门后 APP 闪退，重启看到旧取景图）
+        runCatching { stopLiveViewInternal() }
+        runCatching { intervalometerJob?.cancel() }
+        runCatching { bulbJob?.cancel() }
+        runCatching { connectionStateJob?.cancel() }
         val conn = currentConnection
         currentConnection = null
-        scope.cancel()
-        conn?.release()
+        runCatching { scope.cancel() }
+        runCatching { conn?.release() }
+        // **fix #158**：release 完成后立即清空取景状态，避免 UI 残留
+        // （之前 disconnect 中已清，但 release 路径独立，要再兜一次）
+        runCatching {
+            _liveViewFrame.value = null
+            _liveViewEnabled.value = false
+        }
     }
 
     private fun ensureConnected(): Boolean {
