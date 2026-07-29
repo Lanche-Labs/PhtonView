@@ -244,4 +244,25 @@
     <string name="waiting_for_camera">En attendant la caméra…</string>
     <string name="preparing_main">Préparation de l\'interface de la caméra…</string>
     <string name="metering_spot_short">Spot</string>
+
+    <!-- Écran de posemètre indépendant -->
+    <string name="metering_title">Posemètre</string>
+    <string name="metering_source_phone">Caméra du téléphone</string>
+    <string name="metering_source_dslr">Visée par l\'objectif DSLR</string>
+    <string name="metering_permission_required">Autorisation de caméra requise</string>
+    <string name="metering_grant_permission">Accorder l\'autorisation</string>
+    <string name="metering_dslr_no_signal">La visée DSLR n\'est pas active. Activez la visée par l\'objectif sur l\'écran principal.</string>
+    <string name="metering_ev_format">EV %1$+.1f</string>
+    <string name="metering_luma_format">Luminance Y = %1$.0f (cible 118)</string>
+    <string name="metering_recommended">Paramètres recommandés pour le DSLR</string>
+    <string name="metering_no_signal">En attente de scène…</string>
+    <string name="metering_waiting">Mesure en cours…</string>
+    <string name="metering_dslr_current">DSLR actuel : %1$s · %2$s · ISO %3$d</string>
+    <string name="metering_mode_label">Mode de prise de vue : %1$s</string>
+    <string name="metering_apply">Appliquer au DSLR</string>
+    <string name="metering_apply_result">Résultat de l\'application</string>
+
+    <!-- Entrée du tiroir : ouvrir l\'écran de posemètre -->
+    <string name="light_meter">Posemètre</string>
+    <string name="light_meter_summary">Mesurez l\'exposition avec la caméra du téléphone ou la visée DSLR, puis appliquez au DSLR</string>
 </resources>

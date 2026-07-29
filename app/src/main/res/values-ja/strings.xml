@@ -244,4 +244,25 @@
     <string name="about_role_material">Material 3 — デザインシステム</string>
     <string name="about_role_ltdl">動的ライブラリローダー（gphoto2 依存関係）</string>
     <string name="metering_spot_short">点</string>
+
+    <!-- 独立測光界面 -->
+    <string name="metering_title">測光</string>
+    <string name="metering_source_phone">スマホカメラ</string>
+    <string name="metering_source_dslr">DSLR ライブビュー</string>
+    <string name="metering_permission_required">カメラの権限が必要です</string>
+    <string name="metering_grant_permission">権限を許可</string>
+    <string name="metering_dslr_no_signal">DSLR ライブビューが有効ではありません。メイン画面でライブビューを開いてください。</string>
+    <string name="metering_ev_format">EV %1$+.1f</string>
+    <string name="metering_luma_format">シーン輝度 Y = %1$.0f（目標 118）</string>
+    <string name="metering_recommended">DSLR 推奨パラメータ</string>
+    <string name="metering_no_signal">シーンを待機中…</string>
+    <string name="metering_waiting">測光中…</string>
+    <string name="metering_dslr_current">DSLR 現在値: %1$s · %2$s · ISO %3$d</string>
+    <string name="metering_mode_label">撮影モード: %1$s</string>
+    <string name="metering_apply">DSLR に適用</string>
+    <string name="metering_apply_result">適用結果</string>
+
+    <!-- 設定メニュー入口：独立測光画面を開く -->
+    <string name="light_meter">測光</string>
+    <string name="light_meter_summary">スマホカメラまたは DSLR ライブビューで測光し、DSLR に推奨パラメータを適用します</string>
 </resources>

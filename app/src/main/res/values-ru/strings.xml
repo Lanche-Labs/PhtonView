@@ -244,4 +244,25 @@
     <string name="about_role_material">Material 3 — дизайн-система</string>
     <string name="about_role_ltdl">Динамический загрузчик библиотек (зависимости gphoto2)</string>
     <string name="metering_spot_short">Тчк</string>
+
+    <!-- Экспонометр: отдельный экран -->
+    <string name="metering_title">Экспонометр</string>
+    <string name="metering_source_phone">Камера телефона</string>
+    <string name="metering_source_dslr">Live View DSLR</string>
+    <string name="metering_permission_required">Требуется разрешение камеры</string>
+    <string name="metering_grant_permission">Предоставить разрешение</string>
+    <string name="metering_dslr_no_signal">Live View DSLR не активен. Сначала откройте Live View на главном экране.</string>
+    <string name="metering_ev_format">EV %1$+.1f</string>
+    <string name="metering_luma_format">Яркость сцены Y = %1$.0f (цель 118)</string>
+    <string name="metering_recommended">Рекомендуемые параметры для DSLR</string>
+    <string name="metering_no_signal">Ожидание сцены…</string>
+    <string name="metering_waiting">Измерение…</string>
+    <string name="metering_dslr_current">Текущие DSLR: %1$s · %2$s · ISO %3$d</string>
+    <string name="metering_mode_label">Режим съёмки: %1$s</string>
+    <string name="metering_apply">Применить к DSLR</string>
+    <string name="metering_apply_result">Результат применения</string>
+
+    <!-- Пункт меню: открыть экран экспонометра -->
+    <string name="light_meter">Экспонометр</string>
+    <string name="light_meter_summary">Измерьте экспозицию камерой телефона или Live View DSLR и примените к DSLR</string>
 </resources>

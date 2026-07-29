@@ -63,6 +63,11 @@ interface CameraRepository {
     suspend fun setAperture(aperture: String)
     suspend fun setShutter(shutter: String)
     suspend fun setEv(ev: Float)
+    /**
+     * 一键应用从测光计算得到的曝光参数到机身。
+     * 任一参数为 null 表示保持当前；否则 snap 到最接近的标准档位后写入。
+     */
+    suspend fun applyMeteredExposure(aperture: String?, shutter: String?, iso: Int?)
     suspend fun setImageFormat(format: ImageFormat)
     suspend fun setImageSize(size: ImageSize)
     suspend fun setBurstSpeed(speed: BurstSpeed)

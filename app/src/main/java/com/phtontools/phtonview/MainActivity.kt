@@ -43,6 +43,7 @@ import com.phtontools.phtonview.data.local.AppLanguage
 import com.phtontools.phtonview.data.local.SettingsManager
 import com.phtontools.phtonview.data.local.ThemeMode
 import com.phtontools.phtonview.ui.CameraScreen
+import com.phtontools.phtonview.ui.metering.MeteringScreen
 import com.phtontools.phtonview.ui.onboarding.OnboardingScreen
 import com.phtontools.phtonview.ui.settings.SettingsScreen
 import com.phtontools.phtonview.ui.splash.SplashScreen
@@ -121,6 +122,7 @@ private fun PhtonViewApp(
     var showSplash by remember { mutableStateOf(true) }
     var showOnboarding by remember { mutableStateOf(settingsManager.isFirstLaunch) }
     var showSettings by remember { mutableStateOf(false) }
+    var showMetering by remember { mutableStateOf(false) }
     var isPreparingMain by remember { mutableStateOf(false) }
 
     AnimatedContent(
@@ -128,14 +130,15 @@ private fun PhtonViewApp(
             showSplash -> Screen.Splash
             showOnboarding -> Screen.Onboarding
             isPreparingMain -> Screen.Preparing
+            showMetering -> Screen.Metering
             showSettings -> Screen.Settings
             else -> Screen.Camera
         },
         // **fix 左划动画方向**：原 transitionSpec 是单向的，新屏永远从右进、旧屏永远往左出。
         // 用户从 Settings 左划返回 Camera 时，期望 Camera 从左进、Settings 往右出（与手势方向一致）。
         // 仿照 SettingsScreen 子页面切换的写法，根据 Screen.ordinal 判定 forward/backward：
-        //   forward (Camera→Settings): 右进左出
-        //   backward (Settings→Camera): 左进右出
+        //   forward (Camera→Settings/Metering): 右进左出
+        //   backward (Settings/Metering→Camera): 左进右出
         transitionSpec = {
             val forward = targetState.ordinal > initialState.ordinal
             if (forward) {
@@ -184,13 +187,19 @@ private fun PhtonViewApp(
                 CameraScreen(
                     viewModel = hiltViewModel(),
                     uiMode = uiMode,
-                    onOpenSettings = { showSettings = true }
+                    onOpenSettings = { showSettings = true },
+                    onOpenLightMeter = { showMetering = true }
                 )
             }
             Screen.Settings -> {
                 SettingsScreen(
                     settingsManager = settingsManager,
                     onBack = { showSettings = false }
+                )
+            }
+            Screen.Metering -> {
+                MeteringScreen(
+                    onBack = { showMetering = false }
                 )
             }
         }
@@ -232,5 +241,5 @@ private fun PreparingMainScreen(
 }
 
 private enum class Screen {
-    Splash, Onboarding, Preparing, Camera, Settings
+    Splash, Onboarding, Preparing, Camera, Settings, Metering
 }

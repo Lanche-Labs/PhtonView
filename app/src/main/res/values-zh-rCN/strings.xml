@@ -289,4 +289,25 @@
     <!-- 许可证 -->
     <string name="license">许可证</string>
     <string name="license_summary">查看 LICENSE 和 COPYING</string>
+
+    <!-- 独立测光界面 -->
+    <string name="metering_title">测光</string>
+    <string name="metering_source_phone">手机摄像头</string>
+    <string name="metering_source_dslr">单反实时取景</string>
+    <string name="metering_permission_required">需要相机权限</string>
+    <string name="metering_grant_permission">授予权限</string>
+    <string name="metering_dslr_no_signal">单反实时取景未开启，请先在主界面打开实时取景</string>
+    <string name="metering_ev_format">EV %1$+.1f</string>
+    <string name="metering_luma_format">场景亮度 Y = %1$.0f（目标 118）</string>
+    <string name="metering_recommended">推荐参数（应用于单反）</string>
+    <string name="metering_no_signal">等待场景…</string>
+    <string name="metering_waiting">正在测光…</string>
+    <string name="metering_dslr_current">单反当前：%1$s · %2$s · ISO %3$d</string>
+    <string name="metering_mode_label">拍摄模式：%1$s</string>
+    <string name="metering_apply">应用到单反</string>
+    <string name="metering_apply_result">应用结果</string>
+
+    <!-- 抽屉入口：打开独立测光界面 -->
+    <string name="light_meter">测光</string>
+    <string name="light_meter_summary">用手机摄像头或单反实时取景测光，并把推荐参数应用到单反</string>
 </resources>

@@ -93,7 +93,8 @@ import kotlinx.coroutines.withContext
 fun CameraScreen(
     viewModel: CameraViewModel,
     uiMode: UiMode,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onOpenLightMeter: () -> Unit = {}
 ) {
     val connectionState by viewModel.connectionState.collectAsStateWithLifecycle()
     val liveViewFrame by viewModel.liveViewFrame.collectAsStateWithLifecycle()
@@ -187,7 +188,8 @@ fun CameraScreen(
                     onAebChange = viewModel::setAeb,
                     onBurstCountChange = viewModel::setBurstCount,
                     onBurstSpeedChange = viewModel::setBurstSpeed,
-                    onResetToDefaults = viewModel::resetToDefaults
+                    onResetToDefaults = viewModel::resetToDefaults,
+                    onOpenLightMeter = onOpenLightMeter
                 )
             }
         }

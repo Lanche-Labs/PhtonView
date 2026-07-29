@@ -1188,6 +1188,42 @@ class CameraRepositoryImpl @Inject constructor(
         readNikonExposureFromCamera(delayMs = 300)
     }
 
+    /**
+     * 测光界面把推荐参数写回机身。
+     * 实现上就是复用 setExposure，但语义独立——测光推荐是经用户确认的
+     * (N, t, ISO) 三元组，不动 EV 补偿，也不主动回读。
+     */
+    override suspend fun applyMeteredExposure(aperture: String?, shutter: String?, iso: Int?) {
+        val current = _exposureSettings.value
+        val newSettings = current.copy(
+            aperture = aperture ?: current.aperture,
+            shutter = shutter ?: current.shutter,
+            iso = iso ?: current.iso
+        )
+        // #region debug-point J:metered-exposure
+        AppLogger.report("J", "CameraRepositoryImpl.kt:applyMeteredExposure", "Apply metered exposure", mapOf(
+            "aperture" to newSettings.aperture,
+            "shutter" to newSettings.shutter,
+            "iso" to newSettings.iso.toString()
+        ))
+        // #endregion
+        _exposureSettings.value = newSettings
+        if (iso != null) {
+            applyPtpProperty(PtpConstants.DEVICE_PROP_ISO, PtpValueMapper.isoToPtp(newSettings.iso))
+        }
+        if (aperture != null) {
+            applyPtpProperty(PtpConstants.DEVICE_PROP_F_NUMBER, PtpValueMapper.apertureToPtp(newSettings.aperture))
+        }
+        if (shutter != null) {
+            applyShutterProperty(newSettings.shutter)
+        }
+        // 测光应用：等 DSLR 完成写卡/反光板回落/光圈马达到位再回读校验。
+        // issue #141 #140-#142：500ms 不够，机身仍在做镜头归位 + sensor 重启，
+        // 立刻回读会拿到旧值并把 _exposureSettings 改回去，导致 UI 显示"没动"。
+        // 改成 1500ms。
+        readNikonExposureFromCamera(delayMs = 1500)
+    }
+
     override suspend fun setImageFormat(format: ImageFormat) {
         _cameraSettings.value = _cameraSettings.value.copy(imageFormat = format)
         // No standard PTP property for image format; vendor-specific.

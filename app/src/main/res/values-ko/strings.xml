@@ -244,4 +244,25 @@
     <string name="about_role_material">Material 3 — 디자인 시스템</string>
     <string name="about_role_ltdl">동적 라이브러리 로더 (gphoto2 종속성)</string>
     <string name="metering_spot_short">점</string>
+
+    <!-- 독립 측광 화면 -->
+    <string name="metering_title">측광</string>
+    <string name="metering_source_phone">휴대폰 카메라</string>
+    <string name="metering_source_dslr">DSLR 라이브 뷰</string>
+    <string name="metering_permission_required">카메라 권한이 필요합니다</string>
+    <string name="metering_grant_permission">권한 부여</string>
+    <string name="metering_dslr_no_signal">DSLR 라이브 뷰가 활성화되어 있지 않습니다. 메인 화면에서 라이브 뷰를 먼저 열어 주세요.</string>
+    <string name="metering_ev_format">EV %1$+.1f</string>
+    <string name="metering_luma_format">장면 휘도 Y = %1$.0f (목표 118)</string>
+    <string name="metering_recommended">DSLR 권장 값</string>
+    <string name="metering_no_signal">장면 대기 중…</string>
+    <string name="metering_waiting">측광 중…</string>
+    <string name="metering_dslr_current">DSLR 현재 값: %1$s · %2$s · ISO %3$d</string>
+    <string name="metering_mode_label">촬영 모드: %1$s</string>
+    <string name="metering_apply">DSLR 에 적용</string>
+    <string name="metering_apply_result">적용 결과</string>
+
+    <!-- 메뉴 진입점: 독립 측광 화면 열기 -->
+    <string name="light_meter">측광</string>
+    <string name="light_meter_summary">휴대폰 카메라 또는 DSLR 라이브 뷰로 측광하고 DSLR 에 권장 값을 적용합니다</string>
 </resources>

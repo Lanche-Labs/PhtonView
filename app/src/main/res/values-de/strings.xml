@@ -244,4 +244,25 @@
     <string name="about_role_material">Material 3 — Designsystem</string>
     <string name="about_role_ltdl">Dynamischer Bibliothekslader (gphoto2-Abhängigkeiten)</string>
     <string name="metering_spot_short">Spot</string>
+
+    <!-- Unabhängiger Belichtungsmesser -->
+    <string name="metering_title">Belichtungsmesser</string>
+    <string name="metering_source_phone">Smartphone-Kamera</string>
+    <string name="metering_source_dslr">DSLR-Live-View</string>
+    <string name="metering_permission_required">Kameraberechtigung erforderlich</string>
+    <string name="metering_grant_permission">Berechtigung erteilen</string>
+    <string name="metering_dslr_no_signal">DSLR-Live-View ist nicht aktiv. Aktivieren Sie zunächst das Live-View auf dem Hauptbildschirm.</string>
+    <string name="metering_ev_format">EV %1$+.1f</string>
+    <string name="metering_luma_format">Szenen-Helligkeit Y = %1$.0f (Sollwert 118)</string>
+    <string name="metering_recommended">Empfohlene DSLR-Einstellungen</string>
+    <string name="metering_no_signal">Warte auf Szene…</string>
+    <string name="metering_waiting">Belichtung wird gemessen…</string>
+    <string name="metering_dslr_current">DSLR aktuell: %1$s · %2$s · ISO %3$d</string>
+    <string name="metering_mode_label">Aufnahmemodus: %1$s</string>
+    <string name="metering_apply">Auf DSLR anwenden</string>
+    <string name="metering_apply_result">Übernahme-Ergebnis</string>
+
+    <!-- Schubladen-Eintrag: Unabhängigen Belichtungsmesser öffnen -->
+    <string name="light_meter">Belichtungsmesser</string>
+    <string name="light_meter_summary">Belichtung mit Smartphone-Kamera oder DSLR-Live-View messen und auf die DSLR anwenden</string>
 </resources>

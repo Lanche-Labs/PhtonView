@@ -271,4 +271,23 @@
   <!-- License -->
   <string name="license">License</string>
   <string name="license_summary">View LICENSE and COPYING</string>
+  <!-- Light Metering (independent screen) -->
+  <string name="metering_title">Light Meter</string>
+  <string name="metering_source_phone">Phone Camera</string>
+  <string name="metering_source_dslr">DSLR Live View</string>
+  <string name="metering_permission_required">Camera permission required</string>
+  <string name="metering_grant_permission">Grant Permission</string>
+  <string name="metering_dslr_no_signal">DSLR live view is not active. Open live view on the main screen first.</string>
+  <string name="metering_ev_format">EV %1$+.1f</string>
+  <string name="metering_luma_format">Scene luma Y = %1$.0f (target 118)</string>
+  <string name="metering_recommended">Recommended for DSLR</string>
+  <string name="metering_no_signal">Waiting for scene…</string>
+  <string name="metering_waiting">Measuring…</string>
+  <string name="metering_dslr_current">DSLR current: %1$s · %2$s · ISO %3$d</string>
+  <string name="metering_mode_label">Shooting mode: %1$s</string>
+  <string name="metering_apply">Apply to DSLR</string>
+  <string name="metering_apply_result">Apply Result</string>
+  <!-- Drawer entry: open independent light meter screen -->
+  <string name="light_meter">Light Meter</string>
+  <string name="light_meter_summary">Measure exposure with phone camera or DSLR live view, then apply to DSLR</string>
 </resources>

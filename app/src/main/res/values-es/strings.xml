@@ -244,4 +244,25 @@
     <string name="about_role_material">Material 3 — sistema de diseño</string>
     <string name="about_role_ltdl">Cargador dinámico de bibliotecas (dependencias gphoto2)</string>
     <string name="metering_spot_short">Spot</string>
+
+    <!-- Pantalla independiente de fotómetro -->
+    <string name="metering_title">Fotómetro</string>
+    <string name="metering_source_phone">Cámara del teléfono</string>
+    <string name="metering_source_dslr">Live View DSLR</string>
+    <string name="metering_permission_required">Se requiere permiso de cámara</string>
+    <string name="metering_grant_permission">Conceder permiso</string>
+    <string name="metering_dslr_no_signal">El Live View de la DSLR no está activo. Active el Live View en la pantalla principal.</string>
+    <string name="metering_ev_format">EV %1$+.1f</string>
+    <string name="metering_luma_format">Luminancia Y = %1$.0f (objetivo 118)</string>
+    <string name="metering_recommended">Parámetros recomendados para DSLR</string>
+    <string name="metering_no_signal">Esperando escena…</string>
+    <string name="metering_waiting">Midiendo…</string>
+    <string name="metering_dslr_current">DSLR actual: %1$s · %2$s · ISO %3$d</string>
+    <string name="metering_mode_label">Modo de disparo: %1$s</string>
+    <string name="metering_apply">Aplicar a DSLR</string>
+    <string name="metering_apply_result">Resultado de aplicación</string>
+
+    <!-- Entrada del cajón: abrir pantalla de fotómetro -->
+    <string name="light_meter">Fotómetro</string>
+    <string name="light_meter_summary">Mida la exposición con la cámara del teléfono o el Live View DSLR y aplíquela a la DSLR</string>
 </resources>

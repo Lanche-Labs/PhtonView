@@ -150,6 +150,10 @@ class CameraViewModel @Inject constructor(
     fun setAperture(aperture: String) = viewModelScope.launch { repository.setAperture(aperture) }
     fun setShutter(shutter: String) = viewModelScope.launch { repository.setShutter(shutter) }
     fun setEv(ev: Float) = viewModelScope.launch { repository.setEv(ev) }
+    /** 测光界面用：把推荐的三元组一次性写到机身。 */
+    fun applyMeteredExposure(aperture: String?, shutter: String?, iso: Int?) = viewModelScope.launch {
+        repository.applyMeteredExposure(aperture, shutter, iso)
+    }
 
     fun setImageFormat(format: ImageFormat) = viewModelScope.launch { repository.setImageFormat(format) }
     fun setImageSize(size: ImageSize) = viewModelScope.launch { repository.setImageSize(size) }
