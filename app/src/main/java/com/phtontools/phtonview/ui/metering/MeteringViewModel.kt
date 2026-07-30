@@ -87,13 +87,13 @@ class MeteringViewModel @Inject constructor(
         // 订阅 meter 采样，实时刷新推荐参数
         viewModelScope.launch {
             meter.sample.collect { sample ->
-                // 直接从 Y 值计算 EV（专业测光公式）
-                val ev = MeteringMath.computeEvFromLuma(sample.meanLumaY)
+                // EV 已在 PhoneCameraMeter 中计算好
+                val ev = sample.sceneEvAtIso100
                 
-                // 根据当前模式计算推荐参数
+                // 根据当前模式计算推荐的第三个参数
                 val rec = when (_mode.value) {
                     MeteringMode.AperturePriority -> {
-                        // 固定光圈和 ISO，计算快门
+                        // A 模式：用户选择光圈+ISO，推荐快门
                         val shutter = MeteringMath.computeShutterForAperture(ev, _fixedAperture.value, _fixedIso.value)
                         Recommendation(
                             aperture = _fixedAperture.value,
@@ -104,7 +104,7 @@ class MeteringViewModel @Inject constructor(
                         )
                     }
                     MeteringMode.ShutterPriority -> {
-                        // 固定快门和 ISO，计算光圈
+                        // S 模式：用户选择快门+ISO，推荐光圈
                         val aperture = MeteringMath.computeApertureForShutter(ev, _fixedShutter.value, _fixedIso.value)
                         Recommendation(
                             aperture = aperture,
@@ -115,7 +115,7 @@ class MeteringViewModel @Inject constructor(
                         )
                     }
                     MeteringMode.Manual -> {
-                        // 固定光圈和快门，计算 ISO
+                        // M 模式：用户选择光圈+快门，推荐 ISO
                         val iso = MeteringMath.computeIsoForApertureShutter(ev, _fixedAperture.value, _fixedShutter.value)
                         Recommendation(
                             aperture = _fixedAperture.value,

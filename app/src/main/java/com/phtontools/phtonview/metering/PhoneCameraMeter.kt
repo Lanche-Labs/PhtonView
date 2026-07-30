@@ -302,8 +302,8 @@ class PhoneCameraMeter(private val context: Context) {
     }
 
     /**
-     * 每一帧到来时计算亮度 + 用专业测光公式算 EV。
-     * 专业测光：直接从 Y 值计算 EV，不依赖手机曝光参数。
+     * 每一帧到来时计算亮度 + 用手机曝光参数计算 EV。
+     * 手机 AE 会调整快门/ISO 使画面亮度接近 118，因此必须用曝光参数计算 EV。
      */
     private fun onImageAvailable(reader: ImageReader) {
         var image: Image? = null
@@ -315,9 +315,15 @@ class PhoneCameraMeter(private val context: Context) {
 
             val meanLuma = computeMeanLuma(image)
             val effectiveAperture = if (latestAperture > 0) latestAperture else fallbackAperture
+            val shutterSeconds = latestExposureTimeNs / 1_000_000_000.0
             
-            // 专业测光公式：EV = 10 + log2(Y/118)
-            val sceneEv = MeteringMath.computeEvFromLuma(meanLuma)
+            // 用手机曝光参数计算 EV
+            val sceneEv = MeteringMath.computeEvFromPhoneParams(
+                aperture = effectiveAperture,
+                shutterSeconds = shutterSeconds,
+                iso = latestIso,
+                meanLumaY = meanLuma
+            )
             
             _sample.value = MeteringSample(
                 meanLumaY = meanLuma,

@@ -7,23 +7,22 @@ import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /**
- * 专业测光数学工具（参考 SimpleReflectedLightMeter）。
+ * 专业测光数学工具。
  *
  * **核心思路**：
- * 1. 不依赖手机曝光参数（因为手机光圈恒定，快门/ISO 由 AE 自动调整）
- * 2. 直接从 Y 通道亮度值计算 EV
- * 3. 用户选择固定参数（光圈或快门），推算其他参数
+ * 手机摄像头有 AE 系统，会自动调整快门/ISO 使画面亮度接近 18% 灰（Y≈118）。
+ * 因此不能直接用 Y 值计算 EV，必须依赖手机的实际曝光参数。
  *
  * **EV 计算公式**：
- * - Y=118 对应 EV=10（晴天，f/16 @ 1/100s @ ISO 100）
- * - EV = 10 + log2(Y/118)
- * - Y 越大（场景越亮）→ EV 越大 → 需要更小的曝光（更小的光圈/更快的快门）
+ * EV = log2(N²/t) + log2(ISO/100)
+ *
+ * 其中 N=光圈，t=快门秒数，ISO=感光度
  */
 object MeteringMath {
 
     /** 标准光圈档位 */
     val APERTURE_STOPS: DoubleArray = doubleArrayOf(
-        1.0, 1.4, 2.0, 2.8, 4.0, 5.6, 8.0, 11.0, 16.0, 22.0, 32.0
+        1.0, 1.4, 1.8, 2.0, 2.8, 3.5, 4.0, 5.6, 8.0, 11.0, 16.0, 22.0, 32.0
     )
 
     /** 标准快门档位（秒） */
@@ -38,20 +37,41 @@ object MeteringMath {
     )
 
     /**
-     * 从 Y 通道亮度值直接计算 EV（at ISO 100）。
-     * 专业测光APP核心公式：EV = 10 + log2(Y/118)
+     * 从手机曝光参数计算场景 EV（at ISO 100）。
      *
-     * @param meanLumaY Y 通道亮度均值（0..255），118 对应 18% 灰
+     * 公式：EV_100 = log2(N²/t) - log2(ISO/100)
+     *
+     * @param aperture 手机光圈值
+     * @param shutterSeconds 手机快门秒数
+     * @param iso 手机 ISO
+     * @param meanLumaY Y 通道亮度（用于微调，可选）
      * @return EV at ISO 100
      */
-    fun computeEvFromLuma(meanLumaY: Double): Double {
-        if (meanLumaY <= 0) return 3.0  // 全黑兜底，EV 3 对应室内弱光
-        if (meanLumaY > 255) return 16.0 // 极亮兜底
-        // Y=118 → EV=10（晴天）
-        // Y=236 → EV=11（亮 1 档）
-        // Y=59 → EV=9（暗 1 档）
-        val ev = 10.0 + log2(meanLumaY / 118.0)
-        return ev.coerceIn(-3.0, 18.0)
+    fun computeEvFromPhoneParams(
+        aperture: Double,
+        shutterSeconds: Double,
+        iso: Int,
+        meanLumaY: Double = 118.0
+    ): Double {
+        if (aperture <= 0 || shutterSeconds <= 0 || iso <= 0) {
+            return 7.0  // 默认室内值
+        }
+        
+        // 基础 EV：当前曝光参数对应的 EV
+        val phoneEv = log2((aperture * aperture) / shutterSeconds)
+        
+        // ISO 归一化到 100
+        val evAtIso100 = phoneEv - log2(iso / 100.0)
+        
+        // Y 值微调：如果画面偏离 18% 灰，说明 AE 还没完全收敛
+        // Y>118 表示过曝（场景比 AE 认为的更亮），Y<118 表示欠曝
+        val yCorrection = if (meanLumaY > 0 && meanLumaY != 118.0) {
+            log2(meanLumaY / 118.0) * 0.5  // 50% 权重
+        } else {
+            0.0
+        }
+        
+        return (evAtIso100 + yCorrection).coerceIn(-3.0, 20.0)
     }
 
     /**

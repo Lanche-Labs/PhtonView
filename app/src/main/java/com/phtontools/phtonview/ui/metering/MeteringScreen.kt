@@ -439,7 +439,7 @@ private fun ParameterSelector(
     onIsoChange: (Int) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        // ISO 选择器（所有模式都需要）
+        // ISO 选择器（所有模式都可调）
         ParameterSlider(
             label = "ISO",
             value = fixedIso,
@@ -449,22 +449,22 @@ private fun ParameterSelector(
             formatValue = { it.toString() }
         )
         
-        // 光圈选择器（A 和 M 模式固定，S 模式禁用）
+        // 光圈选择器（所有模式都可调）
         ParameterSlider(
             label = "光圈",
             value = fixedAperture,
             values = MeteringMath.APERTURE_STOPS.toList(),
-            enabled = mode != MeteringViewModel.MeteringMode.ShutterPriority,
+            enabled = true,
             onValueChange = onApertureChange,
             formatValue = { MeteringMath.formatAperture(it) }
         )
         
-        // 快门选择器（S 和 M 模式固定，A 模式禁用）
+        // 快门选择器（所有模式都可调）
         ParameterSlider(
             label = "快门",
             value = fixedShutter,
             values = MeteringMath.SHUTTER_STOPS_SECONDS.toList(),
-            enabled = mode != MeteringViewModel.MeteringMode.AperturePriority,
+            enabled = true,
             onValueChange = onShutterChange,
             formatValue = { MeteringMath.formatShutter(it) }
         )
