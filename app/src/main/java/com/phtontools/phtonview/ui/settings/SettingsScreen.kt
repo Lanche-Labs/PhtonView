@@ -888,9 +888,9 @@ private fun UpdatePage(
                 fontWeight = FontWeight.SemiBold
             )
             if (release.body.isNotBlank()) {
-                Text(
-                    text = release.body,
-                    style = MaterialTheme.typography.bodyMedium
+                com.phtontools.phtonview.ui.components.MarkdownText(
+                    markdown = release.body,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
                 )
             }
 
