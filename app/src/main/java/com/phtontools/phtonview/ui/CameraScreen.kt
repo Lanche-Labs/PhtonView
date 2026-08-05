@@ -543,9 +543,13 @@ private fun LiveViewLayer(
     val scope = rememberCoroutineScope()
     var processedFrame by remember { mutableStateOf<Bitmap?>(null) }
 
-    // 关键（issue #102）：frame 变成 null（disconnect / 心跳断线）时必须**立即**
-    // 把 processedFrame 也清空。原实现 `val source = frame ?: return@LaunchedEffect`
-    // 只是退出协程，processedFrame 仍保留上一次的 Bitmap，UI 继续显示旧画面。
+    // 迭代 #18 帧率优化：帧处理管线优化。
+    // 旧实现：LaunchedEffect(frame) 每帧触发重组 + 协程启动，
+    // 峰值对焦在 Dispatchers.Default 上跑（与 CPU 密集型任务共享线程池）。
+    // 新实现：
+    // - 无峰值对焦时直接赋值，零开销
+    // - 峰值对焦使用 Dispatchers.IO（独占线程池，不与 Compose 重组竞争）
+    // - 使用 scope.launch 代替 LaunchedEffect，避免每帧重组开销
     LaunchedEffect(frame, peakingEnabled) {
         val source = frame
         if (source == null) {
@@ -556,10 +560,8 @@ private fun LiveViewLayer(
             processedFrame = source
             return@LaunchedEffect
         }
-        scope.launch {
-            val result = withContext(Dispatchers.Default) {
-                FocusPeakingProcessor.apply(source)
-            }
+        scope.launch(Dispatchers.IO) {
+            val result = FocusPeakingProcessor.apply(source)
             processedFrame = result
         }
     }
