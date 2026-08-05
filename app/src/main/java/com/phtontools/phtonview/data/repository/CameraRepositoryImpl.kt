@@ -843,24 +843,24 @@ class CameraRepositoryImpl @Inject constructor(
     }
 
     /**
-     * 取景帧 JPEG 解码（迭代 #18 帧率优化）：API 28+ 走 ImageDecoder GPU 硬件分配器，
+     * 取景帧 JPEG 解码（迭代 #18 帧率优化）：API 28+ 走 ImageDecoder GPU 硬解，
      * 24-27 fallback BitmapFactory 软解。
      *
-     * ALLOCATOR_HARDWARE：解码后的 Bitmap 直接存放在 GPU 可访问的硬件缓冲区
-     *（GraphicBuffer / AHardwareBuffer），后续 drawBitmap 到 SurfaceView 的 Canvas
-     * 走 GPU 纹理拷贝（blit），无需 CPU→GPU 上传。相比旧 ALLOCATOR_SOFTWARE 的
-     * 纯 CPU 解码 + 软件像素缓冲，帧渲染延迟降低约 40%（实测 API 30+ 设备）。
+     * 使用 ALLOCATOR_SOFTWARE（而非 ALLOCATOR_HARDWARE）：
+     * issue #188 修复 — ALLOCATOR_HARDWARE 产生的硬件 Bitmap 在部分设备上
+     * 与 SurfaceView.lockCanvas() 返回的软件 Canvas 不兼容，drawBitmap 时
+     * 触发 native crash 导致 APP 重启。ALLOCATOR_SOFTWARE 解码后的软件 Bitmap
+     * 与所有 Canvas 类型兼容，稳定性优先。
      *
-     * 注意：HARDWARE Bitmap 不可 lockCanvas()（会抛异常），但 SurfaceView 的
-     * Surface.lockCanvas() 是独立的 surface-backed canvas，不受此限制。
-     * drawBitmap(hardwareBitmap, ...) 在硬件 Canvas 上走 GPU blit 路径。
+     * ImageDecoder 仍走 Skia 硬件加速解码路径（解码本身由 Skia/Codec 优化），
+     * 只是像素缓冲区分配在软件内存，后续 drawBitmap 走 CPU→GPU 上传。
      */
     private fun decodeLiveViewJpeg(jpegData: ByteArray): Bitmap? {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            // API 28+：ImageDecoder GPU 硬件分配器
+            // API 28+：ImageDecoder GPU 加速解码 + 软件缓冲区（稳定兼容）
             val source = ImageDecoder.createSource(java.nio.ByteBuffer.wrap(jpegData))
             return ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
-                decoder.allocator = ImageDecoder.ALLOCATOR_HARDWARE
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
                 decoder.isMutableRequired = false
                 decoder.setTargetColorSpace(android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.SRGB))
             }
@@ -912,6 +912,7 @@ class CameraRepositoryImpl @Inject constructor(
                 return@launch
             }
             while (isActive && _liveViewEnabled.value && _connectionState.value is ConnectionState.Connected) {
+                val loopStart = System.nanoTime()
                 var captured = false
                 try {
                     val conn = currentConnection ?: break
@@ -1018,15 +1019,22 @@ class CameraRepositoryImpl @Inject constructor(
                         break
                     }
                 }
-                // 迭代 #18 帧率优化：移除 30fps 人工限速（旧 targetIntervalNs = 33_333_333L）。
-                // USB 2.0 Full-Speed 端点传输 + PTP 协议握手本身就是自然限速器，
-                // 相机帧产出速率（Nikon ~15-30fps / Canon ~30fps）决定了实际上限。
-                // 人工 delay 只会白白增加管线延迟（decode→display latency），
-                // 尤其在相机已产出新帧但被 delay 阻塞时造成"画面滞后"。
-                // 现在循环全速跑：取帧→解码→发布→立即取下一帧，零人工等待。
-                if (!captured) {
-                    // 取帧失败时短暂等待避免 busy-loop 烧 CPU
-                    delay(5)
+                // 迭代 #18 帧率优化（issue #188 修复）：
+                // 保留最小帧间隔，避免全速轮询淹没 USB 总线 / 相机端点。
+                // D5200 等老机身在高频请求下返回 0x2019（Device Busy），
+                // 完全无间隔时相机来不及处理上一帧就收到下一帧请求。
+                // 10ms 间隔（≈100fps 上限）远大于 USB 取帧耗时（~30-60ms），
+                // 实际帧率仍由 USB 总线自然限速，但给相机留出处理余量。
+                if (captured) {
+                    val elapsedNs = System.nanoTime() - loopStart
+                    val minIntervalNs = 10_000_000L // 10ms 最小间隔
+                    val delayNs = minIntervalNs - elapsedNs
+                    if (delayNs > 0) {
+                        delay(delayNs / 1_000_000)
+                    }
+                } else {
+                    // 取帧失败时稍长等待避免 busy-loop 烧 CPU
+                    delay(16)
                 }
             }
             // 退出路径（issue #95/97 修复）：
